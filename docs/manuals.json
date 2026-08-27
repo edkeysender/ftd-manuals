@@ -1,0 +1,12 @@
+[
+  {
+    "serial": "B73M/F2M/04/2026",
+    "slug": "b73m-f2m-04-2026",
+    "issueRev": "1.1",
+    "pages": 8,
+    "warnings": [
+      "skipped cargo-fire-panel (not installed)",
+      "section \"Aft electronic panel\" empty for this device"
+    ]
+  }
+]

@@ -1,0 +1,7 @@
+id: emergency-stop
+name: Emergency Stop Switches
+category: safety
+location: Pedestal (aft electronic panel wall) and IOS desk
+owner: support
+jira_component: DOK-Safety
+software_component: null

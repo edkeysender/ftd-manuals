@@ -1,0 +1,31 @@
+---
+id: instructor-seat
+title: Instructor Seat
+description: Optional fully adjustable instructor seat on an I-shaped track.
+sidebar_position: 7
+custom_edit_url: null
+---
+
+:::info[Effectivity]
+Component **`instructor-seat`** · installed software **1.3.0** · documented range `>=1.0.0 <2.0.0` · chunk revision `n/a` (—)
+:::
+
+
+The instructor seat is an optional feature. It moves on an I-shaped floor track and can be replaced by a standard office chair on wheels, in which case the operator should consider the associated health risks.
+
+## Adjustments
+
+| Adjustment | Range | How |
+| --- | --- | --- |
+| Slide (seat on track) | 0 to +750 mm | Press lever (1) with your foot to release the lock, position the seat, release and check it is locked. |
+| Longitudinal travel | −90 to +100 mm | Lift lever (2), position the seat, release and check the lock. |
+| Swivel | 4 steps of 90° | While seated, turn to release lock (3), position, check the lock. |
+| Armrest angle | — | Knob (4) under the armrest arm: up raises, down lowers. Armrest folds fully upright. |
+| Backrest tilt | 40° to 25° | Turn knob (5). |
+| Seat height | 80 mm continuous | Button (6): + raises, − lowers; can be done while seated. |
+| Seat tilt | −2° to +11° | Lift lever (7), position, release. |
+| Seat firmness | continuous | Knob (8): clockwise firmer, counter-clockwise softer. |
+| Seat extension | 6 steps of 10 mm | Lift lever (9), position, release. |
+| Headrest | two axes | Press the plastic latch on a headrest bar, set height, then tilt by gripping the headrest. |
+
+Numbers in brackets refer to the callouts on the seat overview drawing (`assets/instructor-seat-callouts.svg`, to be produced).

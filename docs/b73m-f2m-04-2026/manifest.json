@@ -1,0 +1,111 @@
+{
+  "sim": {
+    "serial": "B73M/F2M/04/2026",
+    "slug": "b73m-f2m-04-2026",
+    "device_type": "B73M-FTD2",
+    "qualification": "FNPT II / MCC",
+    "client": "TFC European Airline Services GmbH",
+    "delivered": "2026-05-26",
+    "manual": {
+      "template": "fcom-fnpt2",
+      "issue": 1,
+      "revision": 1,
+      "effective_date": "2026-08-27"
+    },
+    "components": {
+      "starting-panel": {
+        "version": "2.0.1",
+        "installed": true
+      },
+      "emergency-stop": {
+        "version": "1.0.0",
+        "installed": true
+      },
+      "instructor-seat": {
+        "version": "1.3.0",
+        "installed": true
+      },
+      "le-devices-annunciator": {
+        "version": "1.0.0",
+        "installed": true
+      },
+      "cargo-fire-panel": {
+        "installed": false,
+        "note": "Not fitted on this device"
+      }
+    }
+  },
+  "issueRev": "1.1",
+  "sections": [
+    {
+      "id": "general-info",
+      "title": "General information",
+      "docId": "general/general-info",
+      "version": "—",
+      "range": "all",
+      "hash": "n/a",
+      "date": "—",
+      "subject": "",
+      "source": "shared/general-info.md"
+    },
+    {
+      "id": "health-and-safety",
+      "title": "Health and safety",
+      "docId": "operations/health-and-safety",
+      "version": "—",
+      "range": "all",
+      "hash": "n/a",
+      "date": "—",
+      "subject": "",
+      "source": "shared/health-and-safety.md"
+    },
+    {
+      "id": "emergency-stop",
+      "title": "Emergency Stop Switches",
+      "docId": "operations/emergency-stop",
+      "version": "1.0.0",
+      "range": ">=1.0.0 <2.0.0",
+      "hash": "n/a",
+      "date": "—",
+      "subject": "",
+      "source": "components/emergency-stop/v1.md"
+    },
+    {
+      "id": "starting-panel",
+      "title": "Starting Panel",
+      "docId": "operations/starting-panel",
+      "version": "2.0.1",
+      "range": ">=2.0.0 <3.0.0",
+      "hash": "n/a",
+      "date": "—",
+      "subject": "",
+      "source": "components/starting-panel/v2.md"
+    },
+    {
+      "id": "instructor-seat",
+      "title": "Instructor Seat",
+      "docId": "operations/instructor-seat",
+      "version": "1.3.0",
+      "range": ">=1.0.0 <2.0.0",
+      "hash": "n/a",
+      "date": "—",
+      "subject": "",
+      "source": "components/instructor-seat/v1.md"
+    },
+    {
+      "id": "le-devices-annunciator",
+      "title": "LE Devices Annunciator Panel",
+      "docId": "systems/aft-overhead/le-devices-annunciator",
+      "version": "1.0.0",
+      "range": ">=1.0.0",
+      "hash": "n/a",
+      "date": "—",
+      "subject": "",
+      "source": "components/le-devices-annunciator/v1.md"
+    }
+  ],
+  "warnings": [
+    "skipped cargo-fire-panel (not installed)",
+    "section \"Aft electronic panel\" empty for this device"
+  ]
+}

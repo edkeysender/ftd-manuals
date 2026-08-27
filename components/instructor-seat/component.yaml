@@ -1,0 +1,8 @@
+id: instructor-seat
+name: Instructor Seat
+category: ios-hardware
+location: IOS, on I-shaped floor track
+owner: support
+jira_component: DOK-IOS
+software_component: null
+optional: true

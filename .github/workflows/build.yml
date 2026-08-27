@@ -1,0 +1,39 @@
+name: Build manuals
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["manual/**"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # full history → revision register
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Resolve every simulator configuration
+        run: node tools/resolve.js --all
+      - name: Build site (fails on broken links)
+        run: npm run build
+      - name: Upload site
+        uses: actions/upload-artifact@v4
+        with: { name: site, path: build }
+
+  # Publish to GitHub Pages on main. Swap for S3/Cloudflare later.
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: { pages: write, id-token: write }
+    environment: { name: github-pages, url: ${{ steps.deployment.outputs.page_url }} }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: site, path: build }
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: build }
+      - id: deployment
+        uses: actions/deploy-pages@v4
