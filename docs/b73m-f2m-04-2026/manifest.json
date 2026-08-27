@@ -100,9 +100,9 @@
       "docId": "operations/starting-panel",
       "version": "2.0.1",
       "range": ">=2.0.0 <3.0.0",
-      "hash": "uncommitted",
-      "date": "—",
-      "subject": "not yet committed",
+      "hash": "aea0e41",
+      "date": "2026-08-27",
+      "subject": "Starting panel: panel mockups and an interactive demonstration",
       "source": "components/starting-panel/v2.mdx",
       "status": "ok"
     },
@@ -149,5 +149,5 @@
   ],
   "gaps": [],
   "brokenLinks": [],
-  "contentHash": "7bf429132c2e617b"
+  "contentHash": "d1b65c5a85cd3dcc"
 }

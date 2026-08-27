@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-27T12:46:42.495Z",
+  "generatedAt": "2026-08-27T12:56:06.164Z",
   "repo": "ftd-aero/ftd-docs",
   "defaultBranch": "main",
   "totals": {
@@ -31,7 +31,7 @@
       ],
       "gaps": [],
       "brokenLinks": [],
-      "contentHash": "7bf429132c2e617b",
+      "contentHash": "d1b65c5a85cd3dcc",
       "storedHash": "5efbe1d2c378fd5f",
       "unreleased": true,
       "releasable": true
@@ -246,11 +246,11 @@
           "major": 2,
           "range": ">=2.0.0 <3.0.0",
           "title": "Starting Panel",
-          "summary": "Rotary knob and touchscreen that start and shut down the whole device, with Not Ready / Ready indication.",
+          "summary": "Wall-mounted station: two emergency stops above a touchscreen that starts, restarts and stops the simulator.",
           "source": "components/starting-panel/v2.mdx",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "aea0e41",
+          "date": "2026-08-27",
+          "subject": "Starting panel: panel mockups and an interactive demonstration",
           "links": [
             "emergency-stop"
           ]
