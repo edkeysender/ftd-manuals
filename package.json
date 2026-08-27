@@ -16,6 +16,7 @@
     "resolve:strict": "node tools/resolve.js --all --strict",
     "bump": "node tools/bump.js",
     "bump:check": "node tools/bump.js --check",
+    "admin": "node tools/admin-server.js",
     "prebuild": "node tools/resolve.js --all",
     "prestart": "node tools/resolve.js --all"
   },
