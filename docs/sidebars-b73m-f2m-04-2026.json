@@ -17,8 +17,10 @@
     "items": [
       "b73m-f2m-04-2026/operations/health-and-safety",
       "b73m-f2m-04-2026/operations/emergency-stop",
+      "b73m-f2m-04-2026/operations/smoke-detector",
       "b73m-f2m-04-2026/operations/starting-panel",
-      "b73m-f2m-04-2026/operations/instructor-seat"
+      "b73m-f2m-04-2026/operations/instructor-seat",
+      "b73m-f2m-04-2026/operations/jump-seat"
     ]
   },
   {

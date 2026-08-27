@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-08-27T10:50:13.897Z",
+  "generatedAt": "2026-08-27T11:39:42.084Z",
   "repo": "ftd-aero/ftd-docs",
   "defaultBranch": "main",
   "totals": {
     "manuals": 2,
-    "components": 4,
-    "chunks": 4,
-    "gaps": 1,
+    "components": 6,
+    "chunks": 6,
+    "gaps": 2,
     "brokenLinks": 0,
-    "unreleased": 1
+    "unreleased": 2
   },
   "manuals": [
     {
@@ -23,18 +23,28 @@
       "issueRev": "1.1",
       "effective_date": "2026-08-27",
       "configPath": "sims/b73m-f2m-04-2026.json",
-      "pages": 8,
-      "sections": 6,
+      "pages": 10,
+      "sections": 8,
       "warnings": [
         "skipped cargo-fire-panel (not installed)",
         "section \"Aft electronic panel\" empty for this device"
       ],
-      "gaps": [],
+      "gaps": [
+        {
+          "kind": "missing-asset",
+          "sim": "b73m-f2m-04-2026",
+          "serial": "B73M/F2M/04/2026",
+          "component": "jump-seat",
+          "detail": "components/jump-seat/v1.md references assets/jump-seat-operation.png, which does not exist",
+          "fix": "add components/jump-seat/assets/jump-seat-operation.png",
+          "configPath": "sims/b73m-f2m-04-2026.json"
+        }
+      ],
       "brokenLinks": [],
-      "contentHash": "5efbe1d2c378fd5f",
+      "contentHash": "a3b8d00eccd14d68",
       "storedHash": "5efbe1d2c378fd5f",
-      "unreleased": false,
-      "releasable": true
+      "unreleased": true,
+      "releasable": false
     },
     {
       "serial": "B73M/F2M/05/2026",
@@ -51,7 +61,9 @@
       "pages": 7,
       "sections": 5,
       "warnings": [
+        "skipped smoke-detector (not installed)",
         "skipped instructor-seat (not installed)",
+        "skipped jump-seat (not installed)",
         "skipped cargo-fire-panel (not installed)",
         "section \"Aft electronic panel\" empty for this device"
       ],
@@ -137,6 +149,35 @@
       ]
     },
     {
+      "id": "jump-seat",
+      "name": "Jump Seat",
+      "category": "cockpit-hardware",
+      "location": "TODO(łukasz): exact position on the device — the source diagram shows a wall-mounted fold-down seat",
+      "owner": "support",
+      "jira_component": "DOK-Cockpit",
+      "software_component": null,
+      "optional": false,
+      "configPath": "components/jump-seat/component.yaml",
+      "nextMajor": 2,
+      "chunks": [
+        {
+          "file": "v1.md",
+          "major": 1,
+          "range": ">=1.0.0 <2.0.0",
+          "title": "Jump Seat",
+          "summary": "Wall-mounted fold-down seat, stowed vertically when not in use, rated for one occupant of up to 100 kg.",
+          "source": "components/jump-seat/v1.md",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
+          "links": []
+        }
+      ],
+      "usedBy": [
+        "b73m-f2m-04-2026"
+      ]
+    },
+    {
       "id": "le-devices-annunciator",
       "name": "LE Devices Annunciator Panel",
       "category": "cockpit-panel",
@@ -164,6 +205,38 @@
       "usedBy": [
         "b73m-f2m-04-2026",
         "b73m-f2m-05-2026"
+      ]
+    },
+    {
+      "id": "smoke-detector",
+      "name": "Smoke Detector",
+      "category": "safety",
+      "location": "IOS, ceiling",
+      "owner": "support",
+      "jira_component": "DOK-Safety",
+      "software_component": null,
+      "optional": false,
+      "configPath": "components/smoke-detector/component.yaml",
+      "nextMajor": 2,
+      "chunks": [
+        {
+          "file": "v1.mdx",
+          "major": 1,
+          "range": ">=1.0.0 <2.0.0",
+          "title": "Smoke Detector",
+          "summary": "Ceiling-mounted FireAngel ST-622 smoke alarm above the IOS: 85 dB sounder, sealed 10-year battery, weekly test.",
+          "source": "components/smoke-detector/v1.mdx",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
+          "links": [
+            "starting-panel",
+            "emergency-stop"
+          ]
+        }
+      ],
+      "usedBy": [
+        "b73m-f2m-04-2026"
       ]
     },
     {
@@ -199,12 +272,62 @@
       ]
     }
   ],
+  "templates": [
+    {
+      "id": "fcom-fnpt2",
+      "title": "Flight Crew Operating Manual",
+      "file": "templates/fcom-fnpt2.yaml",
+      "chapters": [
+        {
+          "id": "general",
+          "title": "General",
+          "components": [],
+          "sections": []
+        },
+        {
+          "id": "operations",
+          "title": "FNPT operations",
+          "components": [
+            "emergency-stop",
+            "smoke-detector",
+            "starting-panel",
+            "instructor-seat",
+            "jump-seat"
+          ],
+          "sections": []
+        },
+        {
+          "id": "systems",
+          "title": "Systems description",
+          "components": [],
+          "sections": [
+            {
+              "id": "aft-overhead",
+              "title": "Aft overhead panel",
+              "components": [
+                "le-devices-annunciator"
+              ]
+            },
+            {
+              "id": "aft-electronic",
+              "title": "Aft electronic panel",
+              "components": [
+                "cargo-fire-panel"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "coverage": {
     "componentIds": [
       "cargo-fire-panel",
       "emergency-stop",
       "instructor-seat",
+      "jump-seat",
       "le-devices-annunciator",
+      "smoke-detector",
       "starting-panel"
     ],
     "sims": [
@@ -230,11 +353,23 @@
         "chunk": "v1.md",
         "range": ">=1.0.0 <2.0.0"
       },
+      "jump-seat|b73m-f2m-04-2026": {
+        "status": "ok",
+        "version": "1.0.0",
+        "chunk": "v1.md",
+        "range": ">=1.0.0 <2.0.0"
+      },
       "le-devices-annunciator|b73m-f2m-04-2026": {
         "status": "ok",
         "version": "1.0.0",
         "chunk": "v1.md",
         "range": ">=1.0.0"
+      },
+      "smoke-detector|b73m-f2m-04-2026": {
+        "status": "ok",
+        "version": "1.0.0",
+        "chunk": "v1.mdx",
+        "range": ">=1.0.0 <2.0.0"
       },
       "starting-panel|b73m-f2m-04-2026": {
         "status": "ok",
@@ -256,11 +391,17 @@
         "status": "not-installed",
         "note": "Fixed instructor bench, no seat on track"
       },
+      "jump-seat|b73m-f2m-05-2026": {
+        "status": "absent"
+      },
       "le-devices-annunciator|b73m-f2m-05-2026": {
         "status": "ok",
         "version": "1.0.0",
         "chunk": "v1.md",
         "range": ">=1.0.0"
+      },
+      "smoke-detector|b73m-f2m-05-2026": {
+        "status": "absent"
       },
       "starting-panel|b73m-f2m-05-2026": {
         "status": "gap",
@@ -284,6 +425,22 @@
         "brokenIn": []
       },
       {
+        "from": "smoke-detector",
+        "to": "starting-panel",
+        "chunk": "v1.mdx",
+        "source": "components/smoke-detector/v1.mdx",
+        "known": true,
+        "brokenIn": []
+      },
+      {
+        "from": "smoke-detector",
+        "to": "emergency-stop",
+        "chunk": "v1.mdx",
+        "source": "components/smoke-detector/v1.mdx",
+        "known": true,
+        "brokenIn": []
+      },
+      {
         "from": "starting-panel",
         "to": "emergency-stop",
         "chunk": "v2.md",
@@ -294,13 +451,24 @@
     ],
     "orphans": [
       "instructor-seat",
-      "le-devices-annunciator"
+      "jump-seat",
+      "le-devices-annunciator",
+      "smoke-detector"
     ],
     "undocumented": [
       "cargo-fire-panel"
     ]
   },
   "gaps": [
+    {
+      "kind": "missing-asset",
+      "sim": "b73m-f2m-04-2026",
+      "serial": "B73M/F2M/04/2026",
+      "component": "jump-seat",
+      "detail": "components/jump-seat/v1.md references assets/jump-seat-operation.png, which does not exist",
+      "fix": "add components/jump-seat/assets/jump-seat-operation.png",
+      "configPath": "sims/b73m-f2m-04-2026.json"
+    },
     {
       "kind": "missing-chunk",
       "sim": "b73m-f2m-05-2026",

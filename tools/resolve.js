@@ -257,6 +257,38 @@ for (const simFile of simFiles) {
     return `[${name}](${linkTargets[id]})`;
   });
 
+  /**
+   * Chunks reference their own figures relatively, as `assets/<name>`. Those files live
+   * beside the chunk in components/<id>/assets/ and have to be copied next to the
+   * generated page for the bundler to pick them up. They are namespaced per component
+   * because several components share one chapter directory.
+   *
+   * A referenced figure that does not exist is a gap, not a build failure — the same
+   * treatment a missing section gets. The reference is replaced with a visible marker so
+   * the page still builds and the omission is obvious in review.
+   */
+  function resolveAssets(body, id, pageFile, where) {
+    const srcDir = path.join(registry[id].dir, "assets");
+    const destRel = `${id}-assets`;
+    const destDir = path.join(path.dirname(pageFile), destRel);
+    let copied = false;
+
+    return body.replace(/(!?\[[^\]]*\])\(\s*(?:\.\/)?assets\/([^)\s]+)\s*\)/g, (_, label, name) => {
+      const srcFile = path.join(srcDir, name);
+      if (!fs.existsSync(srcFile)) {
+        gapEntry("missing-asset", id, `${where} references assets/${name}, which does not exist`,
+          `add components/${id}/assets/${name}`);
+        // Plain text, not a link or an image — either would leave a broken reference on
+        // the page and trip Docusaurus's broken-link check.
+        const alt = label.replace(/^!?\[|\]$/g, "").trim();
+        return `**[figure not available: \`assets/${name}\`${alt ? ` — ${alt}` : ""}]**`;
+      }
+      if (!copied) { fs.mkdirSync(destDir, { recursive: true }); copied = true; }
+      fs.copyFileSync(srcFile, path.join(destDir, name));
+      return `${label}(./${destRel}/${name})`;
+    });
+  }
+
   // ----- pass 2: write the pages -----
   const hashInput = [];
   let pos = 0;
@@ -269,6 +301,7 @@ for (const simFile of simFiles) {
 
     if (p.kind === "component") {
       const rel = p.chunk.source;
+      const withAssets = b => resolveAssets(b, p.id, file, rel);
       const front = {
         id: path.basename(p.docId),
         title: p.chunk.front.title || registry[p.id].meta.name,
@@ -276,7 +309,7 @@ for (const simFile of simFiles) {
         sidebar_position: pos,
         custom_edit_url: null,
       };
-      const body = `:::info[Effectivity]\nComponent **\`${p.id}\`** · installed software **${p.version}** · documented range \`${p.chunk.range}\` · chunk revision \`${p.chunk.hash}\` (${p.chunk.date})\n:::\n\n` + resolveLinks(p.chunk.body, rel);
+      const body = `:::info[Effectivity]\nComponent **\`${p.id}\`** · installed software **${p.version}** · documented range \`${p.chunk.range}\` · chunk revision \`${p.chunk.hash}\` (${p.chunk.date})\n:::\n\n` + withAssets(resolveLinks(p.chunk.body, rel));
       fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${body}`);
       hashInput.push(p.docId + " " + p.chunk.body);
       sections.push({ id: p.id, title: front.title, docId: p.docId, version: p.version, range: p.chunk.range,
@@ -402,12 +435,26 @@ for (const [id, c] of Object.entries(registry)) {
 const referenced = new Set(edges.map(e => e.to));
 const orphans = Object.keys(registry).filter(id => !referenced.has(id));
 
-// Component ids mentioned by a template but never authored.
+// Component ids mentioned by a template but never authored, and the chapter/sub-section
+// skeleton of every template — the admin panel needs it to place a brand-new section.
 const templateIds = new Set();
-for (const f of fs.readdirSync(path.join(ROOT, "templates")).filter(f => f.endsWith(".yaml"))) {
+const adminTemplates = [];
+for (const f of fs.readdirSync(path.join(ROOT, "templates")).filter(f => f.endsWith(".yaml")).sort()) {
   const t = yaml.load(fs.readFileSync(path.join(ROOT, "templates", f), "utf8"));
   const collect = n => { for (const p of n.pages || []) if (p.component) templateIds.add(p.component); for (const s of n.sections || []) collect(s); };
   for (const ch of t.chapters || []) collect(ch);
+  const componentsOf = n => (n.pages || []).filter(p => p.component).map(p => p.component);
+  adminTemplates.push({
+    id: t.id || f.replace(/\.yaml$/, ""),
+    title: t.title || t.id || f,
+    file: `templates/${f}`,
+    chapters: (t.chapters || []).map(ch => ({
+      id: ch.id,
+      title: ch.title,
+      components: componentsOf(ch),
+      sections: (ch.sections || []).map(s => ({ id: s.id, title: s.title, components: componentsOf(s) })),
+    })),
+  });
 }
 const undocumented = [...templateIds].filter(id => !registry[id]).sort();
 
@@ -425,6 +472,7 @@ const admin = {
   },
   manuals: adminManuals,
   components: adminComponents,
+  templates: adminTemplates,
   coverage: {
     componentIds: [...new Set([...Object.keys(registry), ...templateIds])].sort(),
     sims: simMeta,

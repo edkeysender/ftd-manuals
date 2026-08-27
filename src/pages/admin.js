@@ -69,9 +69,64 @@ function draftChunk(component, major) {
     "",
     "## Related",
     "",
-    "- TODO(łukasz): link related components as [[component-id]].",
+    "- TODO(łukasz): link related components as [[COMPONENT-ID]].",
     "",
   ].join("\n");
+}
+
+/* --------------------------------------------------- new component skeletons */
+
+/** English kebab-case, matching the software component name. Never renamed. */
+const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** Quote anything YAML would misread — above all a value containing ":". */
+function yamlValue(v) {
+  if (v === null || v === undefined || String(v).trim() === "") return "null";
+  const s = String(v).trim();
+  return /^[A-Za-z0-9][A-Za-z0-9 _.,'()/-]*$/.test(s) ? s : JSON.stringify(s);
+}
+
+/** Preview of components/<id>/component.yaml; also the body of the GitHub deep link. */
+function componentYamlText(f) {
+  const rows = [
+    ["id", f.id], ["name", f.name], ["category", f.category], ["location", f.location],
+    ["owner", f.owner || "support"], ["jira_component", f.jira_component],
+    ["software_component", f.software_component],
+  ].map(([k, v]) => `${k}: ${yamlValue(v)}`);
+  if (f.optional) rows.push("optional: true");
+  return rows.join("\n") + "\n";
+}
+
+/** Mirror of firstChunk() in tools/admin-server.js, for the read-only GitHub fallback. */
+function firstChunkText(f) {
+  const name = f.name || f.id;
+  return [
+    "---",
+    'applies_to: ">=1.0.0 <2.0.0"',
+    // Quoted: both values may contain ":" and would otherwise be invalid YAML.
+    `title: ${JSON.stringify(f.title || name)}`,
+    `summary: ${JSON.stringify(f.summary || `TODO(łukasz): one sentence describing what ${name} does.`)}`,
+    "---",
+    "",
+    `TODO(łukasz): describe ${name} for software version 1.x — what it is, where it is`,
+    "and how it is operated. One component per chunk; link to any other component as [[COMPONENT-ID]] (lower-case kebab id, see CLAUDE.md rule 4).",
+    "",
+    "## Related",
+    "",
+    "- TODO(łukasz): link related components as [[COMPONENT-ID]].",
+    "",
+  ].join("\n");
+}
+
+/** Where a template already places a component id, or null. */
+function placementOf(tpl, id) {
+  for (const ch of (tpl && tpl.chapters) || []) {
+    if ((ch.components || []).includes(id)) return { chapter: ch.id, section: null, label: ch.title };
+    for (const s of ch.sections || []) {
+      if ((s.components || []).includes(id)) return { chapter: ch.id, section: s.id, label: `${ch.title} › ${s.title}` };
+    }
+  }
+  return null;
 }
 
 const TABS = [
@@ -265,7 +320,12 @@ function GitBar() {
           return `Switched to ${r.git.branch}.`;
         })}
       >
-        {git.branches.map(b => <option key={b} value={b}>{b}</option>)}
+        {git.branches.map(b => {
+          // A branch without the panel's own source cannot be checked out from here: doing
+          // so would delete the panel from the working tree. The backend refuses it too.
+          const unsafe = (git.unsafeBranches || []).includes(b);
+          return <option key={b} value={b}>{b}{unsafe ? " ⚠ no admin panel" : ""}</option>;
+        })}
       </select>
 
       <div className={styles.actions}>
@@ -383,6 +443,211 @@ function Action({ path, title, mode, content, branch, message, label, primary, c
   return <a className={cls} href={href}>{label || children}</a>;
 }
 
+/* -------------------------------------------------------------- new section */
+
+/**
+ * A brand-new section is three things at once: the component identity, its first chunk and
+ * its placement in a manual template. All three are created together — a component that is
+ * not placed in a template never renders and every [[link]] to it degrades to plain text.
+ *
+ * Local mode posts to /api/section, which validates everything, creates the branch, writes
+ * the files, re-resolves and commits. Without the backend the same three files are offered
+ * as GitHub deep links, exactly like every other action on this page.
+ */
+function NewSection({ initialId, close }) {
+  const { data, local, refresh, setFlash, gh } = useAdmin();
+  const templates = data.templates || [];
+  const [f, setF] = useState({
+    id: initialId || "", name: "", category: "", location: "", owner: "support",
+    jira_component: "", software_component: "", optional: false,
+    template: (templates[0] && templates[0].id) || "fcom-fnpt2",
+    chapter: "", section: "", title: "", summary: "",
+  });
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const set = (k, v) => setF(p => ({
+    ...p, [k]: v,
+    ...(k === "template" ? { chapter: "", section: "" } : null),
+    ...(k === "chapter" ? { section: "" } : null),
+  }));
+
+  const tpl = templates.find(t => t.id === f.template) || null;
+  // An id the template already lists (a "referenced but never authored" component) keeps
+  // its existing place; only the two component files are created for it.
+  const fixed = f.id ? placementOf(tpl, f.id) : null;
+  const chapterId = fixed ? fixed.chapter : f.chapter;
+  const sectionId = fixed ? fixed.section : (f.section || null);
+  const chapter = tpl && tpl.chapters.find(c => c.id === chapterId);
+
+  const idOk = ID_RE.test(f.id);
+  const duplicate = data.components.some(c => c.id === f.id);
+  const ready = idOk && !duplicate && f.name.trim() !== "" && !!chapterId;
+  const branch = `doc/${f.id || "component-id"}-v1`;
+  const metaPath = `components/${f.id}/component.yaml`;
+  const chunkPath = `components/${f.id}/v1.md`;
+
+  const create = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api("POST", "/api/section", {
+        id: f.id.trim(), name: f.name.trim(), category: f.category, location: f.location,
+        owner: f.owner, jira_component: f.jira_component, software_component: f.software_component,
+        optional: f.optional, title: f.title, summary: f.summary,
+        template: f.template, chapter: chapterId, section: sectionId, branch,
+      });
+      setFlash({ text: `New section ${r.id} created on ${r.branch}: ${r.files.join(", ")}` });
+      await refresh();
+      close();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = (k, label, extra) => (
+    <label className={styles.field}>
+      <span>{label}</span>
+      <input className={styles.input} value={f[k]} onChange={e => set(k, e.target.value)} {...extra} />
+    </label>
+  );
+
+  return (
+    <div className={styles.backdrop} onClick={e => { if (e.target === e.currentTarget) close(); }}>
+      <div className={styles.drawer}>
+        <div className={styles.drawerHead}>
+          <div>
+            <strong>New section</strong>
+            <div className={`${styles.mono} ${styles.dim}`}>
+              {idOk ? `${metaPath} · ${chunkPath}` : "components/<id>/component.yaml · components/<id>/v1.md"}
+            </div>
+          </div>
+          <button className={styles.btn} onClick={close}>Close</button>
+        </div>
+
+        <div className={styles.warnBox}>
+          Component ids are English kebab-case, match the software component name and are <strong>never renamed</strong>.
+          Only the Support lead approves a new id — creating the files here does not replace that approval.
+        </div>
+
+        <div className={styles.drawerScroll}>
+          <div className={styles.formGrid}>
+            <label className={styles.field}>
+              <span>Component id</span>
+              <input
+                className={`${styles.input} ${styles.mono}`}
+                value={f.id}
+                onChange={e => set("id", e.target.value)}
+                placeholder="cargo-fire-panel"
+              />
+            </label>
+            {field("name", "Name", { placeholder: "Cargo Fire Panel" })}
+            {field("category", "Category", { placeholder: "cockpit-panel" })}
+            {field("location", "Location", { placeholder: "Aft electronic panel" })}
+            {field("owner", "Owner", { placeholder: "support" })}
+            {field("jira_component", "Jira component", { placeholder: "DOK-Cockpit" })}
+            {field("software_component", "Software component", { placeholder: "prosim-overhead-aft" })}
+          </div>
+
+          {f.id && !idOk && (
+            <div className={styles.flashError}>“{f.id}” is not a valid id — English kebab-case, e.g. cargo-fire-panel.</div>
+          )}
+          {duplicate && <div className={styles.flashError}>components/{f.id}/ already exists. Ids are never reused.</div>}
+
+          <div className={styles.formGrid}>
+            <label className={styles.field}>
+              <span>Manual template</span>
+              <select className={styles.select} value={f.template} onChange={e => set("template", e.target.value)}>
+                {templates.length === 0 && <option value={f.template}>{f.template}</option>}
+                {templates.map(t => <option key={t.id} value={t.id}>{t.title} ({t.id})</option>)}
+              </select>
+            </label>
+            <label className={styles.field}>
+              <span>Chapter</span>
+              <select
+                className={styles.select}
+                value={chapterId}
+                disabled={!!fixed || !tpl}
+                onChange={e => set("chapter", e.target.value)}
+              >
+                <option value="">— choose a chapter —</option>
+                {(tpl ? tpl.chapters : []).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+              </select>
+            </label>
+            <label className={styles.field}>
+              <span>Sub-section (optional)</span>
+              <select
+                className={styles.select}
+                value={sectionId || ""}
+                disabled={!!fixed || !chapter || (chapter.sections || []).length === 0}
+                onChange={e => set("section", e.target.value)}
+              >
+                <option value="">— directly under the chapter —</option>
+                {((chapter && chapter.sections) || []).map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+              </select>
+            </label>
+          </div>
+
+          {fixed && (
+            <div className={styles.hint}>
+              <code className={styles.mono}>{f.id}</code> is already placed in{" "}
+              <code className={styles.mono}>templates/{f.template}.yaml</code> under <strong>{fixed.label}</strong>.
+              The template is left untouched; only the two component files are created.
+            </div>
+          )}
+          {!fixed && !chapterId && (
+            <div className={styles.hint}>
+              A component that is not placed in the template never renders, and every{" "}
+              <code>[[{f.id || "component-id"}]]</code> pointing at it degrades to plain text. Choose a chapter.
+            </div>
+          )}
+
+          <div className={styles.formGrid}>
+            {field("title", "Chunk title (defaults to the name)", { placeholder: f.name || "Cargo Fire Panel" })}
+            {field("summary", "Summary", { placeholder: "One sentence describing what the component does." })}
+          </div>
+
+          <label className={styles.checkField}>
+            <input type="checkbox" checked={f.optional} onChange={e => set("optional", e.target.checked)} />
+            <span>Optional — not fitted on every device</span>
+          </label>
+
+          {ready && (
+            <label className={styles.field}>
+              <span>Preview</span>
+              <pre className={styles.preview}>{componentYamlText(f)}{"\n"}{firstChunkText(f)}</pre>
+            </label>
+          )}
+        </div>
+
+        {error && <div className={styles.flashError}>{error}</div>}
+
+        <div className={styles.drawerFoot}>
+          <span className={styles.dim}>
+            {local
+              ? <>Creates <code className={styles.mono}>{branch}</code>, writes both files{fixed ? "" : ", places the component in the template"}, re-resolves and commits.</>
+              : <>Backend not running — each file opens in GitHub’s editor. Commit all three to a new branch named <code className={styles.mono}>{branch}</code>.</>}
+          </span>
+          {local ? (
+            <button className={`${styles.btn} ${styles.btnPrimary}`} disabled={!ready || busy} onClick={create}>
+              {busy ? "Creating…" : "Create section"}
+            </button>
+          ) : (
+            <div className={styles.actions}>
+              {/* The two new files only get a link once the form describes a real component. */}
+              <a className={`${styles.btn} ${ready ? "" : styles.btnMuted}`} href={ready ? gh.create(metaPath, componentYamlText(f)) : undefined}>component.yaml</a>
+              <a className={`${styles.btn} ${ready ? "" : styles.btnMuted}`} href={ready ? gh.create(chunkPath, firstChunkText(f)) : undefined}>v1.md</a>
+              <a className={`${styles.btn} ${styles.btnPrimary}`} href={gh.edit(`templates/${f.template}.yaml`)}>template</a>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ Manuals */
 
 function Manuals() {
@@ -468,12 +733,19 @@ function ManualLink({ slug }) {
 
 function Components() {
   const { data, local } = useAdmin();
+  const [draft, setDraft] = useState(null);   // { id? } while the New section drawer is open
   return (
     <div className={styles.section}>
+      <div className={styles.sectionHead}>
+        <h2 style={{ fontSize: "1.15rem", margin: 0 }}>Components</h2>
+        <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setDraft({})}>New section</button>
+      </div>
+
       <div className={styles.hint}>
         {local
-          ? <>“New draft v<em>N</em>” opens a pre-filled chunk. Saving it creates the branch, writes the file
-             and commits it in one step. Component ids are never renamed, and a new id needs approval from the Support lead.</>
+          ? <>“New section” creates a component identity, its first chunk and its place in a manual template.
+             “New draft v<em>N</em>” opens a pre-filled chunk. Saving either creates the branch, writes the files
+             and commits in one step. Component ids are never renamed, and a new id needs approval from the Support lead.</>
           : <>“New draft v<em>N</em>” opens GitHub’s editor with a pre-filled chunk. In the commit dialog choose
              <strong> Create a new branch</strong> named <code className={styles.mono}>doc/&lt;component-id&gt;-&lt;topic&gt;</code>,
              then open the pull request.</>}
@@ -542,12 +814,15 @@ function Components() {
             <div key={id} className={styles.finding}>
               <strong className={styles.mono}>{id}</strong> — no component folder
               <div className={styles.findingFix}>
-                Fix: create <code>components/{id}/component.yaml</code> and a first chunk (Support lead approves new ids).
+                Fix: create <code>components/{id}/component.yaml</code> and a first chunk (Support lead approves new ids).{" "}
+                <button className={styles.btn} onClick={() => setDraft({ id })}>Create section</button>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      {draft && <NewSection initialId={draft.id} close={() => setDraft(null)} />}
     </div>
   );
 }

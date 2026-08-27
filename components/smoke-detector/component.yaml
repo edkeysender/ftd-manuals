@@ -1,0 +1,7 @@
+id: smoke-detector
+name: Smoke Detector
+category: safety
+location: IOS, ceiling
+owner: support
+jira_component: DOK-Safety
+software_component: null

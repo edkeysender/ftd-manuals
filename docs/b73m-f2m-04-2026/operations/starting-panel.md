@@ -4,7 +4,7 @@ title: Starting Panel
 description: >-
   Single rotary knob that starts and shuts down the whole device, with Ready /
   Not Ready indication.
-sidebar_position: 6
+sidebar_position: 7
 custom_edit_url: null
 ---
 

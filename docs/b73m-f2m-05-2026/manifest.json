@@ -99,7 +99,9 @@
     }
   ],
   "warnings": [
+    "skipped smoke-detector (not installed)",
     "skipped instructor-seat (not installed)",
+    "skipped jump-seat (not installed)",
     "skipped cargo-fire-panel (not installed)",
     "section \"Aft electronic panel\" empty for this device"
   ],

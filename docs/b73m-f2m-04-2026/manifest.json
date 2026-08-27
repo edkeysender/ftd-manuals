@@ -30,6 +30,14 @@
         "version": "1.0.0",
         "installed": true
       },
+      "smoke-detector": {
+        "version": "1.0.0",
+        "installed": true
+      },
+      "jump-seat": {
+        "version": "1.0.0",
+        "installed": true
+      },
       "cargo-fire-panel": {
         "installed": false,
         "note": "Not fitted on this device"
@@ -75,6 +83,18 @@
       "status": "ok"
     },
     {
+      "id": "smoke-detector",
+      "title": "Smoke Detector",
+      "docId": "operations/smoke-detector",
+      "version": "1.0.0",
+      "range": ">=1.0.0 <2.0.0",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "components/smoke-detector/v1.mdx",
+      "status": "ok"
+    },
+    {
       "id": "starting-panel",
       "title": "Starting Panel",
       "docId": "operations/starting-panel",
@@ -99,6 +119,18 @@
       "status": "ok"
     },
     {
+      "id": "jump-seat",
+      "title": "Jump Seat",
+      "docId": "operations/jump-seat",
+      "version": "1.0.0",
+      "range": ">=1.0.0 <2.0.0",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "components/jump-seat/v1.md",
+      "status": "ok"
+    },
+    {
       "id": "le-devices-annunciator",
       "title": "LE Devices Annunciator Panel",
       "docId": "systems/aft-overhead/le-devices-annunciator",
@@ -115,7 +147,17 @@
     "skipped cargo-fire-panel (not installed)",
     "section \"Aft electronic panel\" empty for this device"
   ],
-  "gaps": [],
+  "gaps": [
+    {
+      "kind": "missing-asset",
+      "sim": "b73m-f2m-04-2026",
+      "serial": "B73M/F2M/04/2026",
+      "component": "jump-seat",
+      "detail": "components/jump-seat/v1.md references assets/jump-seat-operation.png, which does not exist",
+      "fix": "add components/jump-seat/assets/jump-seat-operation.png",
+      "configPath": "sims/b73m-f2m-04-2026.json"
+    }
+  ],
   "brokenLinks": [],
-  "contentHash": "5efbe1d2c378fd5f"
+  "contentHash": "a3b8d00eccd14d68"
 }

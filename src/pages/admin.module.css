@@ -185,7 +185,8 @@
 }
 .input { width: 100%; }
 
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled, .btnMuted { opacity: 0.45; cursor: not-allowed; }
+.btnMuted { pointer-events: none; }
 .btn:disabled:hover { border-color: var(--ifm-color-emphasis-400); color: var(--ifm-font-color-base); }
 
 /* ---------- flash messages ---------- */
@@ -236,6 +237,40 @@
 
 .field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; }
 .field > span { color: var(--ifm-color-emphasis-700); text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.72rem; }
+
+/* ---------- new section form ---------- */
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+.formGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.75rem 1rem; }
+.checkField { display: flex; align-items: center; gap: 0.45rem; font-size: 0.82rem; }
+.drawerScroll { overflow-y: auto; display: flex; flex-direction: column; gap: 0.85rem; }
+.warnBox {
+  background: var(--ifm-color-warning-contrast-background);
+  color: var(--ifm-color-warning-contrast-foreground);
+  border-left: 3px solid var(--ifm-color-warning);
+  border-radius: 0 6px 6px 0;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.82rem;
+}
+.preview {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  max-height: 14rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-surface-color);
+  color: var(--ifm-font-color-base);
+}
 
 .editor {
   font-family: var(--ifm-font-family-monospace);

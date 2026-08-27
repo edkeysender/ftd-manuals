@@ -18,8 +18,10 @@ chapters:
     pages:
       - shared: health-and-safety
       - component: emergency-stop
+      - component: smoke-detector
       - component: starting-panel
       - component: instructor-seat
+      - component: jump-seat
   - id: systems
     title: Systems description
     sections:

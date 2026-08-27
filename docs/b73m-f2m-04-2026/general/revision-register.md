@@ -12,6 +12,8 @@ Revision history is derived from the Git history of every section included in th
 | General information | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
 | Health and safety | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
 | Emergency Stop Switches | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
+| Smoke Detector | — | 1 | 1 | not yet committed (uncommitted) |
 | Starting Panel | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
 | Instructor Seat | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
+| Jump Seat | — | 1 | 1 | not yet committed (uncommitted) |
 | LE Devices Annunciator Panel | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
