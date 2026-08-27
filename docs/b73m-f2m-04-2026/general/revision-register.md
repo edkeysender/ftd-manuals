@@ -9,9 +9,9 @@ Revision history is derived from the Git history of every section included in th
 
 | Section affected | Revision date | Issue | Rev. | Change description |
 |---|---|---|---|---|
-| General information | — | 1 | 1 |  (n/a) |
-| Health and safety | — | 1 | 1 |  (n/a) |
-| Emergency Stop Switches | — | 1 | 1 |  (n/a) |
-| Starting Panel | — | 1 | 1 |  (n/a) |
-| Instructor Seat | — | 1 | 1 |  (n/a) |
-| LE Devices Annunciator Panel | — | 1 | 1 |  (n/a) |
+| General information | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
+| Health and safety | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
+| Emergency Stop Switches | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
+| Starting Panel | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
+| Instructor Seat | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |
+| LE Devices Annunciator Panel | 2026-08-27 | 1 | 1 | Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config (6355653) |

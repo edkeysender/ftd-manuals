@@ -6,8 +6,11 @@ const config = {
   title: "FTD.aero Manuals",
   tagline: "Generated per simulator from its installed configuration",
   favicon: "img/favicon.ico",
-  url: "https://docs.ftd.aero",
-  baseUrl: "/",
+  // Served from GitHub Pages at https://<organizationName>.github.io/<projectName>/.
+  // DOCS_BASE_URL overrides it, so a PR preview can be published under its own subfolder.
+  // If a custom domain (docs.ftd.aero) is set up later, change url to it and baseUrl back to "/".
+  url: "https://ftd-aero.github.io",
+  baseUrl: process.env.DOCS_BASE_URL || "/ftd-docs/",
   organizationName: "ftd-aero",
   projectName: "ftd-docs",
   onBrokenLinks: "throw",
@@ -22,7 +25,7 @@ const config = {
           path: "docs",
           routeBasePath: "manuals",
           sidebarPath: "./sidebars.js",
-          exclude: ["**/manifest.json", "**/manuals.json"],
+          exclude: ["**/manifest.json", "**/manuals.json", "**/admin.json", "**/prs.json"],
         },
         blog: false,
         theme: { customCss: "./src/css/custom.css" },
@@ -35,7 +38,10 @@ const config = {
       colorMode: { respectPrefersColorScheme: true },
       navbar: {
         title: "FTD.aero Manuals",
-        items: [{ to: "/", label: "All simulators", position: "left" }],
+        items: [
+          { to: "/", label: "All simulators", position: "left" },
+          { to: "/admin", label: "Admin", position: "right" },
+        ],
       },
       footer: {
         style: "dark",

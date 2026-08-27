@@ -7,7 +7,7 @@ custom_edit_url: null
 ---
 
 :::info[Effectivity]
-Component **`instructor-seat`** · installed software **1.3.0** · documented range `>=1.0.0 <2.0.0` · chunk revision `n/a` (—)
+Component **`instructor-seat`** · installed software **1.3.0** · documented range `>=1.0.0 <2.0.0` · chunk revision `6355653` (2026-08-27)
 :::
 
 

@@ -1,0 +1,20 @@
+{
+  "serial": "B73M/F2M/05/2026",
+  "slug": "b73m-f2m-05-2026",
+  "device_type": "B73M-FTD2",
+  "qualification": "FNPT II / MCC",
+  "client": "TODO(łukasz): operator name for this device",
+  "delivered": "2026-07-14",
+  "manual": {
+    "template": "fcom-fnpt2",
+    "issue": 1,
+    "revision": 0
+  },
+  "components": {
+    "starting-panel":          { "version": "3.0.0", "note": "New starting logic — components/starting-panel/v3.md not written yet" },
+    "emergency-stop":          { "version": "1.0.0" },
+    "instructor-seat":         { "installed": false, "note": "Fixed instructor bench, no seat on track" },
+    "le-devices-annunciator":  { "version": "1.0.0" },
+    "cargo-fire-panel":        { "installed": false, "note": "Not fitted on this device" }
+  }
+}

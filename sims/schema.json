@@ -20,7 +20,8 @@
         "template": { "type": "string", "description": "Template id from templates/" },
         "issue": { "type": "integer", "minimum": 1 },
         "revision": { "type": "integer", "minimum": 0 },
-        "effective_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+        "effective_date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "content_hash": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "Content hash of the last released revision. Written by tools/bump.js — never edit by hand." }
       }
     },
     "components": {

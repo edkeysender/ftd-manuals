@@ -1,0 +1,159 @@
+/* Admin panel. Colours come from Infima variables so light and dark themes both work. */
+
+.page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+.head h1 { margin: 0; font-size: 1.75rem; }
+.headMeta {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--ifm-color-emphasis-700);
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+/* ---------- tiles ---------- */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+.tile {
+  appearance: none;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.tile:hover { border-color: var(--ifm-color-primary); transform: translateY(-1px); }
+.tileValue { font-size: 1.9rem; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tileLabel { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ifm-color-emphasis-700); margin-top: 0.2rem; }
+.tileAlert .tileValue { color: var(--ifm-color-danger); }
+.tileWarn .tileValue { color: var(--ifm-color-warning-darkest); }
+[data-theme='dark'] .tileWarn .tileValue { color: var(--ifm-color-warning); }
+
+/* ---------- tabs ---------- */
+.tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--ifm-color-emphasis-300); margin-bottom: 1.5rem; flex-wrap: wrap; }
+.tab {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.6rem 0.9rem;
+  color: var(--ifm-color-emphasis-700);
+}
+.tab:hover { color: var(--ifm-font-color-base); }
+.tabActive { color: var(--ifm-color-primary); border-bottom-color: var(--ifm-color-primary); font-weight: 600; }
+
+/* ---------- tables ---------- */
+.table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.table th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ifm-color-emphasis-700);
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+  padding: 0.5rem 0.65rem;
+  white-space: nowrap;
+}
+.table td { border-bottom: 1px solid var(--ifm-color-emphasis-200); padding: 0.6rem 0.65rem; vertical-align: top; }
+.table tbody tr:hover { background: var(--ifm-color-emphasis-100); }
+.scroll { overflow-x: auto; }
+
+.mono { font-family: var(--ifm-font-family-monospace); font-size: 0.85em; }
+.dim { color: var(--ifm-color-emphasis-600); }
+.nowrap { white-space: nowrap; }
+
+/* ---------- badges ---------- */
+.badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.badgeOk { background: var(--ifm-color-success-contrast-background); color: var(--ifm-color-success-contrast-foreground); }
+.badgeGap { background: var(--ifm-color-danger-contrast-background); color: var(--ifm-color-danger-contrast-foreground); }
+.badgeWarn { background: var(--ifm-color-warning-contrast-background); color: var(--ifm-color-warning-contrast-foreground); }
+.badgeIdle { background: var(--ifm-color-emphasis-200); color: var(--ifm-color-emphasis-800); }
+
+/* ---------- buttons ---------- */
+.actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.btn {
+  display: inline-block;
+  font-size: 0.78rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: 5px;
+  border: 1px solid var(--ifm-color-emphasis-400);
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn:hover { text-decoration: none; border-color: var(--ifm-color-primary); color: var(--ifm-color-primary); }
+.btnPrimary { border-color: var(--ifm-color-primary); color: var(--ifm-color-primary); }
+
+/* ---------- finding lists (gaps, broken links) ---------- */
+.finding {
+  border-left: 3px solid var(--ifm-color-danger);
+  background: var(--ifm-color-emphasis-100);
+  padding: 0.55rem 0.8rem;
+  border-radius: 0 5px 5px 0;
+  margin: 0.4rem 0;
+  font-size: 0.85rem;
+}
+.findingFix { color: var(--ifm-color-emphasis-700); font-size: 0.82rem; margin-top: 0.2rem; }
+
+/* ---------- coverage matrix ---------- */
+.matrix { border-collapse: collapse; font-size: 0.85rem; }
+.matrix th, .matrix td { border: 1px solid var(--ifm-color-emphasis-300); padding: 0.45rem 0.6rem; }
+.matrix th { text-align: left; white-space: nowrap; }
+.matrix .rowHead { font-weight: 600; }
+.cellOk { background: var(--ifm-color-success-contrast-background); }
+.cellGap { background: var(--ifm-color-danger-contrast-background); }
+.cellWarn { background: var(--ifm-color-warning-contrast-background); }
+.cellIdle { color: var(--ifm-color-emphasis-600); }
+
+.legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; margin: 0.75rem 0 0; color: var(--ifm-color-emphasis-700); }
+.legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.swatch { width: 0.9rem; height: 0.9rem; border-radius: 3px; border: 1px solid var(--ifm-color-emphasis-300); display: inline-block; }
+
+/* ---------- misc ---------- */
+.section { margin-bottom: 2.5rem; }
+.section h2 { font-size: 1.15rem; margin-bottom: 0.25rem; }
+.section > p { color: var(--ifm-color-emphasis-700); font-size: 0.88rem; margin-bottom: 1rem; }
+.empty { color: var(--ifm-color-emphasis-600); font-style: italic; padding: 1rem 0; }
+.hint {
+  background: var(--ifm-color-emphasis-100);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.83rem;
+  color: var(--ifm-color-emphasis-800);
+  margin-bottom: 1.25rem;
+}
+.chunkList { list-style: none; margin: 0; padding: 0; }
+.chunkList li { padding: 0.15rem 0; }

@@ -2,7 +2,7 @@
 id: le-devices-annunciator
 title: LE Devices Annunciator Panel
 description: Indicates leading-edge flap and slat position in relation to the FLAP lever.
-sidebar_position: 8
+sidebar_position: 7
 custom_edit_url: null
 ---
 

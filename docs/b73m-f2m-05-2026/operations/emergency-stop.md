@@ -20,7 +20,7 @@ Pressing any emergency stop removes power from all servomechanisms and drives in
 If a switch was pressed by accident:
 
 1. Rotate the button in the direction of the arrows marked on it. The button pops out and power is restored to the servos.
-2. Check the device state on the [Starting Panel](/manuals/b73m-f2m-04-2026/operations/starting-panel). Another start-up may be required.
+2. Check the device state on the [Starting Panel](/manuals/b73m-f2m-05-2026/operations/starting-panel). Another start-up may be required.
 
 ## Related safety equipment
 

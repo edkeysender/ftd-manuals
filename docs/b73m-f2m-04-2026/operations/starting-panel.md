@@ -9,7 +9,7 @@ custom_edit_url: null
 ---
 
 :::info[Effectivity]
-Component **`starting-panel`** · installed software **2.0.1** · documented range `>=2.0.0 <3.0.0` · chunk revision `n/a` (—)
+Component **`starting-panel`** · installed software **2.0.1** · documented range `>=2.0.0 <3.0.0` · chunk revision `6355653` (2026-08-27)
 :::
 
 

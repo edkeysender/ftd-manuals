@@ -1,0 +1,316 @@
+{
+  "generatedAt": "2026-08-27T10:13:07.595Z",
+  "repo": "ftd-aero/ftd-docs",
+  "defaultBranch": "main",
+  "totals": {
+    "manuals": 2,
+    "components": 4,
+    "chunks": 4,
+    "gaps": 1,
+    "brokenLinks": 0,
+    "unreleased": 1
+  },
+  "manuals": [
+    {
+      "serial": "B73M/F2M/04/2026",
+      "slug": "b73m-f2m-04-2026",
+      "client": "TFC European Airline Services GmbH",
+      "device_type": "B73M-FTD2",
+      "qualification": "FNPT II / MCC",
+      "template": "fcom-fnpt2",
+      "issue": 1,
+      "revision": 1,
+      "issueRev": "1.1",
+      "effective_date": "2026-08-27",
+      "configPath": "sims/b73m-f2m-04-2026.json",
+      "pages": 8,
+      "sections": 6,
+      "warnings": [
+        "skipped cargo-fire-panel (not installed)",
+        "section \"Aft electronic panel\" empty for this device"
+      ],
+      "gaps": [],
+      "brokenLinks": [],
+      "contentHash": "5efbe1d2c378fd5f",
+      "storedHash": "5efbe1d2c378fd5f",
+      "unreleased": false,
+      "releasable": true
+    },
+    {
+      "serial": "B73M/F2M/05/2026",
+      "slug": "b73m-f2m-05-2026",
+      "client": "TODO(łukasz): operator name for this device",
+      "device_type": "B73M-FTD2",
+      "qualification": "FNPT II / MCC",
+      "template": "fcom-fnpt2",
+      "issue": 1,
+      "revision": 0,
+      "issueRev": "1.0",
+      "effective_date": null,
+      "configPath": "sims/b73m-f2m-05-2026.json",
+      "pages": 7,
+      "sections": 5,
+      "warnings": [
+        "skipped instructor-seat (not installed)",
+        "skipped cargo-fire-panel (not installed)",
+        "section \"Aft electronic panel\" empty for this device"
+      ],
+      "gaps": [
+        {
+          "kind": "missing-chunk",
+          "sim": "b73m-f2m-05-2026",
+          "serial": "B73M/F2M/05/2026",
+          "component": "starting-panel",
+          "detail": "no chunk of \"starting-panel\" covers installed version 3.0.0 (have: >=2.0.0 <3.0.0)",
+          "fix": "write components/starting-panel/v3.md with applies_to covering 3.0.0",
+          "configPath": "sims/b73m-f2m-05-2026.json",
+          "version": "3.0.0"
+        }
+      ],
+      "brokenLinks": [],
+      "contentHash": "27c92cc0fcc73c3f",
+      "storedHash": null,
+      "unreleased": true,
+      "releasable": false
+    }
+  ],
+  "components": [
+    {
+      "id": "emergency-stop",
+      "name": "Emergency Stop Switches",
+      "category": "safety",
+      "location": "Pedestal (aft electronic panel wall) and IOS desk",
+      "owner": "support",
+      "jira_component": "DOK-Safety",
+      "software_component": null,
+      "optional": false,
+      "configPath": "components/emergency-stop/component.yaml",
+      "nextMajor": 2,
+      "chunks": [
+        {
+          "file": "v1.md",
+          "major": 1,
+          "range": ">=1.0.0 <2.0.0",
+          "title": "Emergency Stop Switches",
+          "summary": "Red push-buttons with yellow halo that cut power to all servos and drives.",
+          "source": "components/emergency-stop/v1.md",
+          "hash": "6355653",
+          "date": "2026-08-27",
+          "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+          "links": [
+            "starting-panel"
+          ]
+        }
+      ],
+      "usedBy": [
+        "b73m-f2m-04-2026",
+        "b73m-f2m-05-2026"
+      ]
+    },
+    {
+      "id": "instructor-seat",
+      "name": "Instructor Seat",
+      "category": "ios-hardware",
+      "location": "IOS, on I-shaped floor track",
+      "owner": "support",
+      "jira_component": "DOK-IOS",
+      "software_component": null,
+      "optional": true,
+      "configPath": "components/instructor-seat/component.yaml",
+      "nextMajor": 2,
+      "chunks": [
+        {
+          "file": "v1.md",
+          "major": 1,
+          "range": ">=1.0.0 <2.0.0",
+          "title": "Instructor Seat",
+          "summary": "Optional fully adjustable instructor seat on an I-shaped track.",
+          "source": "components/instructor-seat/v1.md",
+          "hash": "6355653",
+          "date": "2026-08-27",
+          "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+          "links": []
+        }
+      ],
+      "usedBy": [
+        "b73m-f2m-04-2026"
+      ]
+    },
+    {
+      "id": "le-devices-annunciator",
+      "name": "LE Devices Annunciator Panel",
+      "category": "cockpit-panel",
+      "location": "Aft overhead panel",
+      "owner": "support",
+      "jira_component": "DOK-Cockpit",
+      "software_component": "prosim-overhead-aft",
+      "optional": false,
+      "configPath": "components/le-devices-annunciator/component.yaml",
+      "nextMajor": 2,
+      "chunks": [
+        {
+          "file": "v1.md",
+          "major": 1,
+          "range": ">=1.0.0",
+          "title": "LE Devices Annunciator Panel",
+          "summary": "Indicates leading-edge flap and slat position in relation to the FLAP lever.",
+          "source": "components/le-devices-annunciator/v1.md",
+          "hash": "6355653",
+          "date": "2026-08-27",
+          "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+          "links": []
+        }
+      ],
+      "usedBy": [
+        "b73m-f2m-04-2026",
+        "b73m-f2m-05-2026"
+      ]
+    },
+    {
+      "id": "starting-panel",
+      "name": "Starting Panel",
+      "category": "ios-hardware",
+      "location": "IOS wall, above the IOS Lights panel",
+      "owner": "support",
+      "jira_component": "DOK-StartingPanel",
+      "software_component": "ftd-startup-controller",
+      "optional": false,
+      "configPath": "components/starting-panel/component.yaml",
+      "nextMajor": 3,
+      "chunks": [
+        {
+          "file": "v2.md",
+          "major": 2,
+          "range": ">=2.0.0 <3.0.0",
+          "title": "Starting Panel",
+          "summary": "Single rotary knob that starts and shuts down the whole device, with Ready / Not Ready indication.",
+          "source": "components/starting-panel/v2.md",
+          "hash": "6355653",
+          "date": "2026-08-27",
+          "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+          "links": [
+            "emergency-stop"
+          ]
+        }
+      ],
+      "usedBy": [
+        "b73m-f2m-04-2026",
+        "b73m-f2m-05-2026"
+      ]
+    }
+  ],
+  "coverage": {
+    "componentIds": [
+      "cargo-fire-panel",
+      "emergency-stop",
+      "instructor-seat",
+      "le-devices-annunciator",
+      "starting-panel"
+    ],
+    "sims": [
+      {
+        "slug": "b73m-f2m-04-2026",
+        "serial": "B73M/F2M/04/2026"
+      },
+      {
+        "slug": "b73m-f2m-05-2026",
+        "serial": "B73M/F2M/05/2026"
+      }
+    ],
+    "cells": {
+      "emergency-stop|b73m-f2m-04-2026": {
+        "status": "ok",
+        "version": "1.0.0",
+        "chunk": "v1.md",
+        "range": ">=1.0.0 <2.0.0"
+      },
+      "instructor-seat|b73m-f2m-04-2026": {
+        "status": "ok",
+        "version": "1.3.0",
+        "chunk": "v1.md",
+        "range": ">=1.0.0 <2.0.0"
+      },
+      "le-devices-annunciator|b73m-f2m-04-2026": {
+        "status": "ok",
+        "version": "1.0.0",
+        "chunk": "v1.md",
+        "range": ">=1.0.0"
+      },
+      "starting-panel|b73m-f2m-04-2026": {
+        "status": "ok",
+        "version": "2.0.1",
+        "chunk": "v2.md",
+        "range": ">=2.0.0 <3.0.0"
+      },
+      "cargo-fire-panel|b73m-f2m-04-2026": {
+        "status": "not-installed",
+        "note": "Not fitted on this device"
+      },
+      "emergency-stop|b73m-f2m-05-2026": {
+        "status": "ok",
+        "version": "1.0.0",
+        "chunk": "v1.md",
+        "range": ">=1.0.0 <2.0.0"
+      },
+      "instructor-seat|b73m-f2m-05-2026": {
+        "status": "not-installed",
+        "note": "Fixed instructor bench, no seat on track"
+      },
+      "le-devices-annunciator|b73m-f2m-05-2026": {
+        "status": "ok",
+        "version": "1.0.0",
+        "chunk": "v1.md",
+        "range": ">=1.0.0"
+      },
+      "starting-panel|b73m-f2m-05-2026": {
+        "status": "gap",
+        "version": "3.0.0",
+        "reason": "no-chunk"
+      },
+      "cargo-fire-panel|b73m-f2m-05-2026": {
+        "status": "not-installed",
+        "note": "Not fitted on this device"
+      }
+    }
+  },
+  "links": {
+    "edges": [
+      {
+        "from": "emergency-stop",
+        "to": "starting-panel",
+        "chunk": "v1.md",
+        "source": "components/emergency-stop/v1.md",
+        "known": true,
+        "brokenIn": []
+      },
+      {
+        "from": "starting-panel",
+        "to": "emergency-stop",
+        "chunk": "v2.md",
+        "source": "components/starting-panel/v2.md",
+        "known": true,
+        "brokenIn": []
+      }
+    ],
+    "orphans": [
+      "instructor-seat",
+      "le-devices-annunciator"
+    ],
+    "undocumented": [
+      "cargo-fire-panel"
+    ]
+  },
+  "gaps": [
+    {
+      "kind": "missing-chunk",
+      "sim": "b73m-f2m-05-2026",
+      "serial": "B73M/F2M/05/2026",
+      "component": "starting-panel",
+      "detail": "no chunk of \"starting-panel\" covers installed version 3.0.0 (have: >=2.0.0 <3.0.0)",
+      "fix": "write components/starting-panel/v3.md with applies_to covering 3.0.0",
+      "configPath": "sims/b73m-f2m-05-2026.json",
+      "version": "3.0.0"
+    }
+  ],
+  "brokenLinks": []
+}

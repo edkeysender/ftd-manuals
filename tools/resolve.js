@@ -1,66 +1,78 @@
 #!/usr/bin/env node
 /**
- * resolve.js — builds the generated docs/ tree for one simulator.
+ * resolve.js — builds the generated docs/ tree for every simulator.
  *
  *   node tools/resolve.js sims/b73m-f2m-04-2026.json
  *   node tools/resolve.js --all
+ *   node tools/resolve.js --all --strict     # exit 1 if any gap or broken link
  *
  * Steps:
  *   1. validate the sim config against sims/schema.json
  *   2. load the manual template and every component chunk
- *   3. for each installed component pick the chunk whose applies_to range
- *      matches the installed version (build fails if none does)
- *   4. resolve [[component-id]] links; fail on unknown or not-installed targets
- *   5. write docs/<slug>/... plus sidebars-<slug>.js and a manifest for the
- *      Revision Register / List of Effective Sections
+ *   3. for each installed component pick the chunk whose applies_to range matches
+ *      the installed version; if none does, record a gap and emit a placeholder page
+ *   4. resolve [[component-id]] links; unresolvable ones are recorded and rendered
+ *      as plain text so the site still builds
+ *   5. write docs/<slug>/…, docs/sidebars-<slug>.json, a manifest per manual,
+ *      docs/manuals.json and docs/admin.json (coverage matrix, link graph, gaps)
+ *
+ * Malformed input (bad YAML, unknown template, invalid config) always fails the build.
+ * A gap is different: the manual is structurally sound but a section is missing, which
+ * must stay visible and reviewable. Without --strict the build therefore completes;
+ * --strict is what CI and tools/bump.js use to refuse a release.
  */
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const semver = require("semver");
 const yaml = require("js-yaml");
 const Ajv = require("ajv/dist/2020");
 const { execSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
-const args = process.argv.slice(2);
-if (args.length === 0) {
-  console.error("usage: node tools/resolve.js <sims/x.json> | --all");
+const DEFAULT_BRANCH = "main";
+const FALLBACK_REPO = "ftd-aero/ftd-docs";
+
+const argv = process.argv.slice(2);
+const flags = argv.filter(a => a.startsWith("--"));
+const positional = argv.filter(a => !a.startsWith("--"));
+const STRICT = flags.includes("--strict");
+
+for (const f of flags) {
+  if (!["--all", "--strict"].includes(f)) fail(`unknown flag "${f}" (expected --all or --strict)`);
+}
+if (!flags.includes("--all") && positional.length === 0) {
+  console.error("usage: node tools/resolve.js <sims/x.json> | --all  [--strict]");
   process.exit(2);
 }
 
-const simFiles = args[0] === "--all"
-  ? fs.readdirSync(path.join(ROOT, "sims")).filter(f => f.endsWith(".json") && f !== "schema.json").map(f => path.join(ROOT, "sims", f))
-  : args.map(a => path.resolve(a));
+const simFiles = flags.includes("--all")
+  ? fs.readdirSync(path.join(ROOT, "sims")).filter(f => f.endsWith(".json") && f !== "schema.json").sort().map(f => path.join(ROOT, "sims", f))
+  : positional.map(a => path.resolve(a));
 
-// ---------- load registry of components ----------
-function loadComponents() {
-  const dir = path.join(ROOT, "components");
-  const registry = {};
-  for (const id of fs.readdirSync(dir)) {
-    const cdir = path.join(dir, id);
-    const metaFile = path.join(cdir, "component.yaml");
-    if (!fs.existsSync(metaFile)) continue;
-    const meta = yaml.load(fs.readFileSync(metaFile, "utf8"));
-    if (meta.id !== id) fail(`components/${id}/component.yaml declares id "${meta.id}" — folder name and id must match`);
-    const chunks = fs.readdirSync(cdir).filter(f => /^v\d+\.mdx?$/.test(f)).map(f => {
-      const src = fs.readFileSync(path.join(cdir, f), "utf8");
-      const { front, body } = splitFrontMatter(src, `components/${id}/${f}`);
-      if (!front.applies_to || !semver.validRange(front.applies_to)) fail(`components/${id}/${f}: missing or invalid applies_to range`);
-      return { file: f, front, body, range: front.applies_to };
-    });
-    if (chunks.length === 0) fail(`components/${id}: no vN.md chunk found`);
-    registry[id] = { meta, chunks, dir: cdir };
-  }
-  return registry;
+function fail(msg) { console.error("✖ " + msg); process.exit(1); }
+
+/** Findings that do not stop the build but block a release. */
+const gaps = [];
+const brokenLinks = [];
+function brokenLink(kind, o) { brokenLinks.push({ kind, ...o }); }
+
+// ---------- repository identity (used by the admin panel to build edit URLs) ----------
+function repoSlug() {
+  try {
+    const url = execSync("git remote get-url origin", { cwd: ROOT, stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    const m = url.match(/github\.com[:/](.+?)(?:\.git)?$/);
+    if (m) return m[1];
+  } catch { /* no remote configured yet */ }
+  return FALLBACK_REPO;
 }
 
+// ---------- load registry of components ----------
 function splitFrontMatter(src, where) {
   const m = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) fail(`${where}: missing YAML front matter`);
   return { front: yaml.load(m[1]) || {}, body: m[2] };
 }
-
-function fail(msg) { console.error("✖ " + msg); process.exit(1); }
 
 function gitInfo(relPath) {
   try {
@@ -71,16 +83,52 @@ function gitInfo(relPath) {
   } catch { return { hash: "n/a", date: "—", subject: "" }; }
 }
 
+function loadComponents() {
+  const dir = path.join(ROOT, "components");
+  const registry = {};
+  for (const id of fs.readdirSync(dir).sort()) {
+    const cdir = path.join(dir, id);
+    if (!fs.statSync(cdir).isDirectory()) continue;
+    const metaFile = path.join(cdir, "component.yaml");
+    if (!fs.existsSync(metaFile)) continue;
+    const meta = yaml.load(fs.readFileSync(metaFile, "utf8"));
+    if (meta.id !== id) fail(`components/${id}/component.yaml declares id "${meta.id}" — folder name and id must match`);
+    const chunks = fs.readdirSync(cdir).filter(f => /^v\d+\.mdx?$/.test(f)).sort().map(f => {
+      const rel = `components/${id}/${f}`;
+      const src = fs.readFileSync(path.join(cdir, f), "utf8");
+      const { front, body } = splitFrontMatter(src, rel);
+      if (!front.applies_to || !semver.validRange(front.applies_to)) fail(`${rel}: missing or invalid applies_to range`);
+      return {
+        file: f,
+        major: parseInt(f.match(/^v(\d+)/)[1], 10),
+        front, body,
+        range: front.applies_to,
+        source: rel,
+        links: [...new Set([...body.matchAll(/\[\[([a-z0-9-]+)\]\]/g)].map(m => m[1]))],
+        ...gitInfo(rel),
+      };
+    });
+    if (chunks.length === 0) fail(`components/${id}: no vN.md chunk found`);
+    registry[id] = { meta, chunks, dir: cdir };
+  }
+  return registry;
+}
+
 // ---------- main ----------
 const ajv = new Ajv({ allErrors: true, useDefaults: true, strict: false });
 const schema = JSON.parse(fs.readFileSync(path.join(ROOT, "sims", "schema.json"), "utf8"));
 const validate = ajv.compile(schema);
 const registry = loadComponents();
+const REPO = repoSlug();
 const summary = [];
+const adminManuals = [];
+const coverageCells = {};
+const simMeta = [];
 
 for (const simFile of simFiles) {
+  const configPath = path.relative(ROOT, simFile).replace(/\\/g, "/");
   const sim = JSON.parse(fs.readFileSync(simFile, "utf8"));
-  if (!validate(sim)) fail(`${path.relative(ROOT, simFile)} invalid:\n` + ajv.errorsText(validate.errors, { separator: "\n" }));
+  if (!validate(sim)) fail(`${configPath} invalid:\n` + ajv.errorsText(validate.errors, { separator: "\n" }));
   sim.slug = sim.slug || sim.serial.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
   const tplFile = path.join(ROOT, "templates", `${sim.manual.template}.yaml`);
@@ -92,35 +140,59 @@ for (const simFile of simFiles) {
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
 
-  const sections = []; // for LOES / revision register
+  const sections = [];      // feeds the LOES / revision register
   const sidebar = [];
   const warnings = [];
+  const simGaps = [];
   const issueRev = `${sim.manual.issue}.${sim.manual.revision}`;
 
-  // resolve [[id]] links → relative doc links
-  const linkTargets = {};
-  const resolveLinks = (body, where) => body.replace(/\[\[([a-z0-9-]+)\]\]/g, (_, id) => {
-    if (!registry[id]) fail(`${where}: link to unknown component [[${id}]]`);
-    if (!installed.includes(id)) fail(`${where}: links to [[${id}]] which is not installed on ${sim.serial}`);
-    if (!linkTargets[id]) fail(`${where}: [[${id}]] is installed but not placed in template "${tpl.id}"`);
-    return `[${registry[id].meta.name}](${linkTargets[id]})`;
-  });
+  function gapEntry(kind, component, detail, fix, version) {
+    const e = { kind, sim: sim.slug, serial: sim.serial, component, detail, fix, configPath };
+    if (version) e.version = version;
+    gaps.push(e);
+    simGaps.push(e);
+  }
+  function nextMajor(id) {
+    return registry[id] ? Math.max(...registry[id].chunks.map(c => c.major)) + 1 : 1;
+  }
 
-  // first pass: decide which pages exist so links can resolve
+  // ----- pass 1: decide which pages exist, so [[links]] can resolve to them -----
+  const linkTargets = {};
   const pages = [];
-  function walk(node, chapterPath, depth) {
+
+  function walk(node, chapterPath) {
     const items = [];
     for (const p of node.pages || []) {
       if (p.component) {
         const id = p.component;
         if (!installed.includes(id)) { warnings.push(`skipped ${id} (not installed)`); continue; }
-        if (!registry[id]) fail(`${sim.serial}: installed component "${id}" has no components/${id}/ folder`);
-        const version = sim.components[id].version;
-        if (!version) fail(`${sim.serial}: component ${id} is installed but has no version`);
-        const chunk = registry[id].chunks.find(c => semver.satisfies(version, c.range));
-        if (!chunk) fail(`${sim.serial}: no chunk of "${id}" covers installed version ${version} (have: ${registry[id].chunks.map(c => c.range).join(", ")}) — write a new components/${id}/vN.md or open a DOK ticket`);
         const docId = `${chapterPath}/${id}`;
         linkTargets[id] = `/manuals/${sim.slug}/${docId}`;
+
+        if (!registry[id]) {
+          gapEntry("missing-component", id, `installed on ${sim.serial} but there is no components/${id}/ folder`,
+            `create components/${id}/component.yaml and a first chunk`);
+          pages.push({ kind: "gap", id, docId, reason: "no-component-folder" });
+          items.push(`${sim.slug}/${docId}`);
+          continue;
+        }
+        const version = sim.components[id].version;
+        if (!version) {
+          gapEntry("missing-version", id, `installed on ${sim.serial} with no version in the config`,
+            `add a version to "${id}" in ${configPath}`);
+          pages.push({ kind: "gap", id, docId, reason: "no-version" });
+          items.push(`${sim.slug}/${docId}`);
+          continue;
+        }
+        const chunk = registry[id].chunks.find(c => semver.satisfies(version, c.range));
+        if (!chunk) {
+          const have = registry[id].chunks.map(c => c.range).join(", ");
+          gapEntry("missing-chunk", id, `no chunk of "${id}" covers installed version ${version} (have: ${have})`,
+            `write components/${id}/v${nextMajor(id)}.md with applies_to covering ${version}`, version);
+          pages.push({ kind: "gap", id, docId, reason: "no-chunk", version, have });
+          items.push(`${sim.slug}/${docId}`);
+          continue;
+        }
         pages.push({ kind: "component", id, docId, chunk, version });
         items.push(`${sim.slug}/${docId}`);
       } else if (p.shared) {
@@ -136,75 +208,246 @@ for (const simFile of simFiles) {
       }
     }
     for (const s of node.sections || []) {
-      const sub = walk(s, `${chapterPath}/${s.id}`, depth + 1);
+      const sub = walk(s, `${chapterPath}/${s.id}`);
       if (sub.length) items.push({ type: "category", label: s.title, items: sub });
       else warnings.push(`section "${s.title}" empty for this device`);
     }
     return items;
   }
+
   for (const ch of tpl.chapters) {
-    const items = walk(ch, ch.id, 1);
+    const items = walk(ch, ch.id);
     if (items.length) sidebar.push({ type: "category", label: ch.title, collapsed: false, items });
   }
 
-  // second pass: write pages
+  // Links are resolved against the pages this manual actually contains. A link to a
+  // component that is not installed here is not an authoring error — it is rendered as
+  // plain text — but a link to an unknown id always is.
+  const resolveLinks = (body, where) => body.replace(/\[\[([a-z0-9-]+)\]\]/g, (_, id) => {
+    const name = registry[id] ? registry[id].meta.name : id;
+    let reason = null;
+    if (!registry[id]) reason = "unknown-component";
+    else if (!installed.includes(id)) reason = "not-installed";
+    else if (!linkTargets[id]) reason = "not-in-template";
+    if (reason) {
+      brokenLink(reason, {
+        sim: sim.slug, serial: sim.serial, from: where, target: id,
+        detail: {
+          "unknown-component": `[[${id}]] has no components/${id}/ folder`,
+          "not-installed": `[[${id}]] is not installed on ${sim.serial}`,
+          "not-in-template": `[[${id}]] is installed but not placed in template "${tpl.id}"`,
+        }[reason],
+        fix: {
+          "unknown-component": `create components/${id}/ or correct the link in ${where}`,
+          "not-installed": `remove the link from ${where}, or install ${id} in ${configPath}`,
+          "not-in-template": `add "- component: ${id}" to templates/${tpl.id}.yaml`,
+        }[reason],
+      });
+      return `**${name}**`;
+    }
+    return `[${name}](${linkTargets[id]})`;
+  });
+
+  // ----- pass 2: write the pages -----
+  const hashInput = [];
   let pos = 0;
   for (const p of pages) {
     pos += 1;
+    p.pos = pos;
+    if (p.kind === "generated") continue;   // written once `sections` is complete
     const file = path.join(outDir, p.docId + ".md");
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    let front, body;
+
     if (p.kind === "component") {
-      const rel = path.relative(ROOT, path.join(registry[p.id].dir, p.chunk.file));
-      const git = gitInfo(rel);
-      front = {
+      const rel = p.chunk.source;
+      const front = {
         id: path.basename(p.docId),
         title: p.chunk.front.title || registry[p.id].meta.name,
         description: p.chunk.front.summary || "",
         sidebar_position: pos,
         custom_edit_url: null,
       };
-      body = `:::info[Effectivity]\nComponent **\`${p.id}\`** · installed software **${p.version}** · documented range \`${p.chunk.range}\` · chunk revision \`${git.hash}\` (${git.date})\n:::\n\n` + resolveLinks(p.chunk.body, rel);
-      sections.push({ id: p.id, title: front.title, docId: p.docId, version: p.version, range: p.chunk.range, ...git, source: rel });
+      const body = `:::info[Effectivity]\nComponent **\`${p.id}\`** · installed software **${p.version}** · documented range \`${p.chunk.range}\` · chunk revision \`${p.chunk.hash}\` (${p.chunk.date})\n:::\n\n` + resolveLinks(p.chunk.body, rel);
+      fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${body}`);
+      hashInput.push(p.docId + " " + p.chunk.body);
+      sections.push({ id: p.id, title: front.title, docId: p.docId, version: p.version, range: p.chunk.range,
+        hash: p.chunk.hash, date: p.chunk.date, subject: p.chunk.subject, source: rel, status: "ok" });
+
     } else if (p.kind === "shared") {
-      const rel = path.relative(ROOT, p.file);
+      const rel = path.relative(ROOT, p.file).replace(/\\/g, "/");
       const { front: f, body: b } = splitFrontMatter(fs.readFileSync(p.file, "utf8"), rel);
       const git = gitInfo(rel);
-      front = { id: path.basename(p.docId), title: f.title, sidebar_position: pos, custom_edit_url: null };
-      body = resolveLinks(b, rel);
-      sections.push({ id: p.id, title: f.title, docId: p.docId, version: "—", range: "all", ...git, source: rel });
-    } else {
-      front = { id: path.basename(p.docId), title: p.id === "revision-register" ? "Revision register" : "List of effective sections", sidebar_position: pos, custom_edit_url: null };
-      body = p.id === "revision-register" ? renderRevisionRegister(sim, sections) : renderLOES(sim, sections);
-      if (p.id === "list-of-effective-sections" || p.id === "revision-register") {
-        // generated pages depend on all other pages: defer
-        p.file = file; p.front = front; p.deferred = true; continue;
-      }
+      const front = { id: path.basename(p.docId), title: f.title, sidebar_position: pos, custom_edit_url: null };
+      fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${resolveLinks(b, rel)}`);
+      hashInput.push(p.docId + " " + b);
+      sections.push({ id: p.id, title: f.title, docId: p.docId, version: "—", range: "all", ...git, source: rel, status: "ok" });
+
+    } else if (p.kind === "gap") {
+      const name = registry[p.id] ? registry[p.id].meta.name : p.id;
+      const front = { id: path.basename(p.docId), title: name, sidebar_position: pos, custom_edit_url: null };
+      // Semver ranges contain "<", which MDX would read as the start of a JSX tag, so
+      // every range is emitted as inline code.
+      const haveCode = p.have ? p.have.split(", ").map(r => `\`${r}\``).join(", ") : "";
+      const why = p.reason === "no-chunk"
+        ? `Software version **${p.version}** is installed on this device, but no chunk of \`${p.id}\` documents that version (documented ranges: ${haveCode}).`
+        : p.reason === "no-version"
+          ? `Component \`${p.id}\` is listed as installed on this device but its configuration entry has no software version.`
+          : `Component \`${p.id}\` is listed as installed on this device but has no source folder \`components/${p.id}/\`.`;
+      const body = `:::danger[Section not available]\n${why}\n\nThis manual must not be issued while this section is missing. Raise a DOK ticket for component \`${p.id}\`.\n:::\n\nTODO(łukasz): supply the description of **${name}** for this software version.\n`;
+      fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${body}`);
+      hashInput.push(p.docId + " GAP:" + p.reason);
+      sections.push({ id: p.id, title: name, docId: p.docId, version: p.version || "—", range: "—",
+        hash: "—", date: "—", subject: "section missing", source: `components/${p.id}/`, status: "gap" });
     }
-    fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${body}`);
   }
-  for (const p of pages.filter(x => x.deferred)) {
+
+  for (const p of pages.filter(x => x.kind === "generated")) {
+    const file = path.join(outDir, p.docId + ".md");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const front = {
+      id: path.basename(p.docId),
+      title: p.id === "revision-register" ? "Revision register" : "List of effective sections",
+      sidebar_position: p.pos,
+      custom_edit_url: null,
+    };
     const body = p.id === "revision-register" ? renderRevisionRegister(sim, sections) : renderLOES(sim, sections);
-    fs.writeFileSync(p.file, `---\n${yaml.dump(p.front)}---\n\n${body}`);
+    fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${body}`);
   }
 
   // cover / index page
-  fs.writeFileSync(path.join(outDir, "index.md"), `---\nid: index\ntitle: ${tpl.title}\nsidebar_position: 0\ncustom_edit_url: null\n---\n\n# ${tpl.title}\n\n| | |\n|---|---|\n| Airplane type | ${sim.device_type} |\n| Qualification level | ${sim.qualification} |\n| Serial number | ${sim.serial} |\n| Document version | Issue ${sim.manual.issue} Rev ${sim.manual.revision} |\n| Effective date | ${sim.manual.effective_date || "—"} |\n| Operator / Client | ${sim.client} |\n\nThis manual was generated from configuration file \`sims/${path.basename(simFile)}\` and describes only the components installed on this device.\n`);
+  fs.writeFileSync(path.join(outDir, "index.md"), `---\nid: index\ntitle: ${tpl.title}\nsidebar_position: 0\ncustom_edit_url: null\n---\n\n# ${tpl.title}\n\n| | |\n|---|---|\n| Airplane type | ${sim.device_type} |\n| Qualification level | ${sim.qualification} |\n| Serial number | ${sim.serial} |\n| Document version | Issue ${sim.manual.issue} Rev ${sim.manual.revision} |\n| Effective date | ${sim.manual.effective_date || "—"} |\n| Operator / Client | ${sim.client} |\n\nThis manual was generated from configuration file \`${configPath}\` and describes only the components installed on this device.\n`);
   sidebar.unshift(`${sim.slug}/index`);
 
+  // Content hash covers what an operator reads: authored bodies plus the installed
+  // configuration. It deliberately excludes issue/revision/effective_date and the
+  // generated pages, which are derived from the hash and would otherwise be circular.
+  const contentHash = crypto.createHash("sha256")
+    .update(JSON.stringify({ template: tpl.id, components: sim.components, pages: hashInput.sort() }))
+    .digest("hex").slice(0, 16);
+  const storedHash = sim.manual.content_hash || null;
+
+  const simBroken = brokenLinks.filter(b => b.sim === sim.slug);
   fs.writeFileSync(path.join(ROOT, "docs", `sidebars-${sim.slug}.json`), JSON.stringify(sidebar, null, 2));
-  fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify({ sim, issueRev, sections, warnings }, null, 2));
-  summary.push({ serial: sim.serial, slug: sim.slug, issueRev, pages: pages.length, warnings });
-  console.log(`✔ ${sim.serial} → docs/${sim.slug}  (Issue ${issueRev}, ${pages.length} pages${warnings.length ? ", " + warnings.join("; ") : ""})`);
+  fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify(
+    { sim, issueRev, sections, warnings, gaps: simGaps, brokenLinks: simBroken, contentHash }, null, 2));
+
+  summary.push({ serial: sim.serial, slug: sim.slug, issueRev, pages: pages.length, warnings, gaps: simGaps.length });
+  adminManuals.push({
+    serial: sim.serial, slug: sim.slug, client: sim.client, device_type: sim.device_type,
+    qualification: sim.qualification, template: tpl.id, issue: sim.manual.issue, revision: sim.manual.revision,
+    issueRev, effective_date: sim.manual.effective_date || null, configPath,
+    pages: pages.length, sections: sections.length, warnings,
+    gaps: simGaps, brokenLinks: simBroken,
+    contentHash, storedHash,
+    unreleased: storedHash !== contentHash,
+    releasable: simGaps.length === 0 && simBroken.length === 0,
+  });
+  simMeta.push({ slug: sim.slug, serial: sim.serial });
+
+  // coverage matrix cells
+  for (const id of new Set([...Object.keys(registry), ...Object.keys(sim.components)])) {
+    const entry = sim.components[id];
+    const page = pages.find(p => p.id === id && (p.kind === "component" || p.kind === "gap"));
+    coverageCells[`${id}|${sim.slug}`] = !entry ? { status: "absent" }
+      : entry.installed === false ? { status: "not-installed", note: entry.note || null }
+      : page && page.kind === "component" ? { status: "ok", version: entry.version, chunk: page.chunk.file, range: page.chunk.range }
+      : page ? { status: "gap", version: entry.version || null, reason: page.reason }
+      : { status: "not-in-template", version: entry.version || null };
+  }
+
+  console.log(`✔ ${sim.serial} → docs/${sim.slug}  (Issue ${issueRev}, ${pages.length} pages`
+    + `${simGaps.length ? `, ${simGaps.length} GAP` : ""}${simBroken.length ? `, ${simBroken.length} broken link` : ""}`
+    + `${warnings.length ? ", " + warnings.join("; ") : ""})`);
 }
 
+// ---------- cross-cutting outputs ----------
+const adminComponents = Object.entries(registry).map(([id, c]) => ({
+  id,
+  name: c.meta.name,
+  category: c.meta.category || null,
+  location: c.meta.location || null,
+  owner: c.meta.owner || null,
+  jira_component: c.meta.jira_component || null,
+  software_component: c.meta.software_component || null,
+  optional: c.meta.optional === true,
+  configPath: `components/${id}/component.yaml`,
+  nextMajor: Math.max(...c.chunks.map(x => x.major)) + 1,
+  chunks: c.chunks.map(x => ({ file: x.file, major: x.major, range: x.range, title: x.front.title || c.meta.name,
+    summary: x.front.summary || "", source: x.source, hash: x.hash, date: x.date, subject: x.subject, links: x.links })),
+  usedBy: simMeta.filter(s => ["ok", "gap"].includes((coverageCells[`${id}|${s.slug}`] || {}).status)).map(s => s.slug),
+}));
+
+// Link graph over authored chunks, independent of any one simulator.
+const edges = [];
+for (const [id, c] of Object.entries(registry)) {
+  for (const chunk of c.chunks) {
+    for (const to of chunk.links) {
+      edges.push({
+        from: id, to, chunk: chunk.file, source: chunk.source,
+        known: !!registry[to],
+        brokenIn: brokenLinks.filter(b => b.from === chunk.source && b.target === to).map(b => ({ sim: b.sim, kind: b.kind })),
+      });
+    }
+  }
+}
+const referenced = new Set(edges.map(e => e.to));
+const orphans = Object.keys(registry).filter(id => !referenced.has(id));
+
+// Component ids mentioned by a template but never authored.
+const templateIds = new Set();
+for (const f of fs.readdirSync(path.join(ROOT, "templates")).filter(f => f.endsWith(".yaml"))) {
+  const t = yaml.load(fs.readFileSync(path.join(ROOT, "templates", f), "utf8"));
+  const collect = n => { for (const p of n.pages || []) if (p.component) templateIds.add(p.component); for (const s of n.sections || []) collect(s); };
+  for (const ch of t.chapters || []) collect(ch);
+}
+const undocumented = [...templateIds].filter(id => !registry[id]).sort();
+
+const admin = {
+  generatedAt: new Date().toISOString(),
+  repo: REPO,
+  defaultBranch: DEFAULT_BRANCH,
+  totals: {
+    manuals: adminManuals.length,
+    components: adminComponents.length,
+    chunks: adminComponents.reduce((n, c) => n + c.chunks.length, 0),
+    gaps: gaps.length,
+    brokenLinks: brokenLinks.length,
+    unreleased: adminManuals.filter(m => m.unreleased).length,
+  },
+  manuals: adminManuals,
+  components: adminComponents,
+  coverage: {
+    componentIds: [...new Set([...Object.keys(registry), ...templateIds])].sort(),
+    sims: simMeta,
+    cells: coverageCells,
+  },
+  links: { edges, orphans, undocumented },
+  gaps,
+  brokenLinks,
+};
+
 fs.writeFileSync(path.join(ROOT, "docs", "manuals.json"), JSON.stringify(summary, null, 2));
+fs.writeFileSync(path.join(ROOT, "docs", "admin.json"), JSON.stringify(admin, null, 2));
+
+// ---------- report ----------
+for (const g of gaps) console.error(`⚠ GAP  ${g.serial} · ${g.component}: ${g.detail}\n       fix: ${g.fix}`);
+for (const b of brokenLinks) console.error(`⚠ LINK ${b.serial} · ${b.from}: ${b.detail}\n       fix: ${b.fix}`);
+if (undocumented.length) console.error(`⚠ template references components with no folder: ${undocumented.join(", ")}`);
+
+if (STRICT && (gaps.length || brokenLinks.length)) {
+  console.error(`\n✖ --strict: ${gaps.length} gap(s), ${brokenLinks.length} broken link(s) — not releasable`);
+  process.exit(1);
+}
 
 function renderRevisionRegister(sim, sections) {
-  const rows = sections.map(s => `| ${s.title} | ${s.date} | ${sim.manual.issue} | ${sim.manual.revision} | ${s.subject.replace(/\|/g, "\\|")} (${s.hash}) |`).join("\n");
+  const rows = sections.map(s => `| ${s.title} | ${s.date} | ${sim.manual.issue} | ${sim.manual.revision} | ${String(s.subject).replace(/\|/g, "\\|")} (${s.hash}) |`).join("\n");
   return `Revision history is derived from the Git history of every section included in this manual. The current document is **Issue ${sim.manual.issue} Revision ${sim.manual.revision}**, effective ${sim.manual.effective_date || "—"}.\n\n| Section affected | Revision date | Issue | Rev. | Change description |\n|---|---|---|---|---|\n${rows}\n`;
 }
 function renderLOES(sim, sections) {
-  const rows = sections.map(s => `| ${s.title} | \`${s.id}\` | ${s.version} | \`${s.range}\` | ${sim.manual.issue} | ${sim.manual.revision} | ${s.date} |`).join("\n");
-  return `This manual is controlled at section level. Each section below is effective for the serial number on the cover page at the stated issue and revision.\n\n| Section | Component id | Installed version | Documented range | Issue | Rev. | Effective date |\n|---|---|---|---|---|---|---|\n${rows}\n`;
+  const rows = sections.map(s => `| ${s.title}${s.status === "gap" ? " ⚠️" : ""} | \`${s.id}\` | ${s.version} | \`${s.range}\` | ${sim.manual.issue} | ${sim.manual.revision} | ${s.date} |`).join("\n");
+  const missing = sections.filter(s => s.status === "gap");
+  const banner = missing.length
+    ? `\n:::danger[Incomplete]\n${missing.length} section(s) marked ⚠️ below are not available. This manual must not be issued in this state.\n:::\n`
+    : "";
+  return `This manual is controlled at section level. Each section below is effective for the serial number on the cover page at the stated issue and revision.\n${banner}\n| Section | Component id | Installed version | Documented range | Issue | Rev. | Effective date |\n|---|---|---|---|---|---|---|\n${rows}\n`;
 }

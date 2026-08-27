@@ -7,6 +7,19 @@
     "warnings": [
       "skipped cargo-fire-panel (not installed)",
       "section \"Aft electronic panel\" empty for this device"
-    ]
+    ],
+    "gaps": 0
+  },
+  {
+    "serial": "B73M/F2M/05/2026",
+    "slug": "b73m-f2m-05-2026",
+    "issueRev": "1.0",
+    "pages": 7,
+    "warnings": [
+      "skipped instructor-seat (not installed)",
+      "skipped cargo-fire-panel (not installed)",
+      "section \"Aft electronic panel\" empty for this device"
+    ],
+    "gaps": 1
   }
 ]
