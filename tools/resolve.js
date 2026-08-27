@@ -71,7 +71,16 @@ function repoSlug() {
 function splitFrontMatter(src, where) {
   const m = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) fail(`${where}: missing YAML front matter`);
-  return { front: yaml.load(m[1]) || {}, body: m[2] };
+  let front;
+  try {
+    front = yaml.load(m[1]) || {};
+  } catch (e) {
+    // Most often an unquoted value containing ":" — e.g. summary: TODO(x): text
+    fail(`${where}: front matter is not valid YAML — ${e.reason || e.message}\n`
+       + `  line ${(e.mark && e.mark.line + 1) || "?"}. A value containing ":" must be quoted.`);
+  }
+  if (typeof front !== "object" || Array.isArray(front)) fail(`${where}: front matter must be a mapping`);
+  return { front, body: m[2] };
 }
 
 function gitInfo(relPath) {

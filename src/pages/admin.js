@@ -1,34 +1,67 @@
 /**
  * /admin — editorial dashboard over the generated documentation set.
  *
- * Everything on this page comes from docs/admin.json, written by tools/resolve.js on
- * every build. The page is static: it never calls an API, and every "edit" button is a
- * deep link into GitHub's web editor so a non-technical author can make a change,
- * commit it to a new branch and open a pull request without a local checkout.
+ * The page reads docs/admin.json, written by tools/resolve.js on every build, so it works
+ * as a plain static page. It then looks for the local editing backend
+ * (tools/admin-server.js, http://127.0.0.1:3001 by default):
+ *
+ *   - backend reachable  → "local mode": files are read and written straight to the
+ *     working tree, the resolver re-runs after every save, and drafts, commits and
+ *     releases are real git operations. This is the mode to use while the repository
+ *     has no remote.
+ *   - backend absent     → every action falls back to a deep link into GitHub's web
+ *     editor, which is what the published site will use once a remote exists.
+ *
+ * Start the backend with:  node tools/admin-server.js
  */
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, createContext, useContext } from "react";
 import Layout from "@theme/Layout";
 import Link from "@docusaurus/Link";
 import useBaseUrl from "@docusaurus/useBaseUrl";
-import admin from "@site/docs/admin.json";
+import baked from "@site/docs/admin.json";
 import styles from "./admin.module.css";
 
-const REPO = admin.repo;
-const BRANCH = admin.defaultBranch;
-const GH = `https://github.com/${REPO}`;
+/* ------------------------------------------------------------------ backend */
 
-const editUrl = file => `${GH}/edit/${BRANCH}/${file}`;
-const viewUrl = file => `${GH}/blob/${BRANCH}/${file}`;
-const newFileUrl = (file, content) =>
-  `${GH}/new/${BRANCH}?filename=${encodeURIComponent(file)}&value=${encodeURIComponent(content)}`;
+const DEFAULT_API = "http://127.0.0.1:3001";
+
+function apiBase() {
+  if (typeof window === "undefined") return DEFAULT_API;
+  const override = new URLSearchParams(window.location.search).get("api");
+  return override || DEFAULT_API;
+}
+
+async function api(method, route, body) {
+  const res = await fetch(apiBase() + route, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({ error: `${res.status} ${res.statusText}` }));
+  if (!res.ok) throw new Error(json.error || `${res.status}`);
+  return json;
+}
+
+const Ctx = createContext(null);
+const useAdmin = () => useContext(Ctx);
+
+/* -------------------------------------------------------------- GitHub URLs */
+
+const ghUrls = repo => ({
+  edit: f => `https://github.com/${repo}/edit/${baked.defaultBranch}/${f}`,
+  view: f => `https://github.com/${repo}/blob/${baked.defaultBranch}/${f}`,
+  create: (f, c) =>
+    `https://github.com/${repo}/new/${baked.defaultBranch}?filename=${encodeURIComponent(f)}&value=${encodeURIComponent(c)}`,
+});
 
 /** Skeleton for a new version chunk, pre-filled so the author only replaces the TODOs. */
 function draftChunk(component, major) {
   return [
     "---",
     `applies_to: ">=${major}.0.0 <${major + 1}.0.0"`,
-    `title: ${component.name}`,
-    "summary: TODO(łukasz): one sentence describing what this component does.",
+    `title: ${JSON.stringify(component.name)}`,
+    // Quoted: the value contains ":" and would otherwise be invalid YAML.
+    'summary: "TODO(łukasz): one sentence describing what this component does."',
     "---",
     "",
     `TODO(łukasz): describe the behaviour of ${component.name} for software version ${major}.x.`,
@@ -48,10 +81,48 @@ const TABS = [
   { id: "links", label: "Links" },
 ];
 
+/* -------------------------------------------------------------------- shell */
+
 export default function Admin() {
   const [tab, setTab] = useState("manuals");
-  const t = admin.totals;
+  const [data, setData] = useState(baked);
+  const [git, setGit] = useState(null);
+  const [local, setLocal] = useState(false);
+  const [probed, setProbed] = useState(false);
+  const [editor, setEditor] = useState(null);
+  const [flash, setFlash] = useState(null);
 
+  const refresh = useCallback(async () => {
+    const st = await api("GET", "/api/state");
+    setData(st.admin);
+    setGit(st.git);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const h = await api("GET", "/api/health");
+        if (cancelled) return;
+        setLocal(true);
+        setGit(h);
+        await refresh();
+      } catch {
+        if (!cancelled) setLocal(false);
+      } finally {
+        if (!cancelled) setProbed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [refresh]);
+
+  const ctx = {
+    data, git, local, refresh, setFlash,
+    gh: ghUrls(data.repo),
+    openEditor: spec => setEditor(spec),
+  };
+
+  const t = data.totals;
   const tiles = [
     { label: "Manuals", value: t.manuals, tab: "manuals" },
     { label: "Components", value: t.components, tab: "components" },
@@ -63,55 +134,268 @@ export default function Admin() {
 
   return (
     <Layout title="Admin" description="Editorial dashboard for the FTD.aero manual set">
-      <main className={styles.page}>
-        <div className={styles.head}>
-          <h1>Documentation admin</h1>
-          <div className={styles.headMeta}>
-            <a href={GH} className={styles.mono}>{REPO}</a>
-            <span>resolved {new Date(admin.generatedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</span>
+      <Ctx.Provider value={ctx}>
+        <main className={styles.page}>
+          <div className={styles.head}>
+            <h1>Documentation admin</h1>
+            <div className={styles.headMeta}>
+              {probed && (
+                <span className={`${styles.badge} ${local ? styles.badgeOk : styles.badgeIdle}`}>
+                  {local ? "local mode" : "read only"}
+                </span>
+              )}
+              <span>resolved {new Date(data.generatedAt).toISOString().replace("T", " ").slice(0, 16)} UTC</span>
+            </div>
           </div>
-        </div>
 
-        <div className={styles.tiles}>
-          {tiles.map(x => (
-            <button
-              key={x.label}
-              className={[styles.tile, x.tone === "alert" && styles.tileAlert, x.tone === "warn" && styles.tileWarn].filter(Boolean).join(" ")}
-              onClick={() => setTab(x.tab)}
-            >
-              <div className={styles.tileValue}>{x.value}</div>
-              <div className={styles.tileLabel}>{x.label}</div>
-            </button>
-          ))}
-        </div>
+          {probed && !local && <OfflineNotice />}
+          {local && <GitBar />}
+          {flash && <div className={flash.error ? styles.flashError : styles.flashOk}>{flash.text}</div>}
 
-        <div className={styles.tabs}>
-          {TABS.map(x => (
-            <button key={x.id} onClick={() => setTab(x.id)} className={[styles.tab, tab === x.id && styles.tabActive].filter(Boolean).join(" ")}>
-              {x.label}
-            </button>
-          ))}
-        </div>
+          <div className={styles.tiles}>
+            {tiles.map(x => (
+              <button
+                key={x.label}
+                className={[styles.tile, x.tone === "alert" && styles.tileAlert, x.tone === "warn" && styles.tileWarn].filter(Boolean).join(" ")}
+                onClick={() => setTab(x.tab)}
+              >
+                <div className={styles.tileValue}>{x.value}</div>
+                <div className={styles.tileLabel}>{x.label}</div>
+              </button>
+            ))}
+          </div>
 
-        {tab === "manuals" && <Manuals />}
-        {tab === "components" && <Components />}
-        {tab === "coverage" && <Coverage />}
-        {tab === "links" && <Links />}
-      </main>
+          <div className={styles.tabs}>
+            {TABS.map(x => (
+              <button key={x.id} onClick={() => setTab(x.id)} className={[styles.tab, tab === x.id && styles.tabActive].filter(Boolean).join(" ")}>
+                {x.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "manuals" && <Manuals />}
+          {tab === "components" && <Components />}
+          {tab === "coverage" && <Coverage />}
+          {tab === "links" && <Links />}
+        </main>
+
+        {editor && <Editor spec={editor} close={() => setEditor(null)} />}
+      </Ctx.Provider>
     </Layout>
   );
+}
+
+function OfflineNotice() {
+  return (
+    <div className={styles.hint}>
+      The local editing backend is not running, so this page is read only and the buttons below link to
+      GitHub instead. To edit files here, run <code>node tools/admin-server.js</code> in the repository and
+      reload. (Listening elsewhere? Append <code>?api=http://127.0.0.1:PORT</code> to this URL.)
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ git bar */
+
+function GitBar() {
+  const { git, refresh, setFlash } = useAdmin();
+  const [busy, setBusy] = useState(null);
+  if (!git) return null;
+
+  const run = async (name, fn) => {
+    setBusy(name);
+    setFlash(null);
+    try {
+      const out = await fn();
+      await refresh();
+      setFlash({ text: out });
+    } catch (e) {
+      setFlash({ error: true, text: String(e.message || e) });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const commit = () => {
+    const message = window.prompt("Commit message", "Update documentation");
+    if (!message) return;
+    run("commit", async () => {
+      const r = await api("POST", "/api/git/commit", { message });
+      return r.committed ? `Committed on ${r.git.branch}.` : `Nothing to commit (${r.reason}).`;
+    });
+  };
+
+  const branch = () => {
+    const name = window.prompt("New branch name", "doc/");
+    if (!name) return;
+    run("branch", async () => {
+      const r = await api("POST", "/api/git/branch", { name });
+      return `Now on ${r.git.branch}.`;
+    });
+  };
+
+  const release = () => {
+    if (!window.confirm("Stamp revisions, commit and tag every releasable manual?")) return;
+    run("release", async () => {
+      const r = await api("POST", "/api/release");
+      return r.released.length
+        ? `Released: ${r.released.map(m => `${m.serial} → ${m.to} (${m.tag})`).join("; ")}`
+        : "No manual needed a new revision.";
+    });
+  };
+
+  return (
+    <div className={styles.gitBar}>
+      <span className={styles.gitBranch}>
+        <strong className={styles.mono}>{git.branch}</strong>
+        {git.onMain && <span className={`${styles.badge} ${styles.badgeWarn}`}>main</span>}
+      </span>
+
+      <span className={styles.dim}>
+        {git.dirty.length === 0
+          ? "working tree clean"
+          : `${git.dirty.length} changed: ${git.dirty.slice(0, 4).map(f => f.path).join(", ")}${git.dirty.length > 4 ? "…" : ""}`}
+      </span>
+
+      <select
+        className={styles.select}
+        value={git.branch}
+        onChange={e => run("checkout", async () => {
+          const r = await api("POST", "/api/git/checkout", { name: e.target.value });
+          return `Switched to ${r.git.branch}.`;
+        })}
+      >
+        {git.branches.map(b => <option key={b} value={b}>{b}</option>)}
+      </select>
+
+      <div className={styles.actions}>
+        <button className={styles.btn} disabled={!!busy} onClick={branch}>New branch</button>
+        <button className={styles.btn} disabled={!!busy || git.dirty.length === 0} onClick={commit}>
+          {busy === "commit" ? "Committing…" : "Commit"}
+        </button>
+        <button className={`${styles.btn} ${styles.btnPrimary}`} disabled={!!busy} onClick={release}>
+          {busy === "release" ? "Releasing…" : "Release"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------- editor */
+
+/**
+ * spec = { path, title, mode: "edit" | "draft", content?, branch?, message? }
+ * "edit" saves in place; "draft" creates the branch, writes the file and commits it.
+ */
+function Editor({ spec, close }) {
+  const { refresh, setFlash } = useAdmin();
+  const [content, setContent] = useState(spec.content ?? null);
+  const [branch, setBranch] = useState(spec.branch || "");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(spec.mode === "edit");
+
+  useEffect(() => {
+    if (spec.mode !== "edit") return;
+    let cancelled = false;
+    api("GET", `/api/file?path=${encodeURIComponent(spec.path)}`)
+      .then(r => { if (!cancelled) { setContent(r.content); setLoading(false); } })
+      .catch(e => { if (!cancelled) { setError(String(e.message || e)); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [spec.path, spec.mode]);
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (spec.mode === "draft") {
+        const r = await api("POST", "/api/draft", { path: spec.path, content, branch, message: spec.message });
+        setFlash({ text: `Draft committed on ${r.branch}: ${r.path}` });
+      } else {
+        await api("PUT", "/api/file", { path: spec.path, content });
+        setFlash({ text: `Saved ${spec.path} and re-resolved.` });
+      }
+      await refresh();
+      close();
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={styles.backdrop} onClick={e => { if (e.target === e.currentTarget) close(); }}>
+      <div className={styles.drawer}>
+        <div className={styles.drawerHead}>
+          <div>
+            <strong>{spec.title}</strong>
+            <div className={`${styles.mono} ${styles.dim}`}>{spec.path}</div>
+          </div>
+          <button className={styles.btn} onClick={close}>Close</button>
+        </div>
+
+        {spec.mode === "draft" && (
+          <label className={styles.field}>
+            <span>Branch</span>
+            <input
+              className={`${styles.input} ${styles.mono}`}
+              value={branch}
+              onChange={e => setBranch(e.target.value)}
+              placeholder="doc/component-id-topic"
+            />
+          </label>
+        )}
+
+        {loading
+          ? <p className={styles.empty}>Loading…</p>
+          : <textarea className={styles.editor} value={content ?? ""} spellCheck={false} onChange={e => setContent(e.target.value)} />}
+
+        {error && <div className={styles.flashError}>{error}</div>}
+
+        <div className={styles.drawerFoot}>
+          <span className={styles.dim}>
+            {spec.mode === "draft"
+              ? "Creates the branch, writes the file and commits it."
+              : "Saves to the working tree and re-runs the resolver."}
+          </span>
+          <button className={`${styles.btn} ${styles.btnPrimary}`} disabled={busy || loading} onClick={save}>
+            {busy ? "Working…" : spec.mode === "draft" ? "Create draft" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One action: opens the local editor when the backend is up, else links to GitHub. */
+function Action({ path, title, mode, content, branch, message, label, primary, children }) {
+  const { local, openEditor, gh } = useAdmin();
+  const cls = `${styles.btn} ${primary ? styles.btnPrimary : ""}`;
+  if (local) {
+    return (
+      <button className={cls} onClick={() => openEditor({ path, title, mode, content, branch, message })}>
+        {label || children}
+      </button>
+    );
+  }
+  const href = mode === "draft" ? gh.create(path, content) : gh.edit(path);
+  return <a className={cls} href={href}>{label || children}</a>;
 }
 
 /* ------------------------------------------------------------------ Manuals */
 
 function Manuals() {
+  const { data, local } = useAdmin();
   return (
     <div className={styles.section}>
       <div className={styles.hint}>
         Issue and revision numbers are owned by <code>tools/bump.js</code>. A manual shows as{" "}
-        <strong>unreleased</strong> when its content changed since the last release; running the release
-        workflow on <code>{BRANCH}</code> bumps the revision, stamps the effective date and tags it. A manual
-        with a gap or a broken link is never released.
+        <strong>unreleased</strong> when its content changed since the last release.{" "}
+        {local
+          ? <>Use <strong>Release</strong> above to stamp revisions, commit and tag every releasable manual.</>
+          : <>Running the release workflow on <code>{data.defaultBranch}</code> bumps the revision, stamps the effective date and tags it.</>}{" "}
+        A manual with a gap or a broken link is never released.
       </div>
 
       <div className={styles.scroll}>
@@ -123,7 +407,7 @@ function Manuals() {
             </tr>
           </thead>
           <tbody>
-            {admin.manuals.map(m => (
+            {data.manuals.map(m => (
               <tr key={m.slug}>
                 <td className={styles.nowrap}><strong>{m.serial}</strong><div className={styles.dim}>{m.device_type} · {m.qualification}</div></td>
                 <td>{m.client}</td>
@@ -142,7 +426,7 @@ function Manuals() {
                 <td>
                   <div className={styles.actions}>
                     <ManualLink slug={m.slug} />
-                    <a className={styles.btn} href={editUrl(m.configPath)}>Edit config</a>
+                    <Action path={m.configPath} title={`${m.serial} — configuration`} mode="edit" label="Edit config" />
                   </div>
                 </td>
               </tr>
@@ -151,7 +435,7 @@ function Manuals() {
         </table>
       </div>
 
-      {admin.manuals.filter(m => m.gaps.length || m.brokenLinks.length).map(m => (
+      {data.manuals.filter(m => m.gaps.length || m.brokenLinks.length).map(m => (
         <div key={m.slug} style={{ marginTop: "1.5rem" }}>
           <h2 style={{ fontSize: "1rem" }}>{m.serial} — blocking findings</h2>
           {m.gaps.map((g, i) => (
@@ -164,7 +448,8 @@ function Manuals() {
             <div key={`b${i}`} className={styles.finding}>
               <strong className={styles.mono}>{b.from}</strong> — {b.detail}
               <div className={styles.findingFix}>
-                Fix: {b.fix} · <a href={editUrl(b.from)}>Adjust link</a>
+                Fix: {b.fix}{" "}
+                <Action path={b.from} title={`Adjust link in ${b.from}`} mode="edit" label="Adjust link" />
               </div>
             </div>
           ))}
@@ -182,12 +467,16 @@ function ManualLink({ slug }) {
 /* --------------------------------------------------------------- Components */
 
 function Components() {
+  const { data, local } = useAdmin();
   return (
     <div className={styles.section}>
       <div className={styles.hint}>
-        “New draft v<em>N</em>” opens GitHub’s editor with a pre-filled chunk. In the commit dialog choose
-        <strong> Create a new branch</strong> and name it <code className={styles.mono}>doc/&lt;component-id&gt;-&lt;topic&gt;</code>,
-        then open the pull request. Component ids are never renamed, and a new id needs approval from the Support lead.
+        {local
+          ? <>“New draft v<em>N</em>” opens a pre-filled chunk. Saving it creates the branch, writes the file
+             and commits it in one step. Component ids are never renamed, and a new id needs approval from the Support lead.</>
+          : <>“New draft v<em>N</em>” opens GitHub’s editor with a pre-filled chunk. In the commit dialog choose
+             <strong> Create a new branch</strong> named <code className={styles.mono}>doc/&lt;component-id&gt;-&lt;topic&gt;</code>,
+             then open the pull request.</>}
       </div>
 
       <div className={styles.scroll}>
@@ -199,7 +488,7 @@ function Components() {
             </tr>
           </thead>
           <tbody>
-            {admin.components.map(c => (
+            {data.components.map(c => (
               <tr key={c.id}>
                 <td className={styles.nowrap}>
                   <strong>{c.name}</strong>
@@ -213,7 +502,7 @@ function Components() {
                   <ul className={styles.chunkList}>
                     {c.chunks.map(k => (
                       <li key={k.file}>
-                        <a className={styles.mono} href={editUrl(k.source)}>{k.file}</a>{" "}
+                        <Action path={k.source} title={`${c.name} — ${k.file}`} mode="edit" label={k.file} />{" "}
                         <span className={styles.mono}>{k.range}</span>{" "}
                         <span className={styles.dim}>{k.hash} · {k.date}</span>
                       </li>
@@ -223,11 +512,17 @@ function Components() {
                 <td className={styles.mono}>{c.usedBy.length ? c.usedBy.join(", ") : <span className={styles.dim}>none</span>}</td>
                 <td>
                   <div className={styles.actions}>
-                    <a className={`${styles.btn} ${styles.btnPrimary}`}
-                       href={newFileUrl(`components/${c.id}/v${c.nextMajor}.md`, draftChunk(c, c.nextMajor))}>
-                      New draft v{c.nextMajor}
-                    </a>
-                    <a className={styles.btn} href={editUrl(c.configPath)}>Edit identity</a>
+                    <Action
+                      primary
+                      mode="draft"
+                      path={`components/${c.id}/v${c.nextMajor}.md`}
+                      title={`New chunk — ${c.name} v${c.nextMajor}`}
+                      content={draftChunk(c, c.nextMajor)}
+                      branch={`doc/${c.id}-v${c.nextMajor}`}
+                      message={`Draft: ${c.id} v${c.nextMajor}`}
+                      label={`New draft v${c.nextMajor}`}
+                    />
+                    <Action path={c.configPath} title={`${c.name} — identity`} mode="edit" label="Edit identity" />
                   </div>
                 </td>
               </tr>
@@ -236,14 +531,14 @@ function Components() {
         </table>
       </div>
 
-      {admin.links.undocumented.length > 0 && (
+      {data.links.undocumented.length > 0 && (
         <div style={{ marginTop: "1.5rem" }}>
           <h2 style={{ fontSize: "1rem" }}>Referenced but never authored</h2>
           <p className={styles.dim} style={{ fontSize: "0.85rem" }}>
             Ids that a manual template places on a page but which have no <code>components/&lt;id&gt;/</code> folder.
             They only become a gap once a device has them installed.
           </p>
-          {admin.links.undocumented.map(id => (
+          {data.links.undocumented.map(id => (
             <div key={id} className={styles.finding}>
               <strong className={styles.mono}>{id}</strong> — no component folder
               <div className={styles.findingFix}>
@@ -268,7 +563,8 @@ const CELL = {
 };
 
 function Coverage() {
-  const { componentIds, sims, cells } = admin.coverage;
+  const { data } = useAdmin();
+  const { componentIds, sims, cells } = data.coverage;
   return (
     <div className={styles.section}>
       <h2>Coverage matrix</h2>
@@ -304,14 +600,11 @@ function Coverage() {
         <span><i className={styles.swatch} /> not fitted on this device</span>
       </div>
 
-      {admin.gaps.length > 0 && (
+      {data.gaps.length > 0 && (
         <div style={{ marginTop: "2rem" }}>
           <h2 style={{ fontSize: "1rem" }}>Gaps</h2>
-          {admin.gaps.map((g, i) => (
-            <div key={i} className={styles.finding}>
-              <strong>{g.serial}</strong> · <span className={styles.mono}>{g.component}</span> — {g.detail}
-              <div className={styles.findingFix}>Fix: {g.fix}</div>
-            </div>
+          {data.gaps.map((g, i) => (
+            <GapRow key={i} gap={g} />
           ))}
         </div>
       )}
@@ -319,10 +612,39 @@ function Coverage() {
   );
 }
 
+/** A gap for a missing chunk can be fixed straight from here. */
+function GapRow({ gap }) {
+  const { data } = useAdmin();
+  const component = data.components.find(c => c.id === gap.component);
+  return (
+    <div className={styles.finding}>
+      <strong>{gap.serial}</strong> · <span className={styles.mono}>{gap.component}</span> — {gap.detail}
+      <div className={styles.findingFix}>
+        Fix: {gap.fix}{" "}
+        {component && gap.kind === "missing-chunk" && (
+          <Action
+            mode="draft"
+            path={`components/${component.id}/v${component.nextMajor}.md`}
+            title={`New chunk — ${component.name} v${component.nextMajor}`}
+            content={draftChunk(component, component.nextMajor)}
+            branch={`doc/${component.id}-v${component.nextMajor}`}
+            message={`Draft: ${component.id} v${component.nextMajor}`}
+            label={`Write v${component.nextMajor}`}
+          />
+        )}
+        {gap.kind === "missing-version" && (
+          <Action path={gap.configPath} title={`${gap.serial} — configuration`} mode="edit" label="Edit config" />
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------------- Links */
 
 function Links() {
-  const { edges, orphans } = admin.links;
+  const { data, local, gh } = useAdmin();
+  const { edges, orphans } = data.links;
   return (
     <div className={styles.section}>
       <h2>Link graph</h2>
@@ -340,7 +662,9 @@ function Links() {
             <tbody>
               {edges.map((e, i) => (
                 <tr key={i}>
-                  <td className={styles.mono}><a href={viewUrl(e.source)}>{e.source}</a></td>
+                  <td className={styles.mono}>
+                    {local ? e.source : <a href={gh.view(e.source)}>{e.source}</a>}
+                  </td>
                   <td className={styles.mono}>{e.to}</td>
                   <td>
                     {!e.known
@@ -349,7 +673,7 @@ function Links() {
                         ? <span className={`${styles.badge} ${styles.badgeWarn}`}>plain text on {e.brokenIn.map(b => b.sim).join(", ")}</span>
                         : <span className={`${styles.badge} ${styles.badgeOk}`}>resolved</span>}
                   </td>
-                  <td><a className={styles.btn} href={editUrl(e.source)}>Adjust link</a></td>
+                  <td><Action path={e.source} title={`Adjust links in ${e.source}`} mode="edit" label="Adjust link" /></td>
                 </tr>
               ))}
             </tbody>
@@ -357,13 +681,15 @@ function Links() {
         </div>
       )}
 
-      {admin.brokenLinks.length > 0 && (
+      {data.brokenLinks.length > 0 && (
         <div style={{ marginTop: "2rem" }}>
           <h2 style={{ fontSize: "1rem" }}>Unresolved in a manual</h2>
-          {admin.brokenLinks.map((b, i) => (
+          {data.brokenLinks.map((b, i) => (
             <div key={i} className={styles.finding}>
               <strong>{b.serial}</strong> · <span className={styles.mono}>{b.from}</span> — {b.detail}
-              <div className={styles.findingFix}>Fix: {b.fix} · <a href={editUrl(b.from)}>Adjust link</a></div>
+              <div className={styles.findingFix}>
+                Fix: {b.fix} <Action path={b.from} title={`Adjust link in ${b.from}`} mode="edit" label="Adjust link" />
+              </div>
             </div>
           ))}
         </div>
