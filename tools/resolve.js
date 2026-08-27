@@ -146,8 +146,23 @@ for (const simFile of simFiles) {
 
   const installed = Object.entries(sim.components).filter(([, c]) => c.installed !== false).map(([id]) => id);
   const outDir = path.join(ROOT, "docs", sim.slug);
-  fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
+
+  /**
+   * Pages are written in place and stale ones pruned at the end, rather than wiping the
+   * directory first. Wiping it opens a window in which docs/sidebars-<slug>.json still
+   * names pages whose files are momentarily gone; the dev server watches this tree, and
+   * a reload landing inside that window fails with "Invalid sidebar file" and kills the
+   * server. Since the admin panel re-runs this resolver on every save, that window was
+   * hit constantly. Writing in place keeps every referenced page on disk throughout.
+   */
+  const produced = new Set();
+  const record = f => produced.add(path.relative(outDir, f).replace(/\\/g, "/"));
+  const writePage = (file, content) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+    record(file);
+  };
 
   const sections = [];      // feeds the LOES / revision register
   const sidebar = [];
@@ -284,7 +299,9 @@ for (const simFile of simFiles) {
         return `**[figure not available: \`assets/${name}\`${alt ? ` — ${alt}` : ""}]**`;
       }
       if (!copied) { fs.mkdirSync(destDir, { recursive: true }); copied = true; }
-      fs.copyFileSync(srcFile, path.join(destDir, name));
+      const destFile = path.join(destDir, name);
+      fs.copyFileSync(srcFile, destFile);
+      record(destFile);
       return `${label}(./${destRel}/${name})`;
     });
   }
@@ -310,7 +327,7 @@ for (const simFile of simFiles) {
         custom_edit_url: null,
       };
       const body = `:::info[Effectivity]\nComponent **\`${p.id}\`** · installed software **${p.version}** · documented range \`${p.chunk.range}\` · chunk revision \`${p.chunk.hash}\` (${p.chunk.date})\n:::\n\n` + withAssets(resolveLinks(p.chunk.body, rel));
-      fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${body}`);
+      writePage(file, `---\n${yaml.dump(front)}---\n\n${body}`);
       hashInput.push(p.docId + " " + p.chunk.body);
       sections.push({ id: p.id, title: front.title, docId: p.docId, version: p.version, range: p.chunk.range,
         hash: p.chunk.hash, date: p.chunk.date, subject: p.chunk.subject, source: rel, status: "ok" });
@@ -320,7 +337,7 @@ for (const simFile of simFiles) {
       const { front: f, body: b } = splitFrontMatter(fs.readFileSync(p.file, "utf8"), rel);
       const git = gitInfo(rel);
       const front = { id: path.basename(p.docId), title: f.title, sidebar_position: pos, custom_edit_url: null };
-      fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${resolveLinks(b, rel)}`);
+      writePage(file, `---\n${yaml.dump(front)}---\n\n${resolveLinks(b, rel)}`);
       hashInput.push(p.docId + " " + b);
       sections.push({ id: p.id, title: f.title, docId: p.docId, version: "—", range: "all", ...git, source: rel, status: "ok" });
 
@@ -336,7 +353,7 @@ for (const simFile of simFiles) {
           ? `Component \`${p.id}\` is listed as installed on this device but its configuration entry has no software version.`
           : `Component \`${p.id}\` is listed as installed on this device but has no source folder \`components/${p.id}/\`.`;
       const body = `:::danger[Section not available]\n${why}\n\nThis manual must not be issued while this section is missing. Raise a DOK ticket for component \`${p.id}\`.\n:::\n\nTODO(łukasz): supply the description of **${name}** for this software version.\n`;
-      fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${body}`);
+      writePage(file, `---\n${yaml.dump(front)}---\n\n${body}`);
       hashInput.push(p.docId + " GAP:" + p.reason);
       sections.push({ id: p.id, title: name, docId: p.docId, version: p.version || "—", range: "—",
         hash: "—", date: "—", subject: "section missing", source: `components/${p.id}/`, status: "gap" });
@@ -353,11 +370,11 @@ for (const simFile of simFiles) {
       custom_edit_url: null,
     };
     const body = p.id === "revision-register" ? renderRevisionRegister(sim, sections) : renderLOES(sim, sections);
-    fs.writeFileSync(file, `---\n${yaml.dump(front)}---\n\n${body}`);
+    writePage(file, `---\n${yaml.dump(front)}---\n\n${body}`);
   }
 
   // cover / index page
-  fs.writeFileSync(path.join(outDir, "index.md"), `---\nid: index\ntitle: ${tpl.title}\nsidebar_position: 0\ncustom_edit_url: null\n---\n\n# ${tpl.title}\n\n| | |\n|---|---|\n| Airplane type | ${sim.device_type} |\n| Qualification level | ${sim.qualification} |\n| Serial number | ${sim.serial} |\n| Document version | Issue ${sim.manual.issue} Rev ${sim.manual.revision} |\n| Effective date | ${sim.manual.effective_date || "—"} |\n| Operator / Client | ${sim.client} |\n\nThis manual was generated from configuration file \`${configPath}\` and describes only the components installed on this device.\n`);
+  writePage(path.join(outDir, "index.md"), `---\nid: index\ntitle: ${tpl.title}\nsidebar_position: 0\ncustom_edit_url: null\n---\n\n# ${tpl.title}\n\n| | |\n|---|---|\n| Airplane type | ${sim.device_type} |\n| Qualification level | ${sim.qualification} |\n| Serial number | ${sim.serial} |\n| Document version | Issue ${sim.manual.issue} Rev ${sim.manual.revision} |\n| Effective date | ${sim.manual.effective_date || "—"} |\n| Operator / Client | ${sim.client} |\n\nThis manual was generated from configuration file \`${configPath}\` and describes only the components installed on this device.\n`);
   sidebar.unshift(`${sim.slug}/index`);
 
   // Content hash covers what an operator reads: authored bodies plus the installed
@@ -369,9 +386,17 @@ for (const simFile of simFiles) {
   const storedHash = sim.manual.content_hash || null;
 
   const simBroken = brokenLinks.filter(b => b.sim === sim.slug);
-  fs.writeFileSync(path.join(ROOT, "docs", `sidebars-${sim.slug}.json`), JSON.stringify(sidebar, null, 2));
-  fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify(
+
+  writePage(path.join(outDir, "manifest.json"), JSON.stringify(
     { sim, issueRev, sections, warnings, gaps: simGaps, brokenLinks: simBroken, contentHash }, null, 2));
+
+  // Drop pages this run did not produce — a component uninstalled, renamed or moved to
+  // another chapter. Runs after every write, so nothing current is deleted and recreated,
+  // and before the sidebar is rewritten, so the sidebar on disk never names a file that
+  // is about to disappear.
+  pruneStale(outDir, produced);
+
+  fs.writeFileSync(path.join(ROOT, "docs", `sidebars-${sim.slug}.json`), JSON.stringify(sidebar, null, 2));
 
   summary.push({ serial: sim.serial, slug: sim.slug, issueRev, pages: pages.length, warnings, gaps: simGaps.length });
   adminManuals.push({
@@ -494,6 +519,23 @@ if (undocumented.length) console.error(`⚠ template references components with 
 if (STRICT && (gaps.length || brokenLinks.length)) {
   console.error(`\n✖ --strict: ${gaps.length} gap(s), ${brokenLinks.length} broken link(s) — not releasable`);
   process.exit(1);
+}
+
+/**
+ * Remove files under root that the current run did not write, then any directory left
+ * empty. `produced` holds paths relative to root, so the walk carries root through the
+ * recursion rather than comparing against the directory it is currently in.
+ */
+function pruneStale(root, produced, dir = root) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      pruneStale(root, produced, abs);
+      if (fs.readdirSync(abs).length === 0) fs.rmdirSync(abs);
+    } else if (!produced.has(path.relative(root, abs).replace(/\\/g, "/"))) {
+      fs.unlinkSync(abs);
+    }
+  }
 }
 
 function renderRevisionRegister(sim, sections) {

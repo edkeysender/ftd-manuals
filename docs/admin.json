@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-27T11:39:42.084Z",
+  "generatedAt": "2026-08-27T12:04:27.606Z",
   "repo": "ftd-aero/ftd-docs",
   "defaultBranch": "main",
   "totals": {
@@ -167,9 +167,9 @@
           "title": "Jump Seat",
           "summary": "Wall-mounted fold-down seat, stowed vertically when not in use, rated for one occupant of up to 100 kg.",
           "source": "components/jump-seat/v1.md",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "2d0912f",
+          "date": "2026-08-27",
+          "subject": "New sections from /admin, component assets, and two authored components",
           "links": []
         }
       ],
@@ -226,9 +226,9 @@
           "title": "Smoke Detector",
           "summary": "Ceiling-mounted FireAngel ST-622 smoke alarm above the IOS: 85 dB sounder, sealed 10-year battery, weekly test.",
           "source": "components/smoke-detector/v1.mdx",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "2d0912f",
+          "date": "2026-08-27",
+          "subject": "New sections from /admin, component assets, and two authored components",
           "links": [
             "starting-panel",
             "emergency-stop"

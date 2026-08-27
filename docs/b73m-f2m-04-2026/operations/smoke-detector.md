@@ -9,7 +9,7 @@ custom_edit_url: null
 ---
 
 :::info[Effectivity]
-Component **`smoke-detector`** · installed software **1.0.0** · documented range `>=1.0.0 <2.0.0` · chunk revision `uncommitted` (—)
+Component **`smoke-detector`** · installed software **1.0.0** · documented range `>=1.0.0 <2.0.0` · chunk revision `2d0912f` (2026-08-27)
 :::
 
 
