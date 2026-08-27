@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-08-27T12:04:27.606Z",
+  "generatedAt": "2026-08-27T12:30:00.564Z",
   "repo": "ftd-aero/ftd-docs",
   "defaultBranch": "main",
   "totals": {
     "manuals": 2,
     "components": 6,
     "chunks": 6,
-    "gaps": 2,
+    "gaps": 1,
     "brokenLinks": 0,
     "unreleased": 2
   },
@@ -23,28 +23,18 @@
       "issueRev": "1.1",
       "effective_date": "2026-08-27",
       "configPath": "sims/b73m-f2m-04-2026.json",
-      "pages": 10,
+      "pages": 11,
       "sections": 8,
       "warnings": [
         "skipped cargo-fire-panel (not installed)",
         "section \"Aft electronic panel\" empty for this device"
       ],
-      "gaps": [
-        {
-          "kind": "missing-asset",
-          "sim": "b73m-f2m-04-2026",
-          "serial": "B73M/F2M/04/2026",
-          "component": "jump-seat",
-          "detail": "components/jump-seat/v1.md references assets/jump-seat-operation.png, which does not exist",
-          "fix": "add components/jump-seat/assets/jump-seat-operation.png",
-          "configPath": "sims/b73m-f2m-04-2026.json"
-        }
-      ],
+      "gaps": [],
       "brokenLinks": [],
       "contentHash": "a3b8d00eccd14d68",
       "storedHash": "5efbe1d2c378fd5f",
       "unreleased": true,
-      "releasable": false
+      "releasable": true
     },
     {
       "serial": "B73M/F2M/05/2026",
@@ -58,7 +48,7 @@
       "issueRev": "1.0",
       "effective_date": null,
       "configPath": "sims/b73m-f2m-05-2026.json",
-      "pages": 7,
+      "pages": 8,
       "sections": 5,
       "warnings": [
         "skipped smoke-detector (not installed)",
@@ -460,15 +450,6 @@
     ]
   },
   "gaps": [
-    {
-      "kind": "missing-asset",
-      "sim": "b73m-f2m-04-2026",
-      "serial": "B73M/F2M/04/2026",
-      "component": "jump-seat",
-      "detail": "components/jump-seat/v1.md references assets/jump-seat-operation.png, which does not exist",
-      "fix": "add components/jump-seat/assets/jump-seat-operation.png",
-      "configPath": "sims/b73m-f2m-04-2026.json"
-    },
     {
       "kind": "missing-chunk",
       "sim": "b73m-f2m-05-2026",

@@ -147,17 +147,7 @@
     "skipped cargo-fire-panel (not installed)",
     "section \"Aft electronic panel\" empty for this device"
   ],
-  "gaps": [
-    {
-      "kind": "missing-asset",
-      "sim": "b73m-f2m-04-2026",
-      "serial": "B73M/F2M/04/2026",
-      "component": "jump-seat",
-      "detail": "components/jump-seat/v1.md references assets/jump-seat-operation.png, which does not exist",
-      "fix": "add components/jump-seat/assets/jump-seat-operation.png",
-      "configPath": "sims/b73m-f2m-04-2026.json"
-    }
-  ],
+  "gaps": [],
   "brokenLinks": [],
   "contentHash": "a3b8d00eccd14d68"
 }

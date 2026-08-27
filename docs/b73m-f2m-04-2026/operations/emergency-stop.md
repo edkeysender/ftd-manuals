@@ -2,7 +2,7 @@
 id: emergency-stop
 title: Emergency Stop Switches
 description: Red push-buttons with yellow halo that cut power to all servos and drives.
-sidebar_position: 5
+sidebar_position: 6
 custom_edit_url: null
 ---
 

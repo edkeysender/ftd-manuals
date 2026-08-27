@@ -1,7 +1,7 @@
 ---
 id: revision-register
 title: Revision register
-sidebar_position: 2
+sidebar_position: 3
 custom_edit_url: null
 ---
 

@@ -1,7 +1,7 @@
 ---
 id: list-of-effective-sections
 title: List of effective sections
-sidebar_position: 3
+sidebar_position: 4
 custom_edit_url: null
 ---
 

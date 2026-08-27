@@ -1,7 +1,7 @@
 ---
 id: starting-panel
 title: Starting Panel
-sidebar_position: 6
+sidebar_position: 7
 custom_edit_url: null
 ---
 

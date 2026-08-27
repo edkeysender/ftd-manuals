@@ -4,7 +4,7 @@ title: Jump Seat
 description: >-
   Wall-mounted fold-down seat, stowed vertically when not in use, rated for one
   occupant of up to 100 kg.
-sidebar_position: 9
+sidebar_position: 10
 custom_edit_url: null
 ---
 
@@ -15,7 +15,7 @@ Component **`jump-seat`** · installed software **1.0.0** · documented range `>
 
 The jump seat is a fold-down seat mounted on the wall. It is stowed vertically against the wall when not in use and extended to the horizontal position for occupancy.
 
-**[figure not available: `assets/jump-seat-operation.png` — Extending and folding the jump seat, and the 100 kg maximum load]**
+![Extending and folding the jump seat, and the 100 kg maximum load](./jump-seat-assets/jump-seat-operation.png)
 
 :::caution
 Maximum occupant weight is **100 kg**. The seat is not occupied by more than one person.

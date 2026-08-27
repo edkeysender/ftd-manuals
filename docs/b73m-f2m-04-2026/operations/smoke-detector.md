@@ -4,7 +4,7 @@ title: Smoke Detector
 description: >-
   Ceiling-mounted FireAngel ST-622 smoke alarm above the IOS: 85 dB sounder,
   sealed 10-year battery, weekly test.
-sidebar_position: 6
+sidebar_position: 7
 custom_edit_url: null
 ---
 

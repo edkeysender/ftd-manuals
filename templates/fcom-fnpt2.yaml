@@ -11,6 +11,7 @@ chapters:
     title: General
     pages:
       - shared: general-info
+      - generated: table-of-contents
       - generated: revision-register
       - generated: list-of-effective-sections
   - id: operations

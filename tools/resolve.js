@@ -360,17 +360,33 @@ for (const simFile of simFiles) {
     }
   }
 
+  // Page titles, for the table of contents. Known only now that pass 2 has read every
+  // chunk's front matter.
+  const titleById = {};
+  for (const s of sections) titleById[s.docId] = s.title;
+
+  const GENERATED = {
+    "revision-register": { title: "Revision register", render: () => renderRevisionRegister(sim, sections) },
+    "list-of-effective-sections": { title: "List of effective sections", render: () => renderLOES(sim, sections) },
+    "table-of-contents": { title: "Table of contents", render: () => renderTOC(sim, sidebar, titleById, tpl, sections) },
+  };
+
+  // Generated pages are not in `sections`, so name them for the contents list too.
   for (const p of pages.filter(x => x.kind === "generated")) {
+    titleById[p.docId] = (GENERATED[p.id] || {}).title || p.id;
+  }
+
+  for (const p of pages.filter(x => x.kind === "generated")) {
+    const spec = GENERATED[p.id];
+    if (!spec) fail(`templates/${tpl.id}.yaml: unknown generated page "${p.id}" (expected ${Object.keys(GENERATED).join(", ")})`);
     const file = path.join(outDir, p.docId + ".md");
-    fs.mkdirSync(path.dirname(file), { recursive: true });
     const front = {
       id: path.basename(p.docId),
-      title: p.id === "revision-register" ? "Revision register" : "List of effective sections",
+      title: spec.title,
       sidebar_position: p.pos,
       custom_edit_url: null,
     };
-    const body = p.id === "revision-register" ? renderRevisionRegister(sim, sections) : renderLOES(sim, sections);
-    writePage(file, `---\n${yaml.dump(front)}---\n\n${body}`);
+    writePage(file, `---\n${yaml.dump(front)}---\n\n${spec.render()}`);
   }
 
   // cover / index page
@@ -536,6 +552,36 @@ function pruneStale(root, produced, dir = root) {
       fs.unlinkSync(abs);
     }
   }
+}
+
+/**
+ * Contents list for one manual, rendered from the sidebar tree so it always matches the
+ * order a reader actually sees. Chapters and sections become headings; pages become
+ * links. Sections missing their content are marked, the same as in the LOES.
+ */
+function renderTOC(sim, sidebar, titleById, tpl, sections) {
+  const missing = new Set(sections.filter(s => s.status === "gap").map(s => s.docId));
+  const lines = [];
+  const walk = (node, depth) => {
+    for (const item of node) {
+      if (typeof item === "string") {
+        const docId = item.replace(new RegExp(`^${sim.slug}/`), "");
+        const title = titleById[docId] || docId.split("/").pop();
+        const mark = missing.has(docId) ? " ⚠️" : "";
+        lines.push(`${"  ".repeat(depth)}- [${title}](/manuals/${sim.slug}/${docId})${mark}`);
+      } else if (item && item.items) {
+        lines.push(`${"  ".repeat(depth)}- **${item.label}**`);
+        walk(item.items, depth + 1);
+      }
+    }
+  };
+  walk(sidebar, 0);
+
+  return `${tpl.title} — **${sim.serial}**, Issue ${sim.manual.issue} Revision ${sim.manual.revision}`
+    + `${sim.manual.effective_date ? `, effective ${sim.manual.effective_date}` : ""}.\n\n`
+    + `Only the sections installed on this device are listed. Page numbering applies to the printed`
+    + ` and PDF editions; in this online edition each entry links to its section.\n\n`
+    + lines.join("\n") + "\n";
 }
 
 function renderRevisionRegister(sim, sections) {
