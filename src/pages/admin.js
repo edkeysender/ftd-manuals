@@ -729,6 +729,29 @@ function ManualLink({ slug }) {
   return <Link className={`${styles.btn} ${styles.btnPrimary}`} to={to}>Open manual</Link>;
 }
 
+/**
+ * Link to the rendered page for one chunk. A chunk only renders on a device whose
+ * installed version its applies_to range covers, so this finds such a device — there may
+ * be none, in which case the chunk is authored but not currently in any manual.
+ */
+function ChunkPreview({ componentId, chunk }) {
+  const { data } = useAdmin();
+  const { sims, cells } = data.coverage;
+  const on = sims.find(s => {
+    const cell = cells[`${componentId}|${s.slug}`];
+    return cell && cell.status === "ok" && cell.chunk === chunk;
+  });
+  const to = useBaseUrl(on ? `/manuals/${on.slug}/${cells[`${componentId}|${on.slug}`].docId}` : "/");
+  if (!on) {
+    return (
+      <span className={`${styles.badge} ${styles.badgeIdle}`} title="No device runs a version this chunk covers, so it is not rendered in any manual">
+        not in any manual
+      </span>
+    );
+  }
+  return <Link className={styles.btn} to={to} title={`As rendered for ${on.serial}`}>Preview</Link>;
+}
+
 /* --------------------------------------------------------------- Components */
 
 function Components() {
@@ -776,6 +799,7 @@ function Components() {
                       <li key={k.file}>
                         <Action path={k.source} title={`${c.name} — ${k.file}`} mode="edit" label={k.file} />{" "}
                         <span className={styles.mono}>{k.range}</span>{" "}
+                        <ChunkPreview componentId={c.id} chunk={k.file} />{" "}
                         <span className={styles.dim}>{k.hash} · {k.date}</span>
                       </li>
                     ))}

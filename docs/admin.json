@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-27T12:34:53.217Z",
+  "generatedAt": "2026-08-27T12:46:42.495Z",
   "repo": "ftd-aero/ftd-docs",
   "defaultBranch": "main",
   "totals": {
@@ -31,7 +31,7 @@
       ],
       "gaps": [],
       "brokenLinks": [],
-      "contentHash": "a3b8d00eccd14d68",
+      "contentHash": "7bf429132c2e617b",
       "storedHash": "5efbe1d2c378fd5f",
       "unreleased": true,
       "releasable": true
@@ -242,15 +242,15 @@
       "nextMajor": 3,
       "chunks": [
         {
-          "file": "v2.md",
+          "file": "v2.mdx",
           "major": 2,
           "range": ">=2.0.0 <3.0.0",
           "title": "Starting Panel",
-          "summary": "Single rotary knob that starts and shuts down the whole device, with Ready / Not Ready indication.",
-          "source": "components/starting-panel/v2.md",
-          "hash": "6355653",
-          "date": "2026-08-27",
-          "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+          "summary": "Rotary knob and touchscreen that start and shut down the whole device, with Not Ready / Ready indication.",
+          "source": "components/starting-panel/v2.mdx",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": [
             "emergency-stop"
           ]
@@ -335,37 +335,43 @@
         "status": "ok",
         "version": "1.0.0",
         "chunk": "v1.md",
-        "range": ">=1.0.0 <2.0.0"
+        "range": ">=1.0.0 <2.0.0",
+        "docId": "operations/emergency-stop"
       },
       "instructor-seat|b73m-f2m-04-2026": {
         "status": "ok",
         "version": "1.3.0",
         "chunk": "v1.md",
-        "range": ">=1.0.0 <2.0.0"
+        "range": ">=1.0.0 <2.0.0",
+        "docId": "operations/instructor-seat"
       },
       "jump-seat|b73m-f2m-04-2026": {
         "status": "ok",
         "version": "1.0.0",
         "chunk": "v1.md",
-        "range": ">=1.0.0 <2.0.0"
+        "range": ">=1.0.0 <2.0.0",
+        "docId": "operations/jump-seat"
       },
       "le-devices-annunciator|b73m-f2m-04-2026": {
         "status": "ok",
         "version": "1.0.0",
         "chunk": "v1.md",
-        "range": ">=1.0.0"
+        "range": ">=1.0.0",
+        "docId": "systems/aft-overhead/le-devices-annunciator"
       },
       "smoke-detector|b73m-f2m-04-2026": {
         "status": "ok",
         "version": "1.0.0",
         "chunk": "v1.mdx",
-        "range": ">=1.0.0 <2.0.0"
+        "range": ">=1.0.0 <2.0.0",
+        "docId": "operations/smoke-detector"
       },
       "starting-panel|b73m-f2m-04-2026": {
         "status": "ok",
         "version": "2.0.1",
-        "chunk": "v2.md",
-        "range": ">=2.0.0 <3.0.0"
+        "chunk": "v2.mdx",
+        "range": ">=2.0.0 <3.0.0",
+        "docId": "operations/starting-panel"
       },
       "cargo-fire-panel|b73m-f2m-04-2026": {
         "status": "not-installed",
@@ -375,7 +381,8 @@
         "status": "ok",
         "version": "1.0.0",
         "chunk": "v1.md",
-        "range": ">=1.0.0 <2.0.0"
+        "range": ">=1.0.0 <2.0.0",
+        "docId": "operations/emergency-stop"
       },
       "instructor-seat|b73m-f2m-05-2026": {
         "status": "not-installed",
@@ -388,7 +395,8 @@
         "status": "ok",
         "version": "1.0.0",
         "chunk": "v1.md",
-        "range": ">=1.0.0"
+        "range": ">=1.0.0",
+        "docId": "systems/aft-overhead/le-devices-annunciator"
       },
       "smoke-detector|b73m-f2m-05-2026": {
         "status": "absent"
@@ -396,7 +404,8 @@
       "starting-panel|b73m-f2m-05-2026": {
         "status": "gap",
         "version": "3.0.0",
-        "reason": "no-chunk"
+        "reason": "no-chunk",
+        "docId": "operations/starting-panel"
       },
       "cargo-fire-panel|b73m-f2m-05-2026": {
         "status": "not-installed",
@@ -433,8 +442,8 @@
       {
         "from": "starting-panel",
         "to": "emergency-stop",
-        "chunk": "v2.md",
-        "source": "components/starting-panel/v2.md",
+        "chunk": "v2.mdx",
+        "source": "components/starting-panel/v2.mdx",
         "known": true,
         "brokenIn": []
       }

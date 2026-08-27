@@ -42,9 +42,11 @@ export function ManualFooter({ serial, issue, revision, sectionId, client, uncon
         </span>
         <span className={styles.owner}>{client}</span>
       </div>
+      {/* Verbatim from the source FCOM, where it is the footer of every page. */}
       <p className={styles.notice}>
-        © FTD.aero Sp. z o.o. Proprietary. This section is controlled at section level and is valid only
-        for the serial number shown. {uncontrolled}
+        The information contained in this document is proprietary material protected by international law.
+        You must not, directly or indirectly, use, disclose, distribute, print, or copy this document or any
+        part of it without prior consent of FTD.aero Sp. z o.o.
       </p>
     </footer>
   );

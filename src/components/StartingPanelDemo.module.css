@@ -1,0 +1,137 @@
+/* Starting panel mockups and demonstration. Infima variables so both themes work. */
+
+.wrap {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+  padding: 1.1rem 1.15rem 0.9rem;
+  margin: 1.5rem 0;
+  background: var(--ifm-background-surface-color);
+}
+
+.panels {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.figure { margin: 0; flex: 1 1 300px; min-width: 260px; }
+.figure figcaption {
+  font-size: 0.76rem;
+  color: var(--ifm-color-emphasis-600);
+  text-align: center;
+  margin-top: 0.4rem;
+}
+
+/* ---------- physical plate ---------- */
+.plate { width: 100%; height: auto; display: block; }
+.plateBody { fill: #6f6f68; stroke: #3a3a35; stroke-width: 2; }
+.rule { stroke: #d8d2b0; stroke-width: 1.5; }
+.plateLabel {
+  fill: #d8d2b0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-anchor: middle;
+  font-family: var(--ifm-font-family-base);
+}
+.knobMark {
+  fill: #d8d2b0;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-anchor: middle;
+  font-family: var(--ifm-font-family-base);
+}
+
+.lamp { stroke: #2b2b27; stroke-width: 1.5; transition: fill 0.25s ease; }
+.lampOff { fill: #2f2f2b; }
+.lampRedOn { fill: #d8402f; }
+.lampGreenOn { fill: #2fbf5f; }
+.lampText {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-anchor: middle;
+  fill: #6c6c64;
+  font-family: var(--ifm-font-family-base);
+}
+.lampTextOn { fill: #10100e; }
+
+.knobBody { fill: #e8e3d2; stroke: #4a4a44; stroke-width: 2; }
+.knobPointer { stroke: #2b2b27; stroke-width: 4; stroke-linecap: round; transition: all 0.35s ease; }
+.knobHub { fill: #9a948a; }
+
+/* ---------- touchscreen ---------- */
+.screen {
+  background: #1552b5;
+  color: #fff;
+  border: 6px solid #23231f;
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem 0.85rem;
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.screenTop {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.66rem;
+  opacity: 0.85;
+}
+.screenState {
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-align: center;
+  margin: auto 0 0;
+}
+.screenStateBusy { color: #ffd84d; }
+.screenHint { font-size: 0.7rem; text-align: center; opacity: 0.85; }
+.screenButtons {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: auto;
+}
+.screenBtn {
+  flex: 1;
+  text-align: center;
+  font-size: 0.62rem;
+  padding: 0.2rem 0.3rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* ---------- controls ---------- */
+.controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+.control, .controlMuted {
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.32rem 0.7rem;
+  border-radius: 5px;
+  border: 1px solid var(--ifm-color-primary);
+  color: var(--ifm-color-primary);
+  background: none;
+}
+.controlMuted { border-color: var(--ifm-color-emphasis-400); color: var(--ifm-color-emphasis-700); }
+.control:disabled, .controlMuted:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.caption {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  min-height: 2.4em;
+}
+.disclaimer {
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
+  color: var(--ifm-color-emphasis-600);
+}
+
+@media (max-width: 700px) {
+  .panels { flex-direction: column; }
+}

@@ -1,21 +1,8 @@
 ---
-id: starting-panel
+applies_to: ">=2.0.0 <3.0.0"
 title: Starting Panel
-description: >-
-  Rotary knob and touchscreen that start and shut down the whole device, with
-  Not Ready / Ready indication.
-sidebar_position: 8
-custom_edit_url: null
+summary: "Rotary knob and touchscreen that start and shut down the whole device, with Not Ready / Ready indication."
 ---
-
-import { ManualHeader, ManualFooter } from "@site/src/components/ManualPage";
-
-<ManualHeader manual={"FCOM"} serial={"B73M/F2M/04/2026"} issue={1} revision={1} chapter={"FNPT operations"} section={"Starting Panel"} effective={"2026-08-27"} />
-
-:::info[Effectivity]
-Component **`starting-panel`** · installed software **2.0.1** · documented range `>=2.0.0 <3.0.0` · chunk revision `uncommitted` (—)
-:::
-
 
 import StartingPanelDemo from "@site/src/components/StartingPanelDemo";
 
@@ -53,7 +40,7 @@ If anything unusual happens during start-up or shutdown, contact the manufacture
 
 ## Related
 
-- [Emergency Stop Switches](/manuals/b73m-f2m-04-2026/operations/emergency-stop) — pressing an emergency stop may require another start-up.
+- [[emergency-stop]] — pressing an emergency stop may require another start-up.
 
 TODO(łukasz): the source FCOM shows the touchscreen states as `STOPPED` and `STOPPING` (figs. 2 and 3).
 Confirm the wording of the running and starting states, and the exact long-press duration for the
@@ -61,6 +48,3 @@ virtual shutdown button, so the demonstration can name them accurately.
 
 TODO(łukasz): confirm a typical start-up duration. The FCOM gives a figure for shutdown
 (approximately 5 minutes) but only says start-up "takes a while".
-
-
-<ManualFooter serial={"B73M/F2M/04/2026"} issue={1} revision={1} sectionId={"starting-panel"} client={"TFC European Airline Services GmbH"} />

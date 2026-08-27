@@ -464,8 +464,9 @@ for (const simFile of simFiles) {
     const page = pages.find(p => p.id === id && (p.kind === "component" || p.kind === "gap"));
     coverageCells[`${id}|${sim.slug}`] = !entry ? { status: "absent" }
       : entry.installed === false ? { status: "not-installed", note: entry.note || null }
-      : page && page.kind === "component" ? { status: "ok", version: entry.version, chunk: page.chunk.file, range: page.chunk.range }
-      : page ? { status: "gap", version: entry.version || null, reason: page.reason }
+      // docId lets the admin panel link straight to the rendered page.
+      : page && page.kind === "component" ? { status: "ok", version: entry.version, chunk: page.chunk.file, range: page.chunk.range, docId: page.docId }
+      : page ? { status: "gap", version: entry.version || null, reason: page.reason, docId: page.docId }
       : { status: "not-in-template", version: entry.version || null };
   }
 
