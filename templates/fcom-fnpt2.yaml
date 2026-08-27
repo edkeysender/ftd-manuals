@@ -21,6 +21,7 @@ chapters:
       - component: emergency-stop
       - component: smoke-detector
       - component: starting-panel
+      - component: starting-panel-error-codes
       - component: instructor-seat
       - component: jump-seat
   - id: systems
@@ -34,3 +35,7 @@ chapters:
         title: Aft electronic panel
         pages:
           - component: cargo-fire-panel
+      - id: circuit-breakers
+        title: Circuit breakers
+        pages:
+          - component: circuit-breaker-wall

@@ -162,32 +162,9 @@ Computer addresses and process names are site-specific. The current configuratio
 
 When a sequence step fails, the panel sets the state to **ERROR** and publishes the step index and the error code, so the state line reads for example `ERROR 10/18 — code 208`. Both numbers are recorded before retrying.
 
-| Code | Sequence / step | Description | Action |
-|---|---|---|---|
-| `101` | shutdown, restart — Update sequence state | Sequence state could not be published at the start of a shutdown or restart. | Check the ARINC/support link to the panel. Retry the command. |
-| `102` | shutdown, restart — Shutting down IOS | IOS computer (`70.84.68.10`) did not accept the shutdown command. | Check network connectivity and the remote shutdown credentials for the IOS PC. Shut it down manually if needed. |
-| `103` | shutdown, restart — Shutting down Display | Display computer (`70.84.68.11`) did not accept the shutdown command. | Check network connectivity and the remote shutdown credentials for the Display PC. |
-| `104` | shutdown, restart — Shutting down Avionics | Avionics computer (`70.84.68.12`) did not accept the shutdown command. | Check network connectivity and the remote shutdown credentials for the Avionics PC. |
-| `105` | shutdown, restart — Wait for systems shutdown | Computers were still running when the shutdown wait expired. | Confirm all three PCs are off before power is removed. Report repeated occurrences. |
-| `115` | shutdown — Wait for power shutdown | The 60 s wait after the relays were switched off did not complete. | Retry the shutdown. Report repeated occurrences. |
-| `117` | shutdown — Wait for power shutdown | The 5 s wait between relay 4 off and power restore did not complete. | Retry the shutdown. Report repeated occurrences. |
-| `119` | shutdown — Changing status state | Sequence state could not be set back to STOPPED after shutdown. | Check the ARINC/support link. Log out and back in to refresh the panel. |
-| `200` | start — Update sequence state | Sequence state could not be published at the start of a start sequence. | Check the ARINC/support link to the panel. Retry the start. |
-| `202` | start — Wait after relay 1 | The 1 s wait after relay 1 did not complete. | Retry the start. Report repeated occurrences. |
-| `204` | start — Wait after relay 2 | The 1 s wait after relay 2 did not complete. | Retry the start. Report repeated occurrences. |
-| `206` | start — Wait after relay 3 | The 1 s wait after relay 3 did not complete. | Retry the start. Report repeated occurrences. |
-| `208` | start — Wait for power stabilization | The 60 s power stabilisation wait did not complete. | Retry the start. Report repeated occurrences. |
-| `215` | start, restart — Wake-on-LAN Avionics | Wake-on-LAN packet to the Avionics PC was not sent or not acknowledged. | Check the broadcast address `70.84.68.255` port 9, the PC's WOL setting in BIOS and its network cable. |
-| `216` | start, restart — Wake-on-LAN IOS | Wake-on-LAN packet to the IOS PC was not sent or not acknowledged. | Check the broadcast address `70.84.68.255` port 9, the PC's WOL setting in BIOS and its network cable. |
-| `217` | start, restart — Wake-on-LAN Display | Wake-on-LAN packet to the Display PC was not sent or not acknowledged. | Check the broadcast address `70.84.68.255` port 9, the PC's WOL setting in BIOS and its network cable. |
-| `218` | start, restart — Wait after wake-on-LAN | The 3 s wait after wake-on-LAN did not complete. | Retry the start. Report repeated occurrences. |
-| `219` | start, restart — Wait for SIM ready | SIM did not report ready. | Open the process list and check the processes on `70.84.68.11`. Restart the simulator; if unchanged, raise a maintenance request. |
-| `220` | start, restart — Wait for CLS service state | Control loading system did not reach service state 4. | Check the CLS emergency stop is released and reset, then restart. Report repeated occurrences. |
-| `222` | start — Set sequence state to ready | Sequence state could not be set to RUNNING at the end of the start sequence. | Check the ARINC/support link. The simulator may be usable although the panel shows the wrong state; confirm before training. |
-| `1001` | start — Projector wake-up | Projector did not respond to wake-up. | Check network connectivity and PJLink settings. |
-| `-1` | any | Unknown error. | Check logs for details. |
+The codes themselves, what each one means and what to do about it, are held separately and are revised with the panel software: see [[starting-panel-error-codes]].
 
-Codes `101`–`105` and `215`–`220` are shared by the shutdown and restart sequences; the state text tells which one was running. The relay switching steps are commanded without feedback — the panel cannot tell whether a relay actually moved, so those steps report no error code and a relay failure surfaces later, as a computer that never wakes or a system that never reports ready.
+The relay switching steps are commanded without feedback — the panel cannot tell whether a relay actually moved, so those steps report no error code and a relay failure surfaces later, as a computer that never wakes or a system that never reports ready.
 
 ## Fault reporting
 

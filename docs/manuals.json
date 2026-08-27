@@ -3,7 +3,7 @@
     "serial": "B73M/F2M/04/2026",
     "slug": "b73m-f2m-04-2026",
     "issueRev": "1.1",
-    "pages": 11,
+    "pages": 13,
     "warnings": [
       "skipped cargo-fire-panel (not installed)",
       "section \"Aft electronic panel\" empty for this device"
@@ -17,10 +17,13 @@
     "pages": 8,
     "warnings": [
       "skipped smoke-detector (not installed)",
+      "skipped starting-panel-error-codes (not installed)",
       "skipped instructor-seat (not installed)",
       "skipped jump-seat (not installed)",
       "skipped cargo-fire-panel (not installed)",
-      "section \"Aft electronic panel\" empty for this device"
+      "section \"Aft electronic panel\" empty for this device",
+      "skipped circuit-breaker-wall (not installed)",
+      "section \"Circuit breakers\" empty for this device"
     ],
     "gaps": 1
   }

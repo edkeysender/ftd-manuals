@@ -18,6 +18,10 @@
         "version": "2.0.1",
         "installed": true
       },
+      "starting-panel-error-codes": {
+        "version": "1.0.0",
+        "installed": true
+      },
       "emergency-stop": {
         "version": "1.0.0",
         "installed": true
@@ -35,6 +39,10 @@
         "installed": true
       },
       "jump-seat": {
+        "version": "1.0.0",
+        "installed": true
+      },
+      "circuit-breaker-wall": {
         "version": "1.0.0",
         "installed": true
       },
@@ -100,10 +108,22 @@
       "docId": "operations/starting-panel",
       "version": "2.0.1",
       "range": ">=2.0.0 <3.0.0",
-      "hash": "aea0e41",
+      "hash": "2690985",
       "date": "2026-08-27",
-      "subject": "Starting panel: panel mockups and an interactive demonstration",
+      "subject": "Starting panel: rebuild from the F.7 starting panel manual",
       "source": "components/starting-panel/v2.mdx",
+      "status": "ok"
+    },
+    {
+      "id": "starting-panel-error-codes",
+      "title": "Starting Panel Error Codes",
+      "docId": "operations/starting-panel-error-codes",
+      "version": "1.0.0",
+      "range": ">=1.0.0 <2.0.0",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "components/starting-panel-error-codes/v1.md",
       "status": "ok"
     },
     {
@@ -141,6 +161,18 @@
       "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
       "source": "components/le-devices-annunciator/v1.md",
       "status": "ok"
+    },
+    {
+      "id": "circuit-breaker-wall",
+      "title": "Circuit Breaker Wall",
+      "docId": "systems/circuit-breakers/circuit-breaker-wall",
+      "version": "1.0.0",
+      "range": ">=1.0.0 <2.0.0",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "components/circuit-breaker-wall/v1.md",
+      "status": "ok"
     }
   ],
   "warnings": [
@@ -149,5 +181,5 @@
   ],
   "gaps": [],
   "brokenLinks": [],
-  "contentHash": "d1b65c5a85cd3dcc"
+  "contentHash": "19f3506bfd09eff1"
 }
