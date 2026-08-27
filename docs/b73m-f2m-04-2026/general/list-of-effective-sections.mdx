@@ -5,6 +5,10 @@ sidebar_position: 4
 custom_edit_url: null
 ---
 
+import { ManualHeader, ManualFooter } from "@site/src/components/ManualPage";
+
+<ManualHeader manual={"FCOM"} serial={"B73M/F2M/04/2026"} issue={1} revision={1} chapter={"General"} section={"List of effective sections"} effective={"2026-08-27"} />
+
 This manual is controlled at section level. Each section below is effective for the serial number on the cover page at the stated issue and revision.
 
 | Section | Component id | Installed version | Documented range | Issue | Rev. | Effective date |
@@ -17,3 +21,6 @@ This manual is controlled at section level. Each section below is effective for 
 | Instructor Seat | `instructor-seat` | 1.3.0 | `>=1.0.0 <2.0.0` | 1 | 1 | 2026-08-27 |
 | Jump Seat | `jump-seat` | 1.0.0 | `>=1.0.0 <2.0.0` | 1 | 1 | 2026-08-27 |
 | LE Devices Annunciator Panel | `le-devices-annunciator` | 1.0.0 | `>=1.0.0` | 1 | 1 | 2026-08-27 |
+
+
+<ManualFooter serial={"B73M/F2M/04/2026"} issue={1} revision={1} sectionId={"list-of-effective-sections"} client={"TFC European Airline Services GmbH"} />

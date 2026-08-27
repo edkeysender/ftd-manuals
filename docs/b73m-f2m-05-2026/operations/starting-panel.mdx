@@ -5,6 +5,10 @@ sidebar_position: 7
 custom_edit_url: null
 ---
 
+import { ManualHeader, ManualFooter } from "@site/src/components/ManualPage";
+
+<ManualHeader manual={"FCOM"} serial={"B73M/F2M/05/2026"} issue={1} revision={0} chapter={"FNPT operations"} section={"Starting Panel"} effective={""} />
+
 :::danger[Section not available]
 Software version **3.0.0** is installed on this device, but no chunk of `starting-panel` documents that version (documented ranges: `>=2.0.0 <3.0.0`).
 
@@ -12,3 +16,6 @@ This manual must not be issued while this section is missing. Raise a DOK ticket
 :::
 
 TODO(łukasz): supply the description of **Starting Panel** for this software version.
+
+
+<ManualFooter serial={"B73M/F2M/05/2026"} issue={1} revision={0} sectionId={"starting-panel"} client={"TODO(łukasz): operator name for this device"} />

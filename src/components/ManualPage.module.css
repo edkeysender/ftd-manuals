@@ -1,0 +1,78 @@
+/* Running header and footer for manual pages. Infima variables so both themes work. */
+
+.header {
+  border-bottom: 2px solid var(--ifm-color-emphasis-800);
+  padding-bottom: 0.45rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+}
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+.headerRow + .headerRow {
+  margin-top: 0.15rem;
+  color: var(--ifm-color-emphasis-700);
+  border-top: 1px solid var(--ifm-color-emphasis-300);
+  padding-top: 0.15rem;
+}
+.docTitle { font-weight: 700; text-transform: uppercase; }
+.serial { font-family: var(--ifm-font-family-monospace); font-weight: 600; }
+.issue { white-space: nowrap; }
+.chapter { text-transform: uppercase; letter-spacing: 0.05em; }
+.section { font-weight: 600; text-align: center; flex: 1; }
+.effective { white-space: nowrap; }
+
+.footer {
+  margin-top: 3rem;
+  font-size: 0.74rem;
+  color: var(--ifm-color-emphasis-700);
+}
+.rule { border-top: 2px solid var(--ifm-color-emphasis-800); margin-bottom: 0.45rem; }
+.footerRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.footerRow code { font-size: 0.95em; }
+.owner { text-align: right; }
+.notice { margin: 0.35rem 0 0; font-size: 0.7rem; color: var(--ifm-color-emphasis-600); }
+
+/* Middle cell collapses first on a narrow screen. */
+@media (max-width: 700px) {
+  .headerRow { flex-wrap: wrap; }
+  .section { flex: 100%; text-align: left; order: 3; }
+}
+
+/*
+ * Print: repeat the header and footer on every sheet and drop the site chrome, so
+ * Ctrl+P produces something close to the controlled document.
+ */
+@media print {
+  .header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    color: #000;
+    border-bottom: 2px solid #000;
+  }
+  .footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #fff;
+    color: #000;
+    margin-top: 0;
+  }
+  .rule { border-top-color: #000; }
+  .headerRow + .headerRow { color: #000; border-top-color: #999; }
+  .notice, .owner { color: #333; }
+}

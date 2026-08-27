@@ -6,6 +6,10 @@ sidebar_position: 6
 custom_edit_url: null
 ---
 
+import { ManualHeader, ManualFooter } from "@site/src/components/ManualPage";
+
+<ManualHeader manual={"FCOM"} serial={"B73M/F2M/04/2026"} issue={1} revision={1} chapter={"FNPT operations"} section={"Emergency Stop Switches"} effective={"2026-08-27"} />
+
 :::info[Effectivity]
 Component **`emergency-stop`** · installed software **1.0.0** · documented range `>=1.0.0 <2.0.0` · chunk revision `6355653` (2026-08-27)
 :::
@@ -20,8 +24,11 @@ Pressing any emergency stop removes power from all servomechanisms and drives in
 If a switch was pressed by accident:
 
 1. Rotate the button in the direction of the arrows marked on it. The button pops out and power is restored to the servos.
-2. Check the device state on the [Starting Panel](/manuals/b73m-f2m-05-2026/operations/starting-panel). Another start-up may be required.
+2. Check the device state on the [Starting Panel](/manuals/b73m-f2m-04-2026/operations/starting-panel). Another start-up may be required.
 
 ## Related safety equipment
 
 The IOS is also equipped with a fire extinguisher, a smoke detector with alarm on the ceiling, an intercom to the technician room, a first aid kit in a visible place and marked escape routes according to local regulations. A dummy fire extinguisher is fitted on the circuit-breaker wall for training purposes only and must not be used in an emergency.
+
+
+<ManualFooter serial={"B73M/F2M/04/2026"} issue={1} revision={1} sectionId={"emergency-stop"} client={"TFC European Airline Services GmbH"} />

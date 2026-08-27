@@ -164,6 +164,37 @@ for (const simFile of simFiles) {
     record(file);
   };
 
+  /**
+   * Wraps a page in the running header and footer every controlled page carries: which
+   * device, which issue and revision, which section. Emitted as .mdx so the components
+   * can be imported; nothing here is authored by hand.
+   */
+  const emitPage = (front, body, page) => {
+    const attrs = o => Object.entries(o)
+      .map(([k, v]) => `${k}={${JSON.stringify(v ?? "")}}`).join(" ");
+    const head = {
+      manual: tpl.short || tpl.title,
+      serial: sim.serial,
+      issue: sim.manual.issue,
+      revision: sim.manual.revision,
+      chapter: page.chapterTitle || "",
+      section: front.title || "",
+      effective: sim.manual.effective_date || "",
+    };
+    const foot = {
+      serial: sim.serial,
+      issue: sim.manual.issue,
+      revision: sim.manual.revision,
+      sectionId: page.id || "",
+      client: sim.client,
+    };
+    return `---\n${yaml.dump(front)}---\n\n`
+      + `import { ManualHeader, ManualFooter } from "@site/src/components/ManualPage";\n\n`
+      + `<ManualHeader ${attrs(head)} />\n\n`
+      + body
+      + `\n\n<ManualFooter ${attrs(foot)} />\n`;
+  };
+
   const sections = [];      // feeds the LOES / revision register
   const sidebar = [];
   const warnings = [];
@@ -184,7 +215,7 @@ for (const simFile of simFiles) {
   const linkTargets = {};
   const pages = [];
 
-  function walk(node, chapterPath) {
+  function walk(node, chapterPath, chapterTitle) {
     const items = [];
     for (const p of node.pages || []) {
       if (p.component) {
@@ -196,7 +227,7 @@ for (const simFile of simFiles) {
         if (!registry[id]) {
           gapEntry("missing-component", id, `installed on ${sim.serial} but there is no components/${id}/ folder`,
             `create components/${id}/component.yaml and a first chunk`);
-          pages.push({ kind: "gap", id, docId, reason: "no-component-folder" });
+          pages.push({ kind: "gap", id, docId, reason: "no-component-folder", chapterTitle });
           items.push(`${sim.slug}/${docId}`);
           continue;
         }
@@ -204,7 +235,7 @@ for (const simFile of simFiles) {
         if (!version) {
           gapEntry("missing-version", id, `installed on ${sim.serial} with no version in the config`,
             `add a version to "${id}" in ${configPath}`);
-          pages.push({ kind: "gap", id, docId, reason: "no-version" });
+          pages.push({ kind: "gap", id, docId, reason: "no-version", chapterTitle });
           items.push(`${sim.slug}/${docId}`);
           continue;
         }
@@ -213,26 +244,26 @@ for (const simFile of simFiles) {
           const have = registry[id].chunks.map(c => c.range).join(", ");
           gapEntry("missing-chunk", id, `no chunk of "${id}" covers installed version ${version} (have: ${have})`,
             `write components/${id}/v${nextMajor(id)}.md with applies_to covering ${version}`, version);
-          pages.push({ kind: "gap", id, docId, reason: "no-chunk", version, have });
+          pages.push({ kind: "gap", id, docId, reason: "no-chunk", version, have, chapterTitle });
           items.push(`${sim.slug}/${docId}`);
           continue;
         }
-        pages.push({ kind: "component", id, docId, chunk, version });
+        pages.push({ kind: "component", id, docId, chunk, version, chapterTitle });
         items.push(`${sim.slug}/${docId}`);
       } else if (p.shared) {
         const file = path.join(ROOT, "shared", `${p.shared}.md`);
         if (!fs.existsSync(file)) fail(`shared page "${p.shared}" not found`);
         const docId = `${chapterPath}/${p.shared}`;
-        pages.push({ kind: "shared", id: p.shared, docId, file });
+        pages.push({ kind: "shared", id: p.shared, docId, file, chapterTitle });
         items.push(`${sim.slug}/${docId}`);
       } else if (p.generated) {
         const docId = `${chapterPath}/${p.generated}`;
-        pages.push({ kind: "generated", id: p.generated, docId });
+        pages.push({ kind: "generated", id: p.generated, docId, chapterTitle });
         items.push(`${sim.slug}/${docId}`);
       }
     }
     for (const s of node.sections || []) {
-      const sub = walk(s, `${chapterPath}/${s.id}`);
+      const sub = walk(s, `${chapterPath}/${s.id}`, chapterTitle);
       if (sub.length) items.push({ type: "category", label: s.title, items: sub });
       else warnings.push(`section "${s.title}" empty for this device`);
     }
@@ -240,7 +271,7 @@ for (const simFile of simFiles) {
   }
 
   for (const ch of tpl.chapters) {
-    const items = walk(ch, ch.id);
+    const items = walk(ch, ch.id, ch.title);
     if (items.length) sidebar.push({ type: "category", label: ch.title, collapsed: false, items });
   }
 
@@ -313,7 +344,7 @@ for (const simFile of simFiles) {
     pos += 1;
     p.pos = pos;
     if (p.kind === "generated") continue;   // written once `sections` is complete
-    const file = path.join(outDir, p.docId + ".md");
+    const file = path.join(outDir, p.docId + ".mdx");
     fs.mkdirSync(path.dirname(file), { recursive: true });
 
     if (p.kind === "component") {
@@ -327,7 +358,7 @@ for (const simFile of simFiles) {
         custom_edit_url: null,
       };
       const body = `:::info[Effectivity]\nComponent **\`${p.id}\`** · installed software **${p.version}** · documented range \`${p.chunk.range}\` · chunk revision \`${p.chunk.hash}\` (${p.chunk.date})\n:::\n\n` + withAssets(resolveLinks(p.chunk.body, rel));
-      writePage(file, `---\n${yaml.dump(front)}---\n\n${body}`);
+      writePage(file, emitPage(front, body, p));
       hashInput.push(p.docId + " " + p.chunk.body);
       sections.push({ id: p.id, title: front.title, docId: p.docId, version: p.version, range: p.chunk.range,
         hash: p.chunk.hash, date: p.chunk.date, subject: p.chunk.subject, source: rel, status: "ok" });
@@ -337,7 +368,7 @@ for (const simFile of simFiles) {
       const { front: f, body: b } = splitFrontMatter(fs.readFileSync(p.file, "utf8"), rel);
       const git = gitInfo(rel);
       const front = { id: path.basename(p.docId), title: f.title, sidebar_position: pos, custom_edit_url: null };
-      writePage(file, `---\n${yaml.dump(front)}---\n\n${resolveLinks(b, rel)}`);
+      writePage(file, emitPage(front, resolveLinks(b, rel), p));
       hashInput.push(p.docId + " " + b);
       sections.push({ id: p.id, title: f.title, docId: p.docId, version: "—", range: "all", ...git, source: rel, status: "ok" });
 
@@ -353,7 +384,7 @@ for (const simFile of simFiles) {
           ? `Component \`${p.id}\` is listed as installed on this device but its configuration entry has no software version.`
           : `Component \`${p.id}\` is listed as installed on this device but has no source folder \`components/${p.id}/\`.`;
       const body = `:::danger[Section not available]\n${why}\n\nThis manual must not be issued while this section is missing. Raise a DOK ticket for component \`${p.id}\`.\n:::\n\nTODO(łukasz): supply the description of **${name}** for this software version.\n`;
-      writePage(file, `---\n${yaml.dump(front)}---\n\n${body}`);
+      writePage(file, emitPage(front, body, p));
       hashInput.push(p.docId + " GAP:" + p.reason);
       sections.push({ id: p.id, title: name, docId: p.docId, version: p.version || "—", range: "—",
         hash: "—", date: "—", subject: "section missing", source: `components/${p.id}/`, status: "gap" });
@@ -379,14 +410,14 @@ for (const simFile of simFiles) {
   for (const p of pages.filter(x => x.kind === "generated")) {
     const spec = GENERATED[p.id];
     if (!spec) fail(`templates/${tpl.id}.yaml: unknown generated page "${p.id}" (expected ${Object.keys(GENERATED).join(", ")})`);
-    const file = path.join(outDir, p.docId + ".md");
+    const file = path.join(outDir, p.docId + ".mdx");
     const front = {
       id: path.basename(p.docId),
       title: spec.title,
       sidebar_position: p.pos,
       custom_edit_url: null,
     };
-    writePage(file, `---\n${yaml.dump(front)}---\n\n${spec.render()}`);
+    writePage(file, emitPage(front, spec.render(), p));
   }
 
   // cover / index page
