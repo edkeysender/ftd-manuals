@@ -7,6 +7,8 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import * as store from './store.js';
 import * as ai from './ai.js';
 import { blankContent } from './docgen.js';
@@ -168,9 +170,27 @@ export const TOOLS = [
     annotations: { title: 'Edit doc (batch)', ...RW },
   },
   {
+    name: 'import_local_files',
+    description:
+      "Import files from the console machine's local disk into the module draft's assets folder — the way to add photos/diagrams that exist as files: pass absolute paths of files, or of a folder (all images in it are imported). No bytes travel through the model. Returns the served URLs. Prefer this or upload_photo_from_url over upload_photo.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...SLUG_VER,
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Absolute local paths, e.g. ["C:\\\\ftd\\\\diagrams\\\\stp-wiring.png"] or a folder path',
+        },
+      },
+      required: ['slug', 'version', 'paths'],
+    },
+    annotations: { title: 'Import local files', ...RW },
+  },
+  {
     name: 'upload_photo',
     description:
-      "Upload an image (or other file) from base64 data into the module draft's assets folder. Returns the served URL to use in <img src=\"…\">.",
+      "Upload a SMALL image (a few KB) from base64 data into the module draft's assets folder. Do not use it for real photos — producing hundreds of KB of base64 in a tool call is impractical; use import_local_files (files on the console machine), upload_photo_from_url (public URL) or generate_illustration instead. Returns the served URL.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -352,6 +372,30 @@ async function callTool(name, args) {
       const buffer = Buffer.from(args.data_base64, 'base64');
       if (!buffer.length) throw new Error('data_base64 is empty or invalid');
       return await store.saveAssets(args.slug, args.version, [{ name: args.name, buffer }]);
+    }
+    case 'import_local_files': {
+      const files = [];
+      for (const p of args.paths || []) {
+        const abs = path.resolve(String(p));
+        let st;
+        try {
+          st = await fs.stat(abs);
+        } catch {
+          throw new Error(`Path not found: ${abs}`);
+        }
+        if (st.isDirectory()) {
+          for (const name of await fs.readdir(abs)) {
+            if (/\.(png|jpe?g|gif|webp|svg|pdf)$/i.test(name)) {
+              files.push({ name, buffer: await fs.readFile(path.join(abs, name)) });
+            }
+          }
+        } else {
+          if (st.size > 20 * 1024 * 1024) throw new Error(`${abs} is larger than 20 MB`);
+          files.push({ name: path.basename(abs), buffer: await fs.readFile(abs) });
+        }
+      }
+      if (!files.length) throw new Error('No files found at the given paths');
+      return await store.saveAssets(args.slug, args.version, files);
     }
     case 'upload_photo_from_url': {
       const dl = await ai.downloadImage(args.url, { minBytes: 1 });

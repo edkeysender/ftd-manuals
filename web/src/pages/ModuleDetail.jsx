@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, CATEGORIES, timeAgo } from '../api.js';
+import { api, CATEGORIES, timeAgo, readFileAsBase64 } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast } from '../App.jsx';
 
@@ -82,6 +82,9 @@ export default function ModuleDetail() {
       <div className="tabs">
         <button className={tab === 'docs' ? 'active' : ''} onClick={() => setTab('docs')}>
           Documentation
+        </button>
+        <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
+          Assets
         </button>
         <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
           History
@@ -198,8 +201,100 @@ export default function ModuleDetail() {
         </table>
       )}
 
+      {tab === 'assets' && <AssetsTab slug={slug} docs={docs} />}
+
       {tab === 'software' && (
         <SoftwareTab data={data} slug={slug} reload={load} />
+      )}
+    </div>
+  );
+}
+
+function AssetsTab({ slug, docs }) {
+  const toast = useToast();
+  const [assets, setAssets] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const draft = docs.find((d) => d.status === 'draft' || d.status === 'in-review');
+
+  const load = () => api.listAssets(slug).then(setAssets).catch((e) => toast(e.message, 'err'));
+  useEffect(() => {
+    load();
+  }, [slug]);
+
+  async function upload(fileList) {
+    if (!draft) return toast('Assets are added to a draft — create a doc draft first', 'err');
+    const files = [...fileList];
+    if (!files.length) return;
+    setBusy(true);
+    try {
+      const payload = await Promise.all(files.map(readFileAsBase64));
+      const saved = await api.uploadAssets(slug, draft.version, payload);
+      toast(`${saved.length} file${saved.length === 1 ? '' : 's'} added to ${draft.version}`);
+      load();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div
+        className={`dropzone ${drag ? 'over' : ''} ${draft ? '' : 'disabled'}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          upload(e.dataTransfer.files);
+        }}
+      >
+        <strong>{busy ? 'Uploading…' : 'Drop images here'}</strong>
+        <span className="muted">
+          {draft ? ` — or ` : ' — no open draft; '}
+          {draft && (
+            <label className="link">
+              choose files
+              <input type="file" multiple accept="image/*,.pdf,.svg" hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
+            </label>
+          )}
+          {draft ? `. Files are committed to ${draft.branch}.` : 'create a doc draft to add assets.'}
+        </span>
+      </div>
+
+      {assets === null ? (
+        <div className="muted">Loading…</div>
+      ) : assets.length === 0 ? (
+        <div className="empty">No assets yet.</div>
+      ) : (
+        <div className="asset-grid">
+          {assets.map((a) => (
+            <div className="asset-card" key={a.name}>
+              {/\.(png|jpe?g|gif|webp|svg)$/i.test(a.name) ? (
+                <img src={a.url} alt={a.name} loading="lazy" />
+              ) : (
+                <div className="asset-file">{a.name.split('.').pop().toUpperCase()}</div>
+              )}
+              <div className="asset-name" title={a.url}>
+                {a.name}
+              </div>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  navigator.clipboard?.writeText(`<figure><img src="${a.url}" alt="${a.name}"><figcaption>TODO(author): caption</figcaption></figure>`);
+                  toast('Figure HTML copied — paste it in the HTML source view');
+                }}
+              >
+                Copy &lt;figure&gt;
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

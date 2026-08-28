@@ -171,6 +171,16 @@ try {
     params: { name: 'upload_photo_from_url', arguments: { slug: 'starting-panel', version: 'A1.0', url: BASE + uploaded[0].url, name: 'copy-of-photo.png' } },
   });
   ok(!fromUrl.isError && JSON.parse(fromUrl.content[0].text)[0].name === 'copy-of-photo.png', 'MCP upload_photo_from_url');
+  const localDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ftd-imgs-'));
+  fs.writeFileSync(path.join(localDir, 'Wiring Diagram.png'), Buffer.from(png1x1, 'base64'));
+  fs.writeFileSync(path.join(localDir, 'notes.txt'), 'not an image');
+  const imp = await mcpCall({
+    jsonrpc: '2.0', id: 9, method: 'tools/call',
+    params: { name: 'import_local_files', arguments: { slug: 'starting-panel', version: 'A1.0', paths: [localDir] } },
+  });
+  const impRes = imp.isError ? [] : JSON.parse(imp.content[0].text);
+  ok(impRes.length === 1 && impRes[0].name === 'wiring-diagram.png', 'MCP import_local_files imports images from a folder');
+  fs.rmSync(localDir, { recursive: true, force: true });
   const upd = await mcpCall({
     jsonrpc: '2.0', id: 8, method: 'tools/call',
     params: { name: 'update_module', arguments: { slug: 'starting-panel', code: 'SW-STP2' } },
