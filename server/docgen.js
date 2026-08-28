@@ -120,26 +120,27 @@ ${swRows}
 /* ------------------------------------------------------------------ */
 
 /** Fallback brand mark used when no logo has been uploaded in Settings. */
-export const LOGO_SVG = `<svg class="logo" viewBox="0 0 330 90" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="FTD.aero">
-<g fill="none" stroke="#1a73c9" stroke-width="8" stroke-linecap="round">
-<ellipse cx="62" cy="42" rx="44" ry="22" transform="rotate(-18 62 42)"/>
-<path d="M42 66 l-9 15 M82 66 l9 15"/>
+export const LOGO_SVG = `<svg class="logo" viewBox="0 0 330 92" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="FTD.aero">
+<g fill="none" stroke="#0d6db4" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round">
+<ellipse cx="56" cy="40" rx="40" ry="19" transform="rotate(-24 56 40)"/>
+<path d="M32 62 l-6 16 M56 66 v14 M80 60 l7 16"/>
 </g>
-<circle cx="62" cy="42" r="9" fill="#1a73c9"/>
-<line x1="136" y1="14" x2="136" y2="76" stroke="#1a73c9" stroke-width="3"/>
-<text x="154" y="58" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="40" fill="#1a73c9">FTD<tspan font-weight="400">.aero</tspan></text>
+<circle cx="24" cy="30" r="7" fill="#0d6db4"/>
+<line x1="122" y1="16" x2="122" y2="76" stroke="#0d6db4" stroke-width="3"/>
+<text x="138" y="57" font-family="Verdana, Tahoma, 'DejaVu Sans', Arial, sans-serif" font-weight="700" font-size="34" letter-spacing="-0.5" fill="#0d6db4">FTD.aero</text>
 </svg>`;
 
 /** Shared stylesheet for the assembled manual (web view and export).
  *  Everything is scoped under .manual-doc so it can be injected into the app. */
 export const MANUAL_CSS = `
-.manual-doc { font-family: 'Segoe UI', system-ui, sans-serif; color: #1c2733; background: #fff; }
+/* Verdana matches the FTD Word template; the same stylesheet drives the web view and the export */
+.manual-doc { font-family: Verdana, Tahoma, 'DejaVu Sans', Geneva, sans-serif; font-size: 13px; color: #1c2733; background: #fff; }
 .manual-doc .manual { max-width: 900px; margin: 0 auto; padding: 40px 56px 60px; counter-reset: chap; }
 .manual-doc .head-box { width: 100%; border-collapse: collapse; border: 2px solid #1c2733; margin: 0 0 28px; }
 .manual-doc .head-box td { border: 2px solid #1c2733; padding: 14px 18px; vertical-align: middle; }
 .manual-doc .head-title { text-align: center; width: 62%; }
-.manual-doc .head-code { font-size: 30px; font-weight: 800; letter-spacing: 1px; line-height: 1.1; }
-.manual-doc .head-name { font-size: 20px; font-weight: 700; margin-top: 4px; }
+.manual-doc .head-code { font-size: 28px; font-weight: 700; line-height: 1.1; }
+.manual-doc .head-name { font-size: 19px; font-weight: 700; margin-top: 4px; }
 .manual-doc .head-logo { text-align: center; }
 .manual-doc .head-logo img, .manual-doc .head-logo svg { height: 60px; max-width: 230px; display: inline-block; }
 .manual-doc .cover { text-align: center; padding: 10px 0 40px; }
@@ -154,17 +155,17 @@ export const MANUAL_CSS = `
 .manual-doc .toc a { color: inherit; text-decoration: none; }
 .manual-doc .toc a:hover { color: #0b5fff; text-decoration: underline; }
 .manual-doc .toc .num { display: inline-block; min-width: 46px; color: #64748b; font-variant-numeric: tabular-nums; }
-.manual-doc table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+.manual-doc table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12.5px; }
 .manual-doc th, .manual-doc td { border: 1px solid #c8d1db; padding: 7px 10px; text-align: left; vertical-align: top; }
 .manual-doc th { background: #f1f4f8; }
 .manual-doc h1, .manual-doc h2, .manual-doc h3 { scroll-margin-top: 70px; }
 .manual-doc .chapter { counter-increment: chap; counter-reset: sec; margin-top: 60px; padding-top: 24px; border-top: 1px dashed #dde3ea; }
-.manual-doc .chapter > h1 { font-size: 26px; border-bottom: 3px solid #16324f; padding-bottom: 8px; margin: 0 0 16px; }
+.manual-doc .chapter > h1 { font-size: 24px; border-bottom: 3px solid #16324f; padding-bottom: 8px; margin: 0 0 16px; }
 .manual-doc .chapter > h1::before { content: counter(chap) '  '; color: #16324f; }
 .manual-doc .draft-flag { display: inline-block; font-size: 12px; background: #fef3c7; color: #b45309; border-radius: 5px; padding: 2px 8px; margin-left: 10px; vertical-align: middle; }
-.manual-doc .chapter h2 { counter-increment: sec; counter-reset: subsec; font-size: 19px; margin: 30px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #16324f; }
+.manual-doc .chapter h2 { counter-increment: sec; counter-reset: subsec; font-size: 18px; margin: 30px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #16324f; }
 .manual-doc .chapter h2::before { content: counter(chap) '.' counter(sec) '  '; color: #16324f; }
-.manual-doc .chapter h3 { counter-increment: subsec; font-size: 15.5px; margin: 20px 0 8px; }
+.manual-doc .chapter h3 { counter-increment: subsec; font-size: 14.5px; margin: 20px 0 8px; }
 .manual-doc .chapter h3::before { content: counter(chap) '.' counter(sec) '.' counter(subsec) '  '; color: #16324f; }
 .manual-doc .chapter p, .manual-doc .chapter li { line-height: 1.6; }
 .manual-doc figure { margin: 16px 0; text-align: center; }
