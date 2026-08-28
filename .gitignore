@@ -21,3 +21,8 @@ yarn-error.log*
 
 # dist/ — release manifests and PDFs
 /dist
+
+# Local secrets — never commit (OPENAI_API_KEY etc.)
+.env
+.env.*
+!.env.example

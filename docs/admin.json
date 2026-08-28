@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-28T07:03:19.253Z",
+  "generatedAt": "2026-08-28T07:29:13.555Z",
   "repo": "ftd-aero/ftd-docs",
   "defaultBranch": "main",
   "totals": {
@@ -250,9 +250,9 @@
           "title": "Smoke Detector",
           "summary": "Ceiling-mounted FireAngel ST-622 smoke alarm above the IOS: 85 dB sounder, sealed 10-year battery, weekly test.",
           "source": "components/smoke-detector/v1.mdx",
-          "hash": "9873b88",
-          "date": "2026-08-27",
-          "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
+          "hash": "15d3705",
+          "date": "2026-08-28",
+          "subject": "Smoke detector: remove the synthesised alarm, play a real recording instead",
           "links": [
             "starting-panel",
             "emergency-stop"

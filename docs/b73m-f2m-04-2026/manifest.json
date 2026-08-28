@@ -96,9 +96,9 @@
       "docId": "operations/smoke-detector",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "9873b88",
-      "date": "2026-08-27",
-      "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
+      "hash": "15d3705",
+      "date": "2026-08-28",
+      "subject": "Smoke detector: remove the synthesised alarm, play a real recording instead",
       "source": "components/smoke-detector/v1.mdx",
       "status": "ok"
     },

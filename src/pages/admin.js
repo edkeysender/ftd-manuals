@@ -14,11 +14,12 @@
  *
  * Start the backend with:  node tools/admin-server.js
  */
-import React, { useState, useEffect, useCallback, createContext, useContext } from "react";
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import Layout from "@theme/Layout";
 import Link from "@docusaurus/Link";
 import useBaseUrl from "@docusaurus/useBaseUrl";
 import baked from "@site/docs/admin.json";
+import ChunkRichEditor, { inspectChunk } from "@site/src/components/ChunkRichEditor";
 import styles from "./admin.module.css";
 
 /* ------------------------------------------------------------------ backend */
@@ -344,6 +345,13 @@ function GitBar() {
 /* ------------------------------------------------------------------- editor */
 
 /**
+ * The Source / Rich text choice is a UI preference of this browser only; it is never part of
+ * what is saved. Source is the default and the fallback: a chunk that the rich-text model
+ * cannot represent losslessly is not opened visually at all.
+ */
+const VIEW_KEY = "ftd-admin-editor-view";
+
+/**
  * spec = { path, title, mode: "edit" | "draft", content?, branch?, message? }
  * "edit" saves in place; "draft" creates the branch, writes the file and commits it.
  */
@@ -354,6 +362,35 @@ function Editor({ spec, close }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(spec.mode === "edit");
+  // "source" until proved otherwise: the textarea always works, the visual editor may refuse.
+  const [view, setView] = useState("source");
+  const [refusal, setRefusal] = useState(null);
+  // Only markdown chunks have a visual representation; sim configs and component.yaml do not.
+  const richCapable = /\.mdx?$/.test(spec.path);
+
+  // Restoring the preference touches localStorage, so it happens after hydration, and only
+  // once the file is in hand: a chunk the model refuses stays in Source and says why.
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || !richCapable || loading || content == null) return;
+    restored.current = true;
+    let stored = null;
+    try { stored = window.localStorage.getItem(VIEW_KEY); } catch { /* private mode */ }
+    if (stored !== "rich") return;
+    const verdict = inspectChunk(content);
+    if (verdict.ok) setView("rich");
+    else setRefusal(verdict.reason);
+  }, [richCapable, loading, content]);
+
+  const chooseView = next => {
+    setRefusal(null);
+    if (next === "rich") {
+      const verdict = inspectChunk(content ?? "");
+      if (!verdict.ok) { setRefusal(verdict.reason); return; }
+    }
+    setView(next);
+    try { window.localStorage.setItem(VIEW_KEY, next); } catch { /* private mode */ }
+  };
 
   useEffect(() => {
     if (spec.mode !== "edit") return;
@@ -386,7 +423,7 @@ function Editor({ spec, close }) {
 
   return (
     <div className={styles.backdrop} onClick={e => { if (e.target === e.currentTarget) close(); }}>
-      <div className={styles.drawer}>
+      <div className={[styles.drawer, view === "rich" && styles.drawerWide].filter(Boolean).join(" ")}>
         <div className={styles.drawerHead}>
           <div>
             <strong>{spec.title}</strong>
@@ -407,9 +444,39 @@ function Editor({ spec, close }) {
           </label>
         )}
 
+        {richCapable && (
+          <div className={styles.viewBar}>
+            <div className={styles.segmented}>
+              {[["source", "Source"], ["rich", "Rich text"]].map(([id, label]) => (
+                <button
+                  key={id}
+                  className={[styles.segment, view === id && styles.segmentOn].filter(Boolean).join(" ")}
+                  disabled={loading}
+                  onClick={() => chooseView(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className={styles.dim}>
+              {view === "rich"
+                ? "Front matter is edited in its own fields; imports, JSX and code are protected blocks."
+                : "The markdown source, exactly as it is stored."}
+            </span>
+          </div>
+        )}
+
+        {refusal && (
+          <div className={styles.flashError}>
+            Rich text cannot open this file, so nothing was changed: {refusal}
+          </div>
+        )}
+
         {loading
           ? <p className={styles.empty}>Loading…</p>
-          : <textarea className={styles.editor} value={content ?? ""} spellCheck={false} onChange={e => setContent(e.target.value)} />}
+          : view === "rich"
+            ? <ChunkRichEditor value={content ?? ""} onChange={setContent} path={spec.path} />
+            : <textarea className={styles.editor} value={content ?? ""} spellCheck={false} onChange={e => setContent(e.target.value)} />}
 
         {error && <div className={styles.flashError}>{error}</div>}
 
