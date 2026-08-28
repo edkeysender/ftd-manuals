@@ -10,7 +10,8 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "node --env-file-if-exists=.env server/index.js",
-    "smoke": "node tools/smoke.mjs"
+    "smoke": "node tools/smoke.mjs",
+    "tunnel": "./cloudflared.exe tunnel --url http://localhost:5179 --no-autoupdate"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

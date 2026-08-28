@@ -81,6 +81,14 @@ export default function Settings() {
             </p>
             <p className="muted">Add it to Claude Code with:</p>
             <pre className="code-block">claude mcp add --transport http ftd-docs {mcp.endpoint}</pre>
+            <p className="muted">
+              To test from outside this machine, run <code>npm run tunnel</code> — it prints a public{' '}
+              <code>https://….trycloudflare.com</code> URL forwarding to this console (use{' '}
+              <code>&lt;that URL&gt;/mcp</code> as the endpoint). While a tunnel is up, anyone with the URL can
+              read <em>and edit</em> your docs{mcp.authRequired ? ' (bearer token required — MCP_TOKEN is set)' : ''};
+              set <code>MCP_TOKEN=&lt;secret&gt;</code> in <code>.env</code> to require{' '}
+              <code>Authorization: Bearer &lt;secret&gt;</code> on MCP calls, and stop the tunnel when done.
+            </p>
             <table className="table">
               <thead>
                 <tr>

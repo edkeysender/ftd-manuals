@@ -224,6 +224,16 @@ app.put('/api/settings/ai', wrap(async (req, res) => {
 }));
 
 /* ---------- MCP (Model Context Protocol) endpoint ---------- */
+// Optional protection for public tunnels: set MCP_TOKEN in .env and clients
+// must send  Authorization: Bearer <token>.
+app.use('/mcp', (req, res, next) => {
+  const token = process.env.MCP_TOKEN;
+  if (token && req.headers.authorization !== `Bearer ${token}`) {
+    return res.status(401).json({ error: 'Unauthorized — send Authorization: Bearer <MCP_TOKEN>' });
+  }
+  next();
+});
+
 app.post('/mcp', (req, res) => {
   handleMcpRequest(req, res).catch((e) => {
     console.error('MCP error:', e);
@@ -237,6 +247,7 @@ app.get('/api/mcp-info', (req, res) => {
   res.json({
     endpoint: `http://localhost:${PORT}/mcp`,
     transport: 'streamable-http (stateless)',
+    authRequired: !!process.env.MCP_TOKEN,
     tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description })),
   });
 });
