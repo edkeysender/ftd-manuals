@@ -1,7 +1,0 @@
-id: starting-panel-error-codes
-name: Starting Panel Error Codes
-category: ios-software
-location: "IOS, starting panel touchscreen"
-owner: support
-jira_component: DOK-StartingPanel
-software_component: ftd-startup-controller

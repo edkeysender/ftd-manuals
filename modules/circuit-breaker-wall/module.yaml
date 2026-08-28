@@ -1,7 +1,0 @@
-id: circuit-breaker-wall
-name: Circuit Breaker Wall
-category: cockpit-hardware
-location: "Flight deck, aft of the pilot seats — rolling cabinet on castors"
-owner: support
-jira_component: DOK-Cockpit
-software_component: null
