@@ -22,6 +22,13 @@ import baked from "@site/docs/admin.json";
 import ChunkRichEditor, { inspectChunk } from "@site/src/components/ChunkRichEditor";
 import styles from "./admin.module.css";
 
+/**
+ * The AI drafting assistant, loaded only when its column is actually opened. It is the one part
+ * of this page that needs the local backend (the OpenAI key lives there, never here), so it has
+ * no place in the module graph of a server-rendered, read-only build of the page.
+ */
+const AssistantPanel = React.lazy(() => import("@site/src/components/AssistantPanel"));
+
 /* ------------------------------------------------------------------ backend */
 
 const DEFAULT_API = "http://127.0.0.1:3001";
@@ -351,12 +358,15 @@ function GitBar() {
  */
 const VIEW_KEY = "ftd-admin-editor-view";
 
+/** Whether the assistant column is open. Also a UI preference of this browser only. */
+const ASSISTANT_KEY = "ftd-admin-assistant-open";
+
 /**
  * spec = { path, title, mode: "edit" | "draft", content?, branch?, message? }
  * "edit" saves in place; "draft" creates the branch, writes the file and commits it.
  */
 function Editor({ spec, close }) {
-  const { refresh, setFlash } = useAdmin();
+  const { refresh, setFlash, local } = useAdmin();
   const [content, setContent] = useState(spec.content ?? null);
   const [branch, setBranch] = useState(spec.branch || "");
   const [error, setError] = useState(null);
@@ -367,6 +377,21 @@ function Editor({ spec, close }) {
   const [refusal, setRefusal] = useState(null);
   // Only markdown chunks have a visual representation; sim configs and module.yaml do not.
   const richCapable = /\.mdx?$/.test(spec.path);
+  // The assistant drafts chunk prose, so it is offered for the same files, and only in local
+  // mode: the OpenAI key lives in the backend and the browser never has one.
+  const assistantCapable = richCapable && local;
+  const [assistant, setAssistant] = useState(false);
+
+  useEffect(() => {
+    if (!assistantCapable) return;
+    try { setAssistant(window.localStorage.getItem(ASSISTANT_KEY) === "open"); } catch { /* private mode */ }
+  }, [assistantCapable]);
+
+  const toggleAssistant = () => {
+    const next = !assistant;
+    setAssistant(next);
+    try { window.localStorage.setItem(ASSISTANT_KEY, next ? "open" : "closed"); } catch { /* private mode */ }
+  };
 
   // Restoring the preference touches localStorage, so it happens after hydration, and only
   // once the file is in hand: a chunk the model refuses stays in Source and says why.
@@ -423,13 +448,28 @@ function Editor({ spec, close }) {
 
   return (
     <div className={styles.backdrop} onClick={e => { if (e.target === e.currentTarget) close(); }}>
-      <div className={[styles.drawer, view === "rich" && styles.drawerWide].filter(Boolean).join(" ")}>
+      <div className={[
+        styles.drawer,
+        view === "rich" && styles.drawerWide,
+        assistant && styles.drawerXWide,
+      ].filter(Boolean).join(" ")}>
         <div className={styles.drawerHead}>
           <div>
             <strong>{spec.title}</strong>
             <div className={`${styles.mono} ${styles.dim}`}>{spec.path}</div>
           </div>
-          <button className={styles.btn} onClick={close}>Close</button>
+          <div className={styles.actions}>
+            {assistantCapable && (
+              <button
+                className={[styles.btn, assistant && styles.btnPrimary].filter(Boolean).join(" ")}
+                onClick={toggleAssistant}
+                disabled={loading}
+              >
+                {assistant ? "Hide assistant" : "Assistant"}
+              </button>
+            )}
+            <button className={styles.btn} onClick={close}>Close</button>
+          </div>
         </div>
 
         {spec.mode === "draft" && (
@@ -444,39 +484,56 @@ function Editor({ spec, close }) {
           </label>
         )}
 
-        {richCapable && (
-          <div className={styles.viewBar}>
-            <div className={styles.segmented}>
-              {[["source", "Source"], ["rich", "Rich text"]].map(([id, label]) => (
-                <button
-                  key={id}
-                  className={[styles.segment, view === id && styles.segmentOn].filter(Boolean).join(" ")}
-                  disabled={loading}
-                  onClick={() => chooseView(id)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <span className={styles.dim}>
-              {view === "rich"
-                ? "Front matter is edited in its own fields; imports, JSX and code are protected blocks."
-                : "The markdown source, exactly as it is stored."}
-            </span>
-          </div>
-        )}
+        <div className={styles.workspace}>
+          <div className={styles.workMain}>
+            {richCapable && (
+              <div className={styles.viewBar}>
+                <div className={styles.segmented}>
+                  {[["source", "Source"], ["rich", "Rich text"]].map(([id, label]) => (
+                    <button
+                      key={id}
+                      className={[styles.segment, view === id && styles.segmentOn].filter(Boolean).join(" ")}
+                      disabled={loading}
+                      onClick={() => chooseView(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <span className={styles.dim}>
+                  {view === "rich"
+                    ? "Front matter is edited in its own fields; imports, JSX and code are protected blocks."
+                    : "The markdown source, exactly as it is stored."}
+                </span>
+              </div>
+            )}
 
-        {refusal && (
-          <div className={styles.flashError}>
-            Rich text cannot open this file, so nothing was changed: {refusal}
-          </div>
-        )}
+            {refusal && (
+              <div className={styles.flashError}>
+                Rich text cannot open this file, so nothing was changed: {refusal}
+              </div>
+            )}
 
-        {loading
-          ? <p className={styles.empty}>Loading…</p>
-          : view === "rich"
-            ? <ChunkRichEditor value={content ?? ""} onChange={setContent} path={spec.path} />
-            : <textarea className={styles.editor} value={content ?? ""} spellCheck={false} onChange={e => setContent(e.target.value)} />}
+            {loading
+              ? <p className={styles.empty}>Loading…</p>
+              : view === "rich"
+                ? <ChunkRichEditor value={content ?? ""} onChange={setContent} path={spec.path} />
+                : <textarea className={styles.editor} value={content ?? ""} spellCheck={false} onChange={e => setContent(e.target.value)} />}
+          </div>
+
+          {assistantCapable && assistant && !loading && (
+            <aside className={styles.workAside}>
+              <React.Suspense fallback={<p className={styles.empty}>Loading assistant…</p>}>
+                <AssistantPanel
+                  api={api}
+                  path={spec.path}
+                  content={content ?? ""}
+                  onApply={setContent}
+                />
+              </React.Suspense>
+            </aside>
+          )}
+        </div>
 
         {error && <div className={styles.flashError}>{error}</div>}
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-28T07:40:56.593Z",
+  "generatedAt": "2026-08-28T08:16:00.552Z",
   "repo": "ftd-aero/ftd-docs",
   "defaultBranch": "main",
   "totals": {
@@ -99,9 +99,9 @@
           "title": "Circuit Breaker Wall",
           "summary": "Rolling cabinet carrying the circuit breakers, moved towards the cockpit on castors and locked with a foot-operated bolt.",
           "source": "modules/circuit-breaker-wall/v1.md",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "58588f8",
+          "date": "2026-08-28",
+          "subject": "Rename component to module throughout",
           "links": [
             "emergency-stop"
           ]
@@ -130,9 +130,9 @@
           "title": "Emergency Stop Switches",
           "summary": "Red push-buttons with yellow halo that cut power to all servos and drives.",
           "source": "modules/emergency-stop/v1.md",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "58588f8",
+          "date": "2026-08-28",
+          "subject": "Rename component to module throughout",
           "links": [
             "starting-panel"
           ]
@@ -162,9 +162,9 @@
           "title": "Instructor Seat",
           "summary": "Optional fully adjustable instructor seat on an I-shaped track.",
           "source": "modules/instructor-seat/v1.md",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "58588f8",
+          "date": "2026-08-28",
+          "subject": "Rename component to module throughout",
           "links": []
         }
       ],
@@ -191,9 +191,9 @@
           "title": "Jump Seat",
           "summary": "Wall-mounted fold-down seat, stowed vertically when not in use, rated for one occupant of up to 100 kg.",
           "source": "modules/jump-seat/v1.md",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "58588f8",
+          "date": "2026-08-28",
+          "subject": "Rename component to module throughout",
           "links": []
         }
       ],
@@ -220,9 +220,9 @@
           "title": "LE Devices Annunciator Panel",
           "summary": "Indicates leading-edge flap and slat position in relation to the FLAP lever.",
           "source": "modules/le-devices-annunciator/v1.md",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "58588f8",
+          "date": "2026-08-28",
+          "subject": "Rename component to module throughout",
           "links": []
         }
       ],
@@ -250,9 +250,9 @@
           "title": "Smoke Detector",
           "summary": "Ceiling-mounted FireAngel ST-622 smoke alarm above the IOS: 85 dB sounder, sealed 10-year battery, weekly test.",
           "source": "modules/smoke-detector/v1.mdx",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "58588f8",
+          "date": "2026-08-28",
+          "subject": "Rename component to module throughout",
           "links": [
             "starting-panel",
             "emergency-stop"
@@ -282,9 +282,9 @@
           "title": "Starting Panel",
           "summary": "Wall-mounted station: two emergency stops above a touchscreen that starts, restarts and stops the simulator.",
           "source": "modules/starting-panel/v2.mdx",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "58588f8",
+          "date": "2026-08-28",
+          "subject": "Rename component to module throughout",
           "links": [
             "starting-panel-error-codes",
             "emergency-stop"
@@ -315,9 +315,9 @@
           "title": "Starting Panel Error Codes",
           "summary": "Error catalogue of the starting panel: what each code means, what a healthy system would have done, and what to do next.",
           "source": "modules/starting-panel-error-codes/v1.md",
-          "hash": "uncommitted",
-          "date": "—",
-          "subject": "not yet committed",
+          "hash": "58588f8",
+          "date": "2026-08-28",
+          "subject": "Rename component to module throughout",
           "links": [
             "starting-panel"
           ]

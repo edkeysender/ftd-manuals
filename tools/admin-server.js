@@ -16,6 +16,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const nodeUrl = require("url");
 const { execFileSync } = require("child_process");
 const yaml = require("js-yaml");
 const semver = require("semver");
@@ -26,6 +27,37 @@ const PORT = Number(argv[argv.indexOf("--port") + 1]) || 3001;
 
 /** Only these prefixes may be read or written. Everything else is generated or tooling. */
 const WRITABLE = ["modules/", "shared/", "sims/", "templates/"];
+
+/**
+ * The OpenAI chat model behind POST /api/assistant. Deliberately one constant, right here:
+ * changing model is a one-line edit and nothing else in the file names a model.
+ */
+const ASSISTANT_MODEL = "gpt-5.5";
+const ASSISTANT_REASONING_EFFORT = "medium";
+const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
+const ASSISTANT_TIMEOUT_MS = 180_000;
+
+/**
+ * Read .env at the repository root into process.env — KEY=VALUE, one per line, # comments,
+ * optionally quoted values. Deliberately hand-rolled rather than a dotenv dependency: this is
+ * six lines for the one secret the tool needs. Values already in the real environment win.
+ *
+ * The key this loads is used only here, in this process, to call OpenAI. It is never written
+ * to a response, never logged, and .env itself is gitignored.
+ */
+function loadDotEnv() {
+  const file = path.join(ROOT, ".env");
+  if (!fs.existsSync(file)) return;
+  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    if (!m) continue;
+    let v = m[2].trim();
+    const quoted = v.length >= 2 && ((v[0] === '"' && v.endsWith('"')) || (v[0] === "'" && v.endsWith("'")));
+    v = quoted ? v.slice(1, -1) : v.replace(/\s+#.*$/, "").trim();
+    if (!(m[1] in process.env)) process.env[m[1]] = v;
+  }
+}
+loadDotEnv();
 
 function git(...args) {
   return gitRaw(...args).trim();
@@ -267,6 +299,214 @@ function firstChunk(name, title, summary) {
   ].join("\n");
 }
 
+// ------------------------------------------------------------- AI assistant
+
+/**
+ * The drafting assistant behind POST /api/assistant.
+ *
+ * The browser never sees the API key and never talks to OpenAI: it posts the chunk it is
+ * editing plus an instruction in plain language, and gets back a message and, at most, a
+ * *proposal* — a complete replacement for the chunk. The proposal is not written anywhere.
+ * The panel shows it as a diff; only an explicit Accept moves it into the editor, and only the
+ * existing PUT /api/file save path writes it to disk, where validate() runs as always.
+ *
+ * Before returning, the proposal is screened by src/components/assistantProposal.mjs — the same
+ * module the panel re-runs at Accept — and by this file's validate(). Anything that would stop
+ * the chunk parsing comes back marked as blocking, and the panel refuses to apply it.
+ */
+
+/** The key, or a friendly explanation of how to provide one. Never returned to the browser. */
+function openaiKey() {
+  const key = String(process.env.OPENAI_API_KEY || "").trim();
+  if (!key) {
+    throw new Error(
+      "The assistant needs an OpenAI API key and there is none. Put one in a file named .env at "
+      + "the root of this repository:\n\n    OPENAI_API_KEY=sk-…\n\n"
+      + ".env is gitignored; the key stays in this server process and is never sent to the "
+      + "browser. Restart tools/admin-server.js after adding it.");
+  }
+  return key;
+}
+
+/** The authoring rules of CLAUDE.md, verbatim, so the model is held to the repository's own text. */
+function houseRules() {
+  const file = path.join(ROOT, "CLAUDE.md");
+  if (!fs.existsSync(file)) return "(CLAUDE.md is missing from this repository.)";
+  const text = fs.readFileSync(file, "utf8");
+  const start = text.indexOf("## Authoring rules");
+  if (start === -1) return text.slice(0, 4000);
+  const rest = text.slice(start);
+  const end = rest.indexOf("\n## ", 3);
+  return (end === -1 ? rest : rest.slice(0, end)).trim();
+}
+
+/** modules/<id>/module.yaml for the chunk being edited, so the model knows what it documents. */
+function moduleIdentity(rel) {
+  const m = /^modules\/([^/]+)\//.exec(rel);
+  if (!m) return null;
+  const abs = path.join(ROOT, "modules", m[1], "module.yaml");
+  if (!fs.existsSync(abs)) return { id: m[1], text: null };
+  return { id: m[1], text: fs.readFileSync(abs, "utf8").trim() };
+}
+
+/** Every authored module id — the only legal targets of a [[link]]. */
+function knownModuleIds() {
+  const dir = path.join(ROOT, "modules");
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter(d => fs.existsSync(path.join(dir, d, "module.yaml")))
+    .sort();
+}
+
+function assistantSystemPrompt(rel, identity, ids) {
+  return [
+    "You are a technical editor working inside FTD.aero's manual repository. You draft and revise",
+    "single chunks of a flight simulator operating manual (FSTD/FNPT documentation). The author is",
+    "Łukasz, the Support lead. He is at the controls: you never edit files, you propose a new text",
+    "for the one chunk he has open and he accepts or rejects it.",
+    "",
+    "== RULE 1, ABOVE EVERYTHING ELSE: NEVER INVENT TECHNICAL CONTENT ==",
+    "",
+    "This is a controlled aviation document. A plausible-sounding invented fact is a safety defect,",
+    "not a stylistic problem. You must not introduce, and must not 'complete', any of:",
+    "  - behaviour of a control, indicator, panel or piece of software;",
+    "  - timings, delays, hold durations, tolerances, temperatures, pressures, voltages;",
+    "  - part numbers, serial numbers, model designations, supplier names;",
+    "  - software version numbers or applies_to ranges;",
+    "  - error codes, message text, menu labels, button labels;",
+    "  - procedure steps, expected indications, limits or preconditions.",
+    "",
+    "If the instruction asks for something whose facts are not present in the chunk, the module.yaml",
+    "or the author's own message, DO NOT GUESS. Write the structure and put a marker exactly in the",
+    "form  TODO(łukasz): <precisely what is missing>  where the fact belongs. For example:",
+    "  1. TODO(łukasz): state the grounding check to perform and the indication that confirms it.",
+    "A chunk full of honest TODO markers is a good result. A chunk with one invented number is a",
+    "failed result. Say plainly in your message which TODO markers you left and why.",
+    "",
+    "You may freely: restructure, renumber, reword to house style, split a paragraph into a numbered",
+    "procedure, fix grammar, move content, and add markers. All of that reuses facts already present.",
+    "",
+    "== RULE 2: NO SILENT CHANGES ==",
+    "",
+    "Change only what the instruction asks for. Do not 'improve' untouched paragraphs, do not",
+    "reflow or rewrap lines you are not editing, do not renumber unrelated lists, do not reorder",
+    "sections. The author reads your work as a line diff; gratuitous churn hides the real edit.",
+    "Never delete content unless asked to.",
+    "",
+    "== FRONT MATTER ==",
+    "",
+    "The chunk begins with a YAML front matter block between --- fences (applies_to, title,",
+    "summary). Reproduce it byte for byte unless the author explicitly asks you to change a field.",
+    "applies_to is a semver range that decides which simulators receive this chunk; changing it",
+    "silently would reissue manuals. Front matter is flat 'key: value' lines only, and any value",
+    "containing ':' must be quoted.",
+    "",
+    "== HOUSE STYLE (from the repository's CLAUDE.md, binding) ==",
+    "",
+    houseRules(),
+    "",
+    "== FORMAT NOTES ==",
+    "",
+    "  - Links to other modules are always [[module-id]] — never a URL or a file path. The only",
+    "    ids that exist are: " + (ids.length ? ids.join(", ") : "(none yet)") + ". Never invent an id.",
+    "  - Warnings are :::caution / :::danger[Title] blocks, notes are :::note, each closed by :::",
+    "  - A .mdx chunk may contain `import` lines and JSX elements. Reproduce them exactly; never",
+    "    add, rename or remove an import or a JSX component.",
+    "  - Keep the existing markdown spelling: the same emphasis markers, the same table padding,",
+    "    the same indentation. Do not convert - bullets to * or reformat tables you are not editing.",
+    "  - Keep the file's trailing newline.",
+    "",
+    "== THE FILE ==",
+    "",
+    `You are editing ${rel}.`,
+    identity && identity.text
+      ? `Its module identity (modules/${identity.id}/module.yaml) is:\n\n${identity.text}`
+      : "There is no module.yaml for this file.",
+    "",
+    "== YOUR REPLY ==",
+    "",
+    "Reply with a single JSON object and nothing else:",
+    '  { "message": string, "content": string | null }',
+    "",
+    "  message — a short note to the author in plain English: what you changed and, above all,",
+    "            every fact you refused to invent and the TODO marker you left instead. If you",
+    "            need him to tell you something before you can draft, ask here and set content null.",
+    "  content — the COMPLETE new text of the file, front matter included, ready to be written",
+    "            verbatim. Never a fragment, never a diff, never fenced in ``` markers.",
+    "            Use null when you are only answering a question or asking for a fact.",
+  ].filter(Boolean).join("\n");
+}
+
+/** The proposal screening shared with the browser. ESM, so it is imported lazily and cached. */
+let proposalModule = null;
+function proposalTools() {
+  if (!proposalModule) {
+    const href = nodeUrl.pathToFileURL(path.join(ROOT, "src/components/assistantProposal.mjs")).href;
+    proposalModule = import(href);
+  }
+  return proposalModule;
+}
+
+async function callOpenAI(messages) {
+  const key = openaiKey();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ASSISTANT_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(OPENAI_CHAT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: ASSISTANT_MODEL,
+        messages,
+        response_format: { type: "json_object" },
+        reasoning_effort: ASSISTANT_REASONING_EFFORT,
+      }),
+      signal: ac.signal,
+    });
+  } catch (e) {
+    if (e.name === "AbortError") {
+      throw new Error(`OpenAI did not answer within ${ASSISTANT_TIMEOUT_MS / 1000}s. Nothing was changed.`);
+    }
+    throw new Error(`could not reach the OpenAI API: ${e.message}. Nothing was changed.`);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    // OpenAI's own message, never the request: the key must not appear in any error text.
+    const detail = (json && json.error && json.error.message) || `${res.status} ${res.statusText}`;
+    if (res.status === 401) throw new Error(`OpenAI rejected the API key in .env: ${detail}`);
+    if (res.status === 404) throw new Error(`OpenAI does not offer "${ASSISTANT_MODEL}" to this key: ${detail}. `
+      + "Change ASSISTANT_MODEL at the top of tools/admin-server.js.");
+    throw new Error(`OpenAI returned an error: ${detail}`);
+  }
+
+  const text = json && json.choices && json.choices[0] && json.choices[0].message
+    && json.choices[0].message.content;
+  if (!text) throw new Error("OpenAI returned an empty reply. Nothing was changed.");
+  let parsed;
+  try { parsed = JSON.parse(text); }
+  catch { throw new Error("OpenAI did not return the JSON object this endpoint asks for. Nothing was changed."); }
+  return { parsed, usage: json.usage || null };
+}
+
+/**
+ * The model writes LF and may drop the final newline; neither is an editorial change, and both
+ * would otherwise show up as noise in the diff or be refused outright (chunkMarkdown does not
+ * accept mixed line endings). Nothing else about the text is touched.
+ */
+function matchLineEndings(original, proposal) {
+  let out = proposal;
+  const crlf = /\r\n/.test(original);
+  out = out.replace(/\r\n/g, "\n");
+  if (crlf) out = out.replace(/\n/g, "\r\n");
+  const eol = crlf ? "\r\n" : "\n";
+  if (original.endsWith(eol) && !out.endsWith(eol)) out += eol;
+  return out;
+}
+
 // ---------------------------------------------------------------- routes
 
 const routes = {
@@ -294,6 +534,75 @@ const routes = {
   },
 
   "POST /api/resolve": () => ({ resolve: resolveAll(), git: gitState() }),
+
+  /**
+   * Ask the assistant for a change to one chunk. Reads nothing but the file being edited and
+   * its module identity, writes nothing at all. See the AI assistant section above.
+   *
+   * body: { path, content?, instruction, history?: [{ role: "user" | "assistant", text }] }
+   * →     { reply, proposal: string | null, screening, model, usage }
+   */
+  "POST /api/assistant": async body => {
+    const { rel, abs } = safePath(body.path);
+    if (!/\.mdx?$/.test(rel)) {
+      throw new Error("the assistant only edits markdown chunks (.md / .mdx). "
+        + "Sim configs, module.yaml and templates are edited by hand.");
+    }
+    const instruction = String(body.instruction || "").trim();
+    if (!instruction) throw new Error("an instruction is required");
+
+    // The draft in the editor is the truth, not the file on disk: the author may have typed
+    // into it, and a "draft" chunk does not exist on disk at all.
+    const content = typeof body.content === "string"
+      ? body.content
+      : (fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : "");
+
+    const identity = moduleIdentity(rel);
+    const messages = [
+      { role: "system", content: assistantSystemPrompt(rel, identity, knownModuleIds()) },
+      ...(Array.isArray(body.history) ? body.history : [])
+        .filter(h => h && (h.role === "user" || h.role === "assistant") && typeof h.text === "string")
+        .slice(-8)
+        .map(h => ({ role: h.role, content: h.text })),
+      {
+        role: "user",
+        content: `Current contents of ${rel}:\n\n<file>\n${content}\n</file>\n\n`
+          + `Instruction: ${instruction}`,
+      },
+    ];
+
+    const { parsed, usage } = await callOpenAI(messages);
+    const reply = typeof parsed.message === "string" && parsed.message.trim()
+      ? parsed.message.trim()
+      : "(the model returned no message)";
+
+    let proposal = typeof parsed.content === "string" && parsed.content.trim() !== ""
+      ? matchLineEndings(content, parsed.content)
+      : null;
+
+    let screening = null;
+    if (proposal !== null) {
+      const { screenProposal } = await proposalTools();
+      screening = screenProposal(content, proposal, rel);
+      if (screening.unchanged) {
+        proposal = null;
+        screening = null;
+      } else {
+        // The same gate the file itself passes on every save. A proposal that would be
+        // rejected on save is marked here so the panel never offers to apply it.
+        try { validate(rel, proposal); }
+        catch (e) {
+          screening = {
+            ...screening,
+            ok: false,
+            blocking: [...screening.blocking, `saving this would be refused: ${e.message}`],
+          };
+        }
+      }
+    }
+
+    return { reply, proposal, screening, model: ASSISTANT_MODEL, usage };
+  },
 
   /** Create the draft branch, write the new chunk and commit it in one step. */
   "POST /api/draft": body => {
@@ -529,10 +838,12 @@ const server = http.createServer((req, res) => {
 
   let raw = "";
   req.on("data", c => { raw += c; if (raw.length > 4e6) req.destroy(); });
-  req.on("end", () => {
+  // Handlers may be async — the assistant route waits on OpenAI — so every result is awaited.
+  req.on("end", async () => {
+    let body = {};
     try {
-      const body = raw ? JSON.parse(raw) : {};
-      const out = handler(body, url);
+      body = raw ? JSON.parse(raw) : {};
+      const out = await handler(body, url);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(out));
       console.log(`  ${key}${body.path ? " " + body.path : ""} → ok`);

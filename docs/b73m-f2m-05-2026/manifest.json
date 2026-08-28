@@ -43,9 +43,9 @@
       "docId": "general/general-info",
       "version": "—",
       "range": "all",
-      "hash": "6355653",
-      "date": "2026-08-27",
-      "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+      "hash": "58588f8",
+      "date": "2026-08-28",
+      "subject": "Rename component to module throughout",
       "source": "shared/general-info.md",
       "status": "ok"
     },
@@ -67,9 +67,9 @@
       "docId": "operations/emergency-stop",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "uncommitted",
-      "date": "—",
-      "subject": "not yet committed",
+      "hash": "58588f8",
+      "date": "2026-08-28",
+      "subject": "Rename component to module throughout",
       "source": "modules/emergency-stop/v1.md",
       "status": "ok"
     },
@@ -91,9 +91,9 @@
       "docId": "systems/aft-overhead/le-devices-annunciator",
       "version": "1.0.0",
       "range": ">=1.0.0",
-      "hash": "uncommitted",
-      "date": "—",
-      "subject": "not yet committed",
+      "hash": "58588f8",
+      "date": "2026-08-28",
+      "subject": "Rename component to module throughout",
       "source": "modules/le-devices-annunciator/v1.md",
       "status": "ok"
     }
