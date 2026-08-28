@@ -8,7 +8,7 @@
  *   - A block the author never touches is never re-derived from the DOM. Opening a chunk and
  *     saving it without typing therefore returns the file byte for byte (tools/chunk-editor-check.mjs
  *     proves this for every chunk in the repository).
- *   - Anything the model cannot represent — MDX imports, JSX components, fenced code, nested
+ *   - Anything the model cannot represent — MDX imports, JSX modules, fenced code, nested
  *     lists, thematic breaks — is shown as a read-only *protected* block. It can be moved or
  *     deleted, never typed into, and it is written back exactly as it was read.
  *
@@ -50,7 +50,7 @@ function inlineToHtml(nodes) {
           + `title="image ${escHtml(n.destRaw)}">${escHtml(n.alt || n.destRaw)}</span>`;
       case "wiki":
         return `<span class="${styles.chip} ${styles.chipWiki}" contenteditable="false" `
-          + `data-wiki="${escHtml(n.id)}" title="link to component ${escHtml(n.id)}">[[${escHtml(n.id)}]]</span>`;
+          + `data-wiki="${escHtml(n.id)}" title="link to module ${escHtml(n.id)}">[[${escHtml(n.id)}]]</span>`;
       default: return "";
     }
   }).join("");
@@ -571,10 +571,10 @@ function Toolbar({ activeCommit }) {
     if (url) exec("createLink", url);
   };
   const addWiki = () => {
-    const id = window.prompt("Component id to link to (lower-case kebab-case, e.g. starting-panel)", "");
+    const id = window.prompt("Module id to link to (lower-case kebab-case, e.g. starting-panel)", "");
     if (!id) return;
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id.trim())) {
-      window.alert("Component ids are English kebab-case, e.g. starting-panel.");
+      window.alert("Module ids are English kebab-case, e.g. starting-panel.");
       return;
     }
     insertHtml(`<span class="${styles.chip} ${styles.chipWiki}" contenteditable="false" data-wiki="${escHtml(id.trim())}">[[${escHtml(id.trim())}]]</span>&nbsp;`);
@@ -586,10 +586,10 @@ function Toolbar({ activeCommit }) {
       <button type="button" className={styles.toolBtn} title="Italic" onClick={() => exec("italic")}><i>I</i></button>
       <button type="button" className={styles.toolBtn} title="Code" onClick={wrapCode}><code>{"</>"}</code></button>
       <button type="button" className={styles.toolBtn} title="Link" onClick={addLink}>Link</button>
-      <button type="button" className={styles.toolBtn} title="Link to another component" onClick={addWiki}>[[ ]]</button>
+      <button type="button" className={styles.toolBtn} title="Link to another module" onClick={addWiki}>[[ ]]</button>
       <button type="button" className={styles.toolBtn} title="Remove formatting" onClick={() => exec("removeFormat")}>Clear</button>
       <span className={styles.toolHint}>
-        Select text, then apply. Use <code>[[ ]]</code> for a component link — typed brackets stay
+        Select text, then apply. Use <code>[[ ]]</code> for a module link — typed brackets stay
         literal text. Paste is always plain text.
       </span>
     </div>
@@ -601,7 +601,7 @@ function Toolbar({ activeCommit }) {
 const FIELD_HINT = {
   applies_to: "Semver range of the software versions this chunk describes, e.g. \">=2.0.0 <3.0.0\".",
   title: "Heading of the section in the manual.",
-  summary: "One sentence describing what the component does.",
+  summary: "One sentence describing what the module does.",
 };
 
 function FrontMatter({ fields, onField }) {
@@ -714,7 +714,7 @@ export default function ChunkRichEditor({ value, onChange, path }) {
         </div>
         <p className={styles.footNote}>
           {path && /\.mdx$/.test(path)
-            ? "MDX chunk: imports and JSX components are protected blocks and are written back unchanged."
+            ? "MDX chunk: imports and JSX modules are protected blocks and are written back unchanged."
             : "Markdown chunk."}
         </p>
       </div>

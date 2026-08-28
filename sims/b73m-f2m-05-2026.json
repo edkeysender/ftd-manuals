@@ -10,8 +10,8 @@
     "issue": 1,
     "revision": 0
   },
-  "components": {
-    "starting-panel":          { "version": "3.0.0", "note": "New starting logic — components/starting-panel/v3.md not written yet" },
+  "modules": {
+    "starting-panel":          { "version": "3.0.0", "note": "New starting logic — modules/starting-panel/v3.md not written yet" },
     "emergency-stop":          { "version": "1.0.0" },
     "instructor-seat":         { "installed": false, "note": "Fixed instructor bench, no seat on track" },
     "le-devices-annunciator":  { "version": "1.0.0" },

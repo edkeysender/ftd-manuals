@@ -8,7 +8,7 @@ export default function Home() {
     <Layout title="Manuals">
       <main style={{ maxWidth: 860, margin: "0 auto", padding: "2rem 1rem" }}>
         <h1>Simulator manuals</h1>
-        <p>Each manual is generated from the configuration file of one device and describes only the components installed on it.</p>
+        <p>Each manual is generated from the configuration file of one device and describes only the modules installed on it.</p>
         <table>
           <thead><tr><th>Serial</th><th>Issue.Rev</th><th>Pages</th><th></th></tr></thead>
           <tbody>

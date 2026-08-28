@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-08-28T07:29:13.555Z",
+  "generatedAt": "2026-08-28T07:40:56.593Z",
   "repo": "ftd-aero/ftd-docs",
   "defaultBranch": "main",
   "totals": {
     "manuals": 2,
-    "components": 8,
+    "modules": 8,
     "chunks": 8,
     "gaps": 1,
     "brokenLinks": 0,
-    "unreleased": 2
+    "unreleased": 1
   },
   "manuals": [
     {
@@ -31,9 +31,9 @@
       ],
       "gaps": [],
       "brokenLinks": [],
-      "contentHash": "2df3ede22b1b981b",
-      "storedHash": "5efbe1d2c378fd5f",
-      "unreleased": true,
+      "contentHash": "e4842eaddb6620e3",
+      "storedHash": "e4842eaddb6620e3",
+      "unreleased": false,
       "releasable": true
     },
     {
@@ -65,21 +65,21 @@
           "kind": "missing-chunk",
           "sim": "b73m-f2m-05-2026",
           "serial": "B73M/F2M/05/2026",
-          "component": "starting-panel",
+          "module": "starting-panel",
           "detail": "no chunk of \"starting-panel\" covers installed version 3.0.0 (have: >=2.0.0 <3.0.0)",
-          "fix": "write components/starting-panel/v3.md with applies_to covering 3.0.0",
+          "fix": "write modules/starting-panel/v3.md with applies_to covering 3.0.0",
           "configPath": "sims/b73m-f2m-05-2026.json",
           "version": "3.0.0"
         }
       ],
       "brokenLinks": [],
-      "contentHash": "27c92cc0fcc73c3f",
+      "contentHash": "3572aa6d626f0d1c",
       "storedHash": null,
       "unreleased": true,
       "releasable": false
     }
   ],
-  "components": [
+  "modules": [
     {
       "id": "circuit-breaker-wall",
       "name": "Circuit Breaker Wall",
@@ -89,7 +89,7 @@
       "jira_component": "DOK-Cockpit",
       "software_component": null,
       "optional": false,
-      "configPath": "components/circuit-breaker-wall/component.yaml",
+      "configPath": "modules/circuit-breaker-wall/module.yaml",
       "nextMajor": 2,
       "chunks": [
         {
@@ -98,10 +98,10 @@
           "range": ">=1.0.0 <2.0.0",
           "title": "Circuit Breaker Wall",
           "summary": "Rolling cabinet carrying the circuit breakers, moved towards the cockpit on castors and locked with a foot-operated bolt.",
-          "source": "components/circuit-breaker-wall/v1.md",
-          "hash": "9873b88",
-          "date": "2026-08-27",
-          "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
+          "source": "modules/circuit-breaker-wall/v1.md",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": [
             "emergency-stop"
           ]
@@ -120,7 +120,7 @@
       "jira_component": "DOK-Safety",
       "software_component": null,
       "optional": false,
-      "configPath": "components/emergency-stop/component.yaml",
+      "configPath": "modules/emergency-stop/module.yaml",
       "nextMajor": 2,
       "chunks": [
         {
@@ -129,10 +129,10 @@
           "range": ">=1.0.0 <2.0.0",
           "title": "Emergency Stop Switches",
           "summary": "Red push-buttons with yellow halo that cut power to all servos and drives.",
-          "source": "components/emergency-stop/v1.md",
-          "hash": "6355653",
-          "date": "2026-08-27",
-          "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+          "source": "modules/emergency-stop/v1.md",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": [
             "starting-panel"
           ]
@@ -152,7 +152,7 @@
       "jira_component": "DOK-IOS",
       "software_component": null,
       "optional": true,
-      "configPath": "components/instructor-seat/component.yaml",
+      "configPath": "modules/instructor-seat/module.yaml",
       "nextMajor": 2,
       "chunks": [
         {
@@ -161,10 +161,10 @@
           "range": ">=1.0.0 <2.0.0",
           "title": "Instructor Seat",
           "summary": "Optional fully adjustable instructor seat on an I-shaped track.",
-          "source": "components/instructor-seat/v1.md",
-          "hash": "6355653",
-          "date": "2026-08-27",
-          "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+          "source": "modules/instructor-seat/v1.md",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": []
         }
       ],
@@ -181,7 +181,7 @@
       "jira_component": "DOK-Cockpit",
       "software_component": null,
       "optional": false,
-      "configPath": "components/jump-seat/component.yaml",
+      "configPath": "modules/jump-seat/module.yaml",
       "nextMajor": 2,
       "chunks": [
         {
@@ -190,10 +190,10 @@
           "range": ">=1.0.0 <2.0.0",
           "title": "Jump Seat",
           "summary": "Wall-mounted fold-down seat, stowed vertically when not in use, rated for one occupant of up to 100 kg.",
-          "source": "components/jump-seat/v1.md",
-          "hash": "2d0912f",
-          "date": "2026-08-27",
-          "subject": "New sections from /admin, component assets, and two authored components",
+          "source": "modules/jump-seat/v1.md",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": []
         }
       ],
@@ -210,7 +210,7 @@
       "jira_component": "DOK-Cockpit",
       "software_component": "prosim-overhead-aft",
       "optional": false,
-      "configPath": "components/le-devices-annunciator/component.yaml",
+      "configPath": "modules/le-devices-annunciator/module.yaml",
       "nextMajor": 2,
       "chunks": [
         {
@@ -219,10 +219,10 @@
           "range": ">=1.0.0",
           "title": "LE Devices Annunciator Panel",
           "summary": "Indicates leading-edge flap and slat position in relation to the FLAP lever.",
-          "source": "components/le-devices-annunciator/v1.md",
-          "hash": "6355653",
-          "date": "2026-08-27",
-          "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
+          "source": "modules/le-devices-annunciator/v1.md",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": []
         }
       ],
@@ -240,7 +240,7 @@
       "jira_component": "DOK-Safety",
       "software_component": null,
       "optional": false,
-      "configPath": "components/smoke-detector/component.yaml",
+      "configPath": "modules/smoke-detector/module.yaml",
       "nextMajor": 2,
       "chunks": [
         {
@@ -249,10 +249,10 @@
           "range": ">=1.0.0 <2.0.0",
           "title": "Smoke Detector",
           "summary": "Ceiling-mounted FireAngel ST-622 smoke alarm above the IOS: 85 dB sounder, sealed 10-year battery, weekly test.",
-          "source": "components/smoke-detector/v1.mdx",
-          "hash": "15d3705",
-          "date": "2026-08-28",
-          "subject": "Smoke detector: remove the synthesised alarm, play a real recording instead",
+          "source": "modules/smoke-detector/v1.mdx",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": [
             "starting-panel",
             "emergency-stop"
@@ -272,7 +272,7 @@
       "jira_component": "DOK-StartingPanel",
       "software_component": "ftd-startup-controller",
       "optional": false,
-      "configPath": "components/starting-panel/component.yaml",
+      "configPath": "modules/starting-panel/module.yaml",
       "nextMajor": 3,
       "chunks": [
         {
@@ -281,10 +281,10 @@
           "range": ">=2.0.0 <3.0.0",
           "title": "Starting Panel",
           "summary": "Wall-mounted station: two emergency stops above a touchscreen that starts, restarts and stops the simulator.",
-          "source": "components/starting-panel/v2.mdx",
-          "hash": "9873b88",
-          "date": "2026-08-27",
-          "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
+          "source": "modules/starting-panel/v2.mdx",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": [
             "starting-panel-error-codes",
             "emergency-stop"
@@ -305,7 +305,7 @@
       "jira_component": "DOK-StartingPanel",
       "software_component": "ftd-startup-controller",
       "optional": false,
-      "configPath": "components/starting-panel-error-codes/component.yaml",
+      "configPath": "modules/starting-panel-error-codes/module.yaml",
       "nextMajor": 2,
       "chunks": [
         {
@@ -314,10 +314,10 @@
           "range": ">=1.0.0 <2.0.0",
           "title": "Starting Panel Error Codes",
           "summary": "Error catalogue of the starting panel: what each code means, what a healthy system would have done, and what to do next.",
-          "source": "components/starting-panel-error-codes/v1.md",
-          "hash": "9873b88",
-          "date": "2026-08-27",
-          "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
+          "source": "modules/starting-panel-error-codes/v1.md",
+          "hash": "uncommitted",
+          "date": "—",
+          "subject": "not yet committed",
           "links": [
             "starting-panel"
           ]
@@ -337,13 +337,13 @@
         {
           "id": "general",
           "title": "General",
-          "components": [],
+          "modules": [],
           "sections": []
         },
         {
           "id": "operations",
           "title": "FNPT operations",
-          "components": [
+          "modules": [
             "emergency-stop",
             "smoke-detector",
             "starting-panel",
@@ -356,26 +356,26 @@
         {
           "id": "systems",
           "title": "Systems description",
-          "components": [],
+          "modules": [],
           "sections": [
             {
               "id": "aft-overhead",
               "title": "Aft overhead panel",
-              "components": [
+              "modules": [
                 "le-devices-annunciator"
               ]
             },
             {
               "id": "aft-electronic",
               "title": "Aft electronic panel",
-              "components": [
+              "modules": [
                 "cargo-fire-panel"
               ]
             },
             {
               "id": "circuit-breakers",
               "title": "Circuit breakers",
-              "components": [
+              "modules": [
                 "circuit-breaker-wall"
               ]
             }
@@ -385,7 +385,7 @@
     }
   ],
   "coverage": {
-    "componentIds": [
+    "moduleIds": [
       "cargo-fire-panel",
       "circuit-breaker-wall",
       "emergency-stop",
@@ -515,7 +515,7 @@
         "from": "circuit-breaker-wall",
         "to": "emergency-stop",
         "chunk": "v1.md",
-        "source": "components/circuit-breaker-wall/v1.md",
+        "source": "modules/circuit-breaker-wall/v1.md",
         "known": true,
         "brokenIn": []
       },
@@ -523,7 +523,7 @@
         "from": "emergency-stop",
         "to": "starting-panel",
         "chunk": "v1.md",
-        "source": "components/emergency-stop/v1.md",
+        "source": "modules/emergency-stop/v1.md",
         "known": true,
         "brokenIn": []
       },
@@ -531,7 +531,7 @@
         "from": "smoke-detector",
         "to": "starting-panel",
         "chunk": "v1.mdx",
-        "source": "components/smoke-detector/v1.mdx",
+        "source": "modules/smoke-detector/v1.mdx",
         "known": true,
         "brokenIn": []
       },
@@ -539,7 +539,7 @@
         "from": "smoke-detector",
         "to": "emergency-stop",
         "chunk": "v1.mdx",
-        "source": "components/smoke-detector/v1.mdx",
+        "source": "modules/smoke-detector/v1.mdx",
         "known": true,
         "brokenIn": []
       },
@@ -547,7 +547,7 @@
         "from": "starting-panel",
         "to": "starting-panel-error-codes",
         "chunk": "v2.mdx",
-        "source": "components/starting-panel/v2.mdx",
+        "source": "modules/starting-panel/v2.mdx",
         "known": true,
         "brokenIn": []
       },
@@ -555,7 +555,7 @@
         "from": "starting-panel",
         "to": "emergency-stop",
         "chunk": "v2.mdx",
-        "source": "components/starting-panel/v2.mdx",
+        "source": "modules/starting-panel/v2.mdx",
         "known": true,
         "brokenIn": []
       },
@@ -563,7 +563,7 @@
         "from": "starting-panel-error-codes",
         "to": "starting-panel",
         "chunk": "v1.md",
-        "source": "components/starting-panel-error-codes/v1.md",
+        "source": "modules/starting-panel-error-codes/v1.md",
         "known": true,
         "brokenIn": []
       }
@@ -584,9 +584,9 @@
       "kind": "missing-chunk",
       "sim": "b73m-f2m-05-2026",
       "serial": "B73M/F2M/05/2026",
-      "component": "starting-panel",
+      "module": "starting-panel",
       "detail": "no chunk of \"starting-panel\" covers installed version 3.0.0 (have: >=2.0.0 <3.0.0)",
-      "fix": "write components/starting-panel/v3.md with applies_to covering 3.0.0",
+      "fix": "write modules/starting-panel/v3.md with applies_to covering 3.0.0",
       "configPath": "sims/b73m-f2m-05-2026.json",
       "version": "3.0.0"
     }

@@ -1,7 +1,7 @@
 # ftd-docs
 
 Generated simulator manuals for FTD.aero devices. One manual per serial number, built from
-versioned component chunks and the device's configuration file.
+versioned module chunks and the device's configuration file.
 
 ## Quick start (Windows)
 
@@ -23,10 +23,10 @@ versioned component chunks and the device's configuration file.
 ## Layout
 
 ```
-components/<id>/component.yaml   identity of a component
-components/<id>/vN.md            chunk per software version range (applies_to)
+modules/<id>/module.yaml   identity of a module
+modules/<id>/vN.md            chunk per software version range (applies_to)
 shared/                          pages in every manual
-sims/<slug>.json                 installed components + versions for one device
+sims/<slug>.json                 installed modules + versions for one device
 templates/<id>.yaml              chapter structure per manual type
 tools/resolve.js                 config x template x chunks -> docs/ (generated)
 tools/bump.js                    decides and stamps manual revisions
@@ -36,7 +36,7 @@ inbox/                           raw material to be turned into chunks
 ## Admin panel
 
 `/admin` is an editorial dashboard built from `docs/admin.json`, which the resolver writes on
-every build. It shows the manuals with their release state, every component and its chunks, a
+every build. It shows the manuals with their release state, every module and its chunks, a
 coverage matrix (which chunk covers which device) and the `[[link]]` graph.
 
 It runs in one of two modes, chosen automatically when the page loads.
@@ -56,13 +56,13 @@ tree directly:
 - **Edit config / Edit identity / chunk name** — opens the file in an editor; saving writes it
   and re-runs the resolver, so the coverage matrix and gap list update immediately.
 - **New draft v*N*** (also **Write v*N*** on a gap) — opens a pre-filled chunk with a branch
-  name; saving creates the branch `doc/<component-id>-v<N>`, writes the file and commits it.
+  name; saving creates the branch `doc/<module-id>-v<N>`, writes the file and commits it.
 - **New branch / Commit / Release** — plain git. Release runs `tools/bump.js --write`, commits
   the version fields and tags; it is refused off `main` so a draft branch cannot be tagged.
 
 Nothing invalid reaches disk: front matter must parse as a YAML mapping with a `title`,
 `applies_to` must be a valid semver range, and JSON configs must parse. Writes are confined to
-`components/`, `shared/`, `sims/` and `templates/`.
+`modules/`, `shared/`, `sims/` and `templates/`.
 
 The backend binds to `127.0.0.1`, has no authentication and rewrites your working tree. It is a
 development tool — do not expose the port. If you run it elsewhere, append
@@ -72,7 +72,7 @@ development tool — do not expose the port. If you run it elsewhere, append
 
 With the backend not running, the panel is read only and every button becomes a deep link into
 GitHub's web editor — the mode the published site uses. An author commits from there to a new
-branch named `doc/<component-id>-<topic>` and opens a pull request. This needs a remote.
+branch named `doc/<module-id>-<topic>` and opens a pull request. This needs a remote.
 
 ## Gaps
 

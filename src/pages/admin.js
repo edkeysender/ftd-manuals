@@ -56,28 +56,28 @@ const ghUrls = repo => ({
 });
 
 /** Skeleton for a new version chunk, pre-filled so the author only replaces the TODOs. */
-function draftChunk(component, major) {
+function draftChunk(module, major) {
   return [
     "---",
     `applies_to: ">=${major}.0.0 <${major + 1}.0.0"`,
-    `title: ${JSON.stringify(component.name)}`,
+    `title: ${JSON.stringify(module.name)}`,
     // Quoted: the value contains ":" and would otherwise be invalid YAML.
-    'summary: "TODO(łukasz): one sentence describing what this component does."',
+    'summary: "TODO(łukasz): one sentence describing what this module does."',
     "---",
     "",
-    `TODO(łukasz): describe the behaviour of ${component.name} for software version ${major}.x.`,
+    `TODO(łukasz): describe the behaviour of ${module.name} for software version ${major}.x.`,
     "Keep to what has actually changed since the previous version; do not restate the old chunk.",
     "",
     "## Related",
     "",
-    "- TODO(łukasz): link related components as [[COMPONENT-ID]].",
+    "- TODO(łukasz): link related modules as [[MODULE-ID]].",
     "",
   ].join("\n");
 }
 
-/* --------------------------------------------------- new component skeletons */
+/* --------------------------------------------------- new module skeletons */
 
-/** English kebab-case, matching the software component name. Never renamed. */
+/** English kebab-case, matching the software module name. Never renamed. */
 const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** Quote anything YAML would misread — above all a value containing ":". */
@@ -87,7 +87,7 @@ function yamlValue(v) {
   return /^[A-Za-z0-9][A-Za-z0-9 _.,'()/-]*$/.test(s) ? s : JSON.stringify(s);
 }
 
-/** Preview of components/<id>/component.yaml; also the body of the GitHub deep link. */
+/** Preview of modules/<id>/module.yaml; also the body of the GitHub deep link. */
 function componentYamlText(f) {
   const rows = [
     ["id", f.id], ["name", f.name], ["category", f.category], ["location", f.location],
@@ -110,21 +110,21 @@ function firstChunkText(f) {
     "---",
     "",
     `TODO(łukasz): describe ${name} for software version 1.x — what it is, where it is`,
-    "and how it is operated. One component per chunk; link to any other component as [[COMPONENT-ID]] (lower-case kebab id, see CLAUDE.md rule 4).",
+    "and how it is operated. One module per chunk; link to any other module as [[MODULE-ID]] (lower-case kebab id, see CLAUDE.md rule 4).",
     "",
     "## Related",
     "",
-    "- TODO(łukasz): link related components as [[COMPONENT-ID]].",
+    "- TODO(łukasz): link related modules as [[MODULE-ID]].",
     "",
   ].join("\n");
 }
 
-/** Where a template already places a component id, or null. */
+/** Where a template already places a module id, or null. */
 function placementOf(tpl, id) {
   for (const ch of (tpl && tpl.chapters) || []) {
-    if ((ch.components || []).includes(id)) return { chapter: ch.id, section: null, label: ch.title };
+    if ((ch.modules || []).includes(id)) return { chapter: ch.id, section: null, label: ch.title };
     for (const s of ch.sections || []) {
-      if ((s.components || []).includes(id)) return { chapter: ch.id, section: s.id, label: `${ch.title} › ${s.title}` };
+      if ((s.modules || []).includes(id)) return { chapter: ch.id, section: s.id, label: `${ch.title} › ${s.title}` };
     }
   }
   return null;
@@ -132,7 +132,7 @@ function placementOf(tpl, id) {
 
 const TABS = [
   { id: "manuals", label: "Manuals" },
-  { id: "components", label: "Components" },
+  { id: "modules", label: "Modules" },
   { id: "coverage", label: "Coverage matrix" },
   { id: "links", label: "Links" },
 ];
@@ -181,8 +181,8 @@ export default function Admin() {
   const t = data.totals;
   const tiles = [
     { label: "Manuals", value: t.manuals, tab: "manuals" },
-    { label: "Components", value: t.components, tab: "components" },
-    { label: "Chunks", value: t.chunks, tab: "components" },
+    { label: "Modules", value: t.modules, tab: "modules" },
+    { label: "Chunks", value: t.chunks, tab: "modules" },
     { label: "Gaps", value: t.gaps, tab: "coverage", tone: t.gaps ? "alert" : null },
     { label: "Broken links", value: t.brokenLinks, tab: "links", tone: t.brokenLinks ? "alert" : null },
     { label: "Unreleased changes", value: t.unreleased, tab: "manuals", tone: t.unreleased ? "warn" : null },
@@ -230,7 +230,7 @@ export default function Admin() {
           </div>
 
           {tab === "manuals" && <Manuals />}
-          {tab === "components" && <Components />}
+          {tab === "modules" && <Modules />}
           {tab === "coverage" && <Coverage />}
           {tab === "links" && <Links />}
         </main>
@@ -365,7 +365,7 @@ function Editor({ spec, close }) {
   // "source" until proved otherwise: the textarea always works, the visual editor may refuse.
   const [view, setView] = useState("source");
   const [refusal, setRefusal] = useState(null);
-  // Only markdown chunks have a visual representation; sim configs and component.yaml do not.
+  // Only markdown chunks have a visual representation; sim configs and module.yaml do not.
   const richCapable = /\.mdx?$/.test(spec.path);
 
   // Restoring the preference touches localStorage, so it happens after hydration, and only
@@ -439,7 +439,7 @@ function Editor({ spec, close }) {
               className={`${styles.input} ${styles.mono}`}
               value={branch}
               onChange={e => setBranch(e.target.value)}
-              placeholder="doc/component-id-topic"
+              placeholder="doc/module-id-topic"
             />
           </label>
         )}
@@ -513,8 +513,8 @@ function Action({ path, title, mode, content, branch, message, label, primary, c
 /* -------------------------------------------------------------- new section */
 
 /**
- * A brand-new section is three things at once: the component identity, its first chunk and
- * its placement in a manual template. All three are created together — a component that is
+ * A brand-new section is three things at once: the module identity, its first chunk and
+ * its placement in a manual template. All three are created together — a module that is
  * not placed in a template never renders and every [[link]] to it degrades to plain text.
  *
  * Local mode posts to /api/section, which validates everything, creates the branch, writes
@@ -540,19 +540,19 @@ function NewSection({ initialId, close }) {
   }));
 
   const tpl = templates.find(t => t.id === f.template) || null;
-  // An id the template already lists (a "referenced but never authored" component) keeps
-  // its existing place; only the two component files are created for it.
+  // An id the template already lists (a "referenced but never authored" module) keeps
+  // its existing place; only the two module files are created for it.
   const fixed = f.id ? placementOf(tpl, f.id) : null;
   const chapterId = fixed ? fixed.chapter : f.chapter;
   const sectionId = fixed ? fixed.section : (f.section || null);
   const chapter = tpl && tpl.chapters.find(c => c.id === chapterId);
 
   const idOk = ID_RE.test(f.id);
-  const duplicate = data.components.some(c => c.id === f.id);
+  const duplicate = data.modules.some(c => c.id === f.id);
   const ready = idOk && !duplicate && f.name.trim() !== "" && !!chapterId;
-  const branch = `doc/${f.id || "component-id"}-v1`;
-  const metaPath = `components/${f.id}/component.yaml`;
-  const chunkPath = `components/${f.id}/v1.md`;
+  const branch = `doc/${f.id || "module-id"}-v1`;
+  const metaPath = `modules/${f.id}/module.yaml`;
+  const chunkPath = `modules/${f.id}/v1.md`;
 
   const create = async () => {
     setBusy(true);
@@ -588,21 +588,21 @@ function NewSection({ initialId, close }) {
           <div>
             <strong>New section</strong>
             <div className={`${styles.mono} ${styles.dim}`}>
-              {idOk ? `${metaPath} · ${chunkPath}` : "components/<id>/component.yaml · components/<id>/v1.md"}
+              {idOk ? `${metaPath} · ${chunkPath}` : "modules/<id>/module.yaml · modules/<id>/v1.md"}
             </div>
           </div>
           <button className={styles.btn} onClick={close}>Close</button>
         </div>
 
         <div className={styles.warnBox}>
-          Component ids are English kebab-case, match the software component name and are <strong>never renamed</strong>.
+          Module ids are English kebab-case, match the software module name and are <strong>never renamed</strong>.
           Only the Support lead approves a new id — creating the files here does not replace that approval.
         </div>
 
         <div className={styles.drawerScroll}>
           <div className={styles.formGrid}>
             <label className={styles.field}>
-              <span>Component id</span>
+              <span>Module id</span>
               <input
                 className={`${styles.input} ${styles.mono}`}
                 value={f.id}
@@ -614,14 +614,14 @@ function NewSection({ initialId, close }) {
             {field("category", "Category", { placeholder: "cockpit-panel" })}
             {field("location", "Location", { placeholder: "Aft electronic panel" })}
             {field("owner", "Owner", { placeholder: "support" })}
-            {field("jira_component", "Jira component", { placeholder: "DOK-Cockpit" })}
-            {field("software_component", "Software component", { placeholder: "prosim-overhead-aft" })}
+            {field("jira_component", "Jira module", { placeholder: "DOK-Cockpit" })}
+            {field("software_component", "Software module", { placeholder: "prosim-overhead-aft" })}
           </div>
 
           {f.id && !idOk && (
             <div className={styles.flashError}>“{f.id}” is not a valid id — English kebab-case, e.g. cargo-fire-panel.</div>
           )}
-          {duplicate && <div className={styles.flashError}>components/{f.id}/ already exists. Ids are never reused.</div>}
+          {duplicate && <div className={styles.flashError}>modules/{f.id}/ already exists. Ids are never reused.</div>}
 
           <div className={styles.formGrid}>
             <label className={styles.field}>
@@ -661,19 +661,19 @@ function NewSection({ initialId, close }) {
             <div className={styles.hint}>
               <code className={styles.mono}>{f.id}</code> is already placed in{" "}
               <code className={styles.mono}>templates/{f.template}.yaml</code> under <strong>{fixed.label}</strong>.
-              The template is left untouched; only the two component files are created.
+              The template is left untouched; only the two module files are created.
             </div>
           )}
           {!fixed && !chapterId && (
             <div className={styles.hint}>
-              A component that is not placed in the template never renders, and every{" "}
-              <code>[[{f.id || "component-id"}]]</code> pointing at it degrades to plain text. Choose a chapter.
+              A module that is not placed in the template never renders, and every{" "}
+              <code>[[{f.id || "module-id"}]]</code> pointing at it degrades to plain text. Choose a chapter.
             </div>
           )}
 
           <div className={styles.formGrid}>
             {field("title", "Chunk title (defaults to the name)", { placeholder: f.name || "Cargo Fire Panel" })}
-            {field("summary", "Summary", { placeholder: "One sentence describing what the component does." })}
+            {field("summary", "Summary", { placeholder: "One sentence describing what the module does." })}
           </div>
 
           <label className={styles.checkField}>
@@ -694,7 +694,7 @@ function NewSection({ initialId, close }) {
         <div className={styles.drawerFoot}>
           <span className={styles.dim}>
             {local
-              ? <>Creates <code className={styles.mono}>{branch}</code>, writes both files{fixed ? "" : ", places the component in the template"}, re-resolves and commits.</>
+              ? <>Creates <code className={styles.mono}>{branch}</code>, writes both files{fixed ? "" : ", places the module in the template"}, re-resolves and commits.</>
               : <>Backend not running — each file opens in GitHub’s editor. Commit all three to a new branch named <code className={styles.mono}>{branch}</code>.</>}
           </span>
           {local ? (
@@ -703,8 +703,8 @@ function NewSection({ initialId, close }) {
             </button>
           ) : (
             <div className={styles.actions}>
-              {/* The two new files only get a link once the form describes a real component. */}
-              <a className={`${styles.btn} ${ready ? "" : styles.btnMuted}`} href={ready ? gh.create(metaPath, componentYamlText(f)) : undefined}>component.yaml</a>
+              {/* The two new files only get a link once the form describes a real module. */}
+              <a className={`${styles.btn} ${ready ? "" : styles.btnMuted}`} href={ready ? gh.create(metaPath, componentYamlText(f)) : undefined}>module.yaml</a>
               <a className={`${styles.btn} ${ready ? "" : styles.btnMuted}`} href={ready ? gh.create(chunkPath, firstChunkText(f)) : undefined}>v1.md</a>
               <a className={`${styles.btn} ${styles.btnPrimary}`} href={gh.edit(`templates/${f.template}.yaml`)}>template</a>
             </div>
@@ -772,7 +772,7 @@ function Manuals() {
           <h2 style={{ fontSize: "1rem" }}>{m.serial} — blocking findings</h2>
           {m.gaps.map((g, i) => (
             <div key={`g${i}`} className={styles.finding}>
-              <strong className={styles.mono}>{g.component}</strong> — {g.detail}
+              <strong className={styles.mono}>{g.module}</strong> — {g.detail}
               <div className={styles.findingFix}>Fix: {g.fix}</div>
             </div>
           ))}
@@ -801,14 +801,14 @@ function ManualLink({ slug }) {
  * installed version its applies_to range covers, so this finds such a device — there may
  * be none, in which case the chunk is authored but not currently in any manual.
  */
-function ChunkPreview({ componentId, chunk }) {
+function ChunkPreview({ moduleId, chunk }) {
   const { data } = useAdmin();
   const { sims, cells } = data.coverage;
   const on = sims.find(s => {
-    const cell = cells[`${componentId}|${s.slug}`];
+    const cell = cells[`${moduleId}|${s.slug}`];
     return cell && cell.status === "ok" && cell.chunk === chunk;
   });
-  const to = useBaseUrl(on ? `/manuals/${on.slug}/${cells[`${componentId}|${on.slug}`].docId}` : "/");
+  const to = useBaseUrl(on ? `/manuals/${on.slug}/${cells[`${moduleId}|${on.slug}`].docId}` : "/");
   if (!on) {
     return (
       <span className={`${styles.badge} ${styles.badgeIdle}`} title="No device runs a version this chunk covers, so it is not rendered in any manual">
@@ -819,25 +819,25 @@ function ChunkPreview({ componentId, chunk }) {
   return <Link className={styles.btn} to={to} title={`As rendered for ${on.serial}`}>Preview</Link>;
 }
 
-/* --------------------------------------------------------------- Components */
+/* --------------------------------------------------------------- Modules */
 
-function Components() {
+function Modules() {
   const { data, local } = useAdmin();
   const [draft, setDraft] = useState(null);   // { id? } while the New section drawer is open
   return (
     <div className={styles.section}>
       <div className={styles.sectionHead}>
-        <h2 style={{ fontSize: "1.15rem", margin: 0 }}>Components</h2>
+        <h2 style={{ fontSize: "1.15rem", margin: 0 }}>Modules</h2>
         <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => setDraft({})}>New section</button>
       </div>
 
       <div className={styles.hint}>
         {local
-          ? <>“New section” creates a component identity, its first chunk and its place in a manual template.
+          ? <>“New section” creates a module identity, its first chunk and its place in a manual template.
              “New draft v<em>N</em>” opens a pre-filled chunk. Saving either creates the branch, writes the files
-             and commits in one step. Component ids are never renamed, and a new id needs approval from the Support lead.</>
+             and commits in one step. Module ids are never renamed, and a new id needs approval from the Support lead.</>
           : <>“New draft v<em>N</em>” opens GitHub’s editor with a pre-filled chunk. In the commit dialog choose
-             <strong> Create a new branch</strong> named <code className={styles.mono}>doc/&lt;component-id&gt;-&lt;topic&gt;</code>,
+             <strong> Create a new branch</strong> named <code className={styles.mono}>doc/&lt;module-id&gt;-&lt;topic&gt;</code>,
              then open the pull request.</>}
       </div>
 
@@ -845,12 +845,12 @@ function Components() {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th>Component</th><th>Category</th><th>Location</th>
-              <th>Software component</th><th>Chunks</th><th>On devices</th><th>Actions</th>
+              <th>Module</th><th>Category</th><th>Location</th>
+              <th>Software module</th><th>Chunks</th><th>On devices</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {data.components.map(c => (
+            {data.modules.map(c => (
               <tr key={c.id}>
                 <td className={styles.nowrap}>
                   <strong>{c.name}</strong>
@@ -866,7 +866,7 @@ function Components() {
                       <li key={k.file}>
                         <Action path={k.source} title={`${c.name} — ${k.file}`} mode="edit" label={k.file} />{" "}
                         <span className={styles.mono}>{k.range}</span>{" "}
-                        <ChunkPreview componentId={c.id} chunk={k.file} />{" "}
+                        <ChunkPreview moduleId={c.id} chunk={k.file} />{" "}
                         <span className={styles.dim}>{k.hash} · {k.date}</span>
                       </li>
                     ))}
@@ -878,7 +878,7 @@ function Components() {
                     <Action
                       primary
                       mode="draft"
-                      path={`components/${c.id}/v${c.nextMajor}.md`}
+                      path={`modules/${c.id}/v${c.nextMajor}.md`}
                       title={`New chunk — ${c.name} v${c.nextMajor}`}
                       content={draftChunk(c, c.nextMajor)}
                       branch={`doc/${c.id}-v${c.nextMajor}`}
@@ -898,14 +898,14 @@ function Components() {
         <div style={{ marginTop: "1.5rem" }}>
           <h2 style={{ fontSize: "1rem" }}>Referenced but never authored</h2>
           <p className={styles.dim} style={{ fontSize: "0.85rem" }}>
-            Ids that a manual template places on a page but which have no <code>components/&lt;id&gt;/</code> folder.
+            Ids that a manual template places on a page but which have no <code>modules/&lt;id&gt;/</code> folder.
             They only become a gap once a device has them installed.
           </p>
           {data.links.undocumented.map(id => (
             <div key={id} className={styles.finding}>
-              <strong className={styles.mono}>{id}</strong> — no component folder
+              <strong className={styles.mono}>{id}</strong> — no module folder
               <div className={styles.findingFix}>
-                Fix: create <code>components/{id}/component.yaml</code> and a first chunk (Support lead approves new ids).{" "}
+                Fix: create <code>modules/{id}/module.yaml</code> and a first chunk (Support lead approves new ids).{" "}
                 <button className={styles.btn} onClick={() => setDraft({ id })}>Create section</button>
               </div>
             </div>
@@ -930,22 +930,22 @@ const CELL = {
 
 function Coverage() {
   const { data } = useAdmin();
-  const { componentIds, sims, cells } = data.coverage;
+  const { moduleIds, sims, cells } = data.coverage;
   return (
     <div className={styles.section}>
       <h2>Coverage matrix</h2>
-      <p>Which chunk covers each component on each device. A red cell means the manual cannot be issued.</p>
+      <p>Which chunk covers each module on each device. A red cell means the manual cannot be issued.</p>
 
       <div className={styles.scroll}>
         <table className={styles.matrix}>
           <thead>
             <tr>
-              <th>Component</th>
+              <th>Module</th>
               {sims.map(s => <th key={s.slug}>{s.serial}</th>)}
             </tr>
           </thead>
           <tbody>
-            {componentIds.map(id => (
+            {moduleIds.map(id => (
               <tr key={id}>
                 <td className={`${styles.rowHead} ${styles.mono}`}>{id}</td>
                 {sims.map(s => {
@@ -981,21 +981,21 @@ function Coverage() {
 /** A gap for a missing chunk can be fixed straight from here. */
 function GapRow({ gap }) {
   const { data } = useAdmin();
-  const component = data.components.find(c => c.id === gap.component);
+  const module = data.modules.find(c => c.id === gap.module);
   return (
     <div className={styles.finding}>
-      <strong>{gap.serial}</strong> · <span className={styles.mono}>{gap.component}</span> — {gap.detail}
+      <strong>{gap.serial}</strong> · <span className={styles.mono}>{gap.module}</span> — {gap.detail}
       <div className={styles.findingFix}>
         Fix: {gap.fix}{" "}
-        {component && gap.kind === "missing-chunk" && (
+        {module && gap.kind === "missing-chunk" && (
           <Action
             mode="draft"
-            path={`components/${component.id}/v${component.nextMajor}.md`}
-            title={`New chunk — ${component.name} v${component.nextMajor}`}
-            content={draftChunk(component, component.nextMajor)}
-            branch={`doc/${component.id}-v${component.nextMajor}`}
-            message={`Draft: ${component.id} v${component.nextMajor}`}
-            label={`Write v${component.nextMajor}`}
+            path={`modules/${module.id}/v${module.nextMajor}.md`}
+            title={`New chunk — ${module.name} v${module.nextMajor}`}
+            content={draftChunk(module, module.nextMajor)}
+            branch={`doc/${module.id}-v${module.nextMajor}`}
+            message={`Draft: ${module.id} v${module.nextMajor}`}
+            label={`Write v${module.nextMajor}`}
           />
         )}
         {gap.kind === "missing-version" && (
@@ -1015,7 +1015,7 @@ function Links() {
     <div className={styles.section}>
       <h2>Link graph</h2>
       <p>
-        Every <code>[[component-id]]</code> reference found in an authored chunk. A link is only rendered in a
+        Every <code>[[module-id]]</code> reference found in an authored chunk. A link is only rendered in a
         manual where the target is installed and placed in the template; elsewhere it degrades to plain text.
       </p>
 
@@ -1034,7 +1034,7 @@ function Links() {
                   <td className={styles.mono}>{e.to}</td>
                   <td>
                     {!e.known
-                      ? <span className={`${styles.badge} ${styles.badgeGap}`}>unknown component</span>
+                      ? <span className={`${styles.badge} ${styles.badgeGap}`}>unknown module</span>
                       : e.brokenIn.length
                         ? <span className={`${styles.badge} ${styles.badgeWarn}`}>plain text on {e.brokenIn.map(b => b.sim).join(", ")}</span>
                         : <span className={`${styles.badge} ${styles.badgeOk}`}>resolved</span>}
@@ -1064,7 +1064,7 @@ function Links() {
       <div style={{ marginTop: "2rem" }}>
         <h2 style={{ fontSize: "1rem" }}>Not referenced by any chunk</h2>
         {orphans.length === 0
-          ? <p className={styles.empty}>Every component is referenced at least once.</p>
+          ? <p className={styles.empty}>Every module is referenced at least once.</p>
           : <p className={styles.mono}>{orphans.join(", ")}</p>}
       </div>
     </div>

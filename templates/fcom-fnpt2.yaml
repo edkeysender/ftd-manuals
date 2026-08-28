@@ -1,8 +1,8 @@
 # Manual template: FCOM for FNPT II devices.
 # The resolver walks this structure, includes every `shared` page unconditionally
-# and every component whose id is installed on the simulator with a version
-# matching one of the chunk's applies_to ranges. Components not installed are
-# silently skipped; components installed but without a matching chunk fail the build.
+# and every module whose id is installed on the simulator with a version
+# matching one of the chunk's applies_to ranges. Modules not installed are
+# silently skipped; modules installed but without a matching chunk fail the build.
 id: fcom-fnpt2
 title: Flight Crew Operating Manual
 short: FCOM
@@ -18,24 +18,24 @@ chapters:
     title: FNPT operations
     pages:
       - shared: health-and-safety
-      - component: emergency-stop
-      - component: smoke-detector
-      - component: starting-panel
-      - component: starting-panel-error-codes
-      - component: instructor-seat
-      - component: jump-seat
+      - module: emergency-stop
+      - module: smoke-detector
+      - module: starting-panel
+      - module: starting-panel-error-codes
+      - module: instructor-seat
+      - module: jump-seat
   - id: systems
     title: Systems description
     sections:
       - id: aft-overhead
         title: Aft overhead panel
         pages:
-          - component: le-devices-annunciator
+          - module: le-devices-annunciator
       - id: aft-electronic
         title: Aft electronic panel
         pages:
-          - component: cargo-fire-panel
+          - module: cargo-fire-panel
       - id: circuit-breakers
         title: Circuit breakers
         pages:
-          - component: circuit-breaker-wall
+          - module: circuit-breaker-wall

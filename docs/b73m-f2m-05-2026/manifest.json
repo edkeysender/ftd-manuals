@@ -11,10 +11,10 @@
       "issue": 1,
       "revision": 0
     },
-    "components": {
+    "modules": {
       "starting-panel": {
         "version": "3.0.0",
-        "note": "New starting logic — components/starting-panel/v3.md not written yet",
+        "note": "New starting logic — modules/starting-panel/v3.md not written yet",
         "installed": true
       },
       "emergency-stop": {
@@ -67,10 +67,10 @@
       "docId": "operations/emergency-stop",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "6355653",
-      "date": "2026-08-27",
-      "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
-      "source": "components/emergency-stop/v1.md",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/emergency-stop/v1.md",
       "status": "ok"
     },
     {
@@ -82,7 +82,7 @@
       "hash": "—",
       "date": "—",
       "subject": "section missing",
-      "source": "components/starting-panel/",
+      "source": "modules/starting-panel/",
       "status": "gap"
     },
     {
@@ -91,10 +91,10 @@
       "docId": "systems/aft-overhead/le-devices-annunciator",
       "version": "1.0.0",
       "range": ">=1.0.0",
-      "hash": "6355653",
-      "date": "2026-08-27",
-      "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
-      "source": "components/le-devices-annunciator/v1.md",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/le-devices-annunciator/v1.md",
       "status": "ok"
     }
   ],
@@ -113,13 +113,13 @@
       "kind": "missing-chunk",
       "sim": "b73m-f2m-05-2026",
       "serial": "B73M/F2M/05/2026",
-      "component": "starting-panel",
+      "module": "starting-panel",
       "detail": "no chunk of \"starting-panel\" covers installed version 3.0.0 (have: >=2.0.0 <3.0.0)",
-      "fix": "write components/starting-panel/v3.md with applies_to covering 3.0.0",
+      "fix": "write modules/starting-panel/v3.md with applies_to covering 3.0.0",
       "configPath": "sims/b73m-f2m-05-2026.json",
       "version": "3.0.0"
     }
   ],
   "brokenLinks": [],
-  "contentHash": "27c92cc0fcc73c3f"
+  "contentHash": "3572aa6d626f0d1c"
 }

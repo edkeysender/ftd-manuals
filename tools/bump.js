@@ -9,7 +9,7 @@
  *
  * A manual is "unreleased" when the content hash the resolver computes for it differs
  * from the content_hash recorded in its sim config. That happens when a chunk it uses
- * was edited, or when the installed components/versions changed. Issue and revision
+ * was edited, or when the installed modules/versions changed. Issue and revision
  * numbers are therefore never chosen by hand:
  *
  *   - first release of a manual  → keep the declared revision, record the hash
@@ -45,7 +45,7 @@ const admin = JSON.parse(fs.readFileSync(path.join(ROOT, "docs", "admin.json"), 
 
 /**
  * Rewrites one key inside the "manual" object of a sim config, leaving the rest of the
- * file byte-for-byte intact. The component table in these files is hand-aligned and
+ * file byte-for-byte intact. The module table in these files is hand-aligned and
  * re-serialising the whole document would destroy that alignment.
  */
 function setManualField(text, key, value) {
@@ -112,7 +112,7 @@ for (const m of unchanged) console.log(`· ${m.serial} — Issue ${m.issueRev}, 
 for (const m of held) {
   const why = [m.gaps.length && `${m.gaps.length} gap(s)`, m.brokenLinks.length && `${m.brokenLinks.length} broken link(s)`].filter(Boolean).join(", ");
   console.log(`⛔ ${m.serial} — HELD, not releasable: ${why}`);
-  for (const g of m.gaps) console.log(`     ${g.component}: ${g.detail}`);
+  for (const g of m.gaps) console.log(`     ${g.module}: ${g.detail}`);
   for (const b of m.brokenLinks) console.log(`     ${b.from}: ${b.detail}`);
 }
 for (const r of released) {

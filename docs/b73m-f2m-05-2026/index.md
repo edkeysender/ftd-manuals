@@ -16,4 +16,4 @@ custom_edit_url: null
 | Effective date | — |
 | Operator / Client | TODO(łukasz): operator name for this device |
 
-This manual was generated from configuration file `sims/b73m-f2m-05-2026.json` and describes only the components installed on this device.
+This manual was generated from configuration file `sims/b73m-f2m-05-2026.json` and describes only the modules installed on this device.

@@ -3,7 +3,7 @@
   "$id": "https://docs.ftd.aero/schemas/sim-config.json",
   "title": "FTD simulator configuration",
   "type": "object",
-  "required": ["serial", "device_type", "qualification", "client", "manual", "components"],
+  "required": ["serial", "device_type", "qualification", "client", "manual", "modules"],
   "additionalProperties": false,
   "properties": {
     "serial": { "type": "string", "description": "Manufacturer serial number, e.g. B73M/F2M/04/2026" },
@@ -24,9 +24,9 @@
         "content_hash": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "Content hash of the last released revision. Written by tools/bump.js — never edit by hand." }
       }
     },
-    "components": {
+    "modules": {
       "type": "object",
-      "description": "Keyed by component id. Omitted components are treated as not installed.",
+      "description": "Keyed by module id. Omitted modules are treated as not installed.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,

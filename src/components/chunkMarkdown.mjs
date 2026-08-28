@@ -1,6 +1,6 @@
 /**
  * chunkMarkdown — a deliberately small, lossless model of the markdown dialect used by the
- * chunks in components/ and shared/.
+ * chunks in modules/ and shared/.
  *
  * It exists for one reason: the admin panel offers a rich-text (WYSIWYG) editing mode, and a
  * controlled aviation document must never be silently rewritten by opening it in that mode.
@@ -61,7 +61,7 @@ function detectEol(src) {
  *   { type: "code",   ticks, raw }
  *   { type: "link",   label: [...], destRaw }
  *   { type: "image",  alt, destRaw }               atomic in the editor
- *   { type: "wiki",   id }                         [[component-id]] — atomic in the editor
+ *   { type: "wiki",   id }                         [[module-id]] — atomic in the editor
  */
 
 const ESCAPABLE = "\\`*_{}[]()#+-.!<>|~:\"'";
@@ -430,7 +430,7 @@ function parseBlocks(lines, base, depth) {
       if (!/^[A-Z]/.test(self[1])) {
         throw new ChunkParseError(`line ${at(i)}: raw HTML ("<${self[1]}>") is not supported`, at(i));
       }
-      blocks.push(protectedBlock([line], `JSX component <${self[1]} /> — kept verbatim`));
+      blocks.push(protectedBlock([line], `JSX module <${self[1]} /> — kept verbatim`));
       i += 1;
       continue;
     }

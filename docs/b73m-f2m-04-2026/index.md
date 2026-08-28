@@ -16,4 +16,4 @@ custom_edit_url: null
 | Effective date | 2026-08-27 |
 | Operator / Client | TFC European Airline Services GmbH |
 
-This manual was generated from configuration file `sims/b73m-f2m-04-2026.json` and describes only the components installed on this device.
+This manual was generated from configuration file `sims/b73m-f2m-04-2026.json` and describes only the modules installed on this device.

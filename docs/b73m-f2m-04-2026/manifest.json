@@ -11,9 +11,9 @@
       "issue": 1,
       "revision": 1,
       "effective_date": "2026-08-27",
-      "content_hash": "5efbe1d2c378fd5f"
+      "content_hash": "e4842eaddb6620e3"
     },
-    "components": {
+    "modules": {
       "starting-panel": {
         "version": "2.0.1",
         "installed": true
@@ -84,10 +84,10 @@
       "docId": "operations/emergency-stop",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "6355653",
-      "date": "2026-08-27",
-      "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
-      "source": "components/emergency-stop/v1.md",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/emergency-stop/v1.md",
       "status": "ok"
     },
     {
@@ -96,10 +96,10 @@
       "docId": "operations/smoke-detector",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "15d3705",
-      "date": "2026-08-28",
-      "subject": "Smoke detector: remove the synthesised alarm, play a real recording instead",
-      "source": "components/smoke-detector/v1.mdx",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/smoke-detector/v1.mdx",
       "status": "ok"
     },
     {
@@ -108,10 +108,10 @@
       "docId": "operations/starting-panel",
       "version": "2.0.1",
       "range": ">=2.0.0 <3.0.0",
-      "hash": "9873b88",
-      "date": "2026-08-27",
-      "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
-      "source": "components/starting-panel/v2.mdx",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/starting-panel/v2.mdx",
       "status": "ok"
     },
     {
@@ -120,10 +120,10 @@
       "docId": "operations/starting-panel-error-codes",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "9873b88",
-      "date": "2026-08-27",
-      "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
-      "source": "components/starting-panel-error-codes/v1.md",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/starting-panel-error-codes/v1.md",
       "status": "ok"
     },
     {
@@ -132,10 +132,10 @@
       "docId": "operations/instructor-seat",
       "version": "1.3.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "6355653",
-      "date": "2026-08-27",
-      "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
-      "source": "components/instructor-seat/v1.md",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/instructor-seat/v1.md",
       "status": "ok"
     },
     {
@@ -144,10 +144,10 @@
       "docId": "operations/jump-seat",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "2d0912f",
-      "date": "2026-08-27",
-      "subject": "New sections from /admin, component assets, and two authored components",
-      "source": "components/jump-seat/v1.md",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/jump-seat/v1.md",
       "status": "ok"
     },
     {
@@ -156,10 +156,10 @@
       "docId": "systems/aft-overhead/le-devices-annunciator",
       "version": "1.0.0",
       "range": ">=1.0.0",
-      "hash": "6355653",
-      "date": "2026-08-27",
-      "subject": "Phase 0 pilot: modular manual scaffold with 4 components and B73M/F2M/04/2026 config",
-      "source": "components/le-devices-annunciator/v1.md",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/le-devices-annunciator/v1.md",
       "status": "ok"
     },
     {
@@ -168,10 +168,10 @@
       "docId": "systems/circuit-breakers/circuit-breaker-wall",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "9873b88",
-      "date": "2026-08-27",
-      "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
-      "source": "components/circuit-breaker-wall/v1.md",
+      "hash": "uncommitted",
+      "date": "—",
+      "subject": "not yet committed",
+      "source": "modules/circuit-breaker-wall/v1.md",
       "status": "ok"
     }
   ],
@@ -181,5 +181,5 @@
   ],
   "gaps": [],
   "brokenLinks": [],
-  "contentHash": "2df3ede22b1b981b"
+  "contentHash": "e4842eaddb6620e3"
 }

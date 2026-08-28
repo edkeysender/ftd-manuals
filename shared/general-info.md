@@ -2,7 +2,7 @@
 title: General information
 ---
 
-This document is the Flight Crew Operating Manual (FCOM) for the Flight and Navigation Procedures Trainer (FNPT) identified on the cover page. It is generated for that device's serial number from the FTD.aero documentation system and describes only the components installed on it.
+This document is the Flight Crew Operating Manual (FCOM) for the Flight and Navigation Procedures Trainer (FNPT) identified on the cover page. It is generated for that device's serial number from the FTD.aero documentation system and describes only the modules installed on it.
 
 Any change or modification to this document is not allowed unless introduced by the FNPT manufacturer and approved by the CAA.
 

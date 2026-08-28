@@ -8,10 +8,10 @@
  *
  * Steps:
  *   1. validate the sim config against sims/schema.json
- *   2. load the manual template and every component chunk
- *   3. for each installed component pick the chunk whose applies_to range matches
+ *   2. load the manual template and every module chunk
+ *   3. for each installed module pick the chunk whose applies_to range matches
  *      the installed version; if none does, record a gap and emit a placeholder page
- *   4. resolve [[component-id]] links; unresolvable ones are recorded and rendered
+ *   4. resolve [[module-id]] links; unresolvable ones are recorded and rendered
  *      as plain text so the site still builds
  *   5. write docs/<slug>/…, docs/sidebars-<slug>.json, a manifest per manual,
  *      docs/manuals.json and docs/admin.json (coverage matrix, link graph, gaps)
@@ -67,7 +67,7 @@ function repoSlug() {
   return FALLBACK_REPO;
 }
 
-// ---------- load registry of components ----------
+// ---------- load registry of modules ----------
 function splitFrontMatter(src, where) {
   const m = src.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) fail(`${where}: missing YAML front matter`);
@@ -92,18 +92,18 @@ function gitInfo(relPath) {
   } catch { return { hash: "n/a", date: "—", subject: "" }; }
 }
 
-function loadComponents() {
-  const dir = path.join(ROOT, "components");
+function loadModules() {
+  const dir = path.join(ROOT, "modules");
   const registry = {};
   for (const id of fs.readdirSync(dir).sort()) {
     const cdir = path.join(dir, id);
     if (!fs.statSync(cdir).isDirectory()) continue;
-    const metaFile = path.join(cdir, "component.yaml");
+    const metaFile = path.join(cdir, "module.yaml");
     if (!fs.existsSync(metaFile)) continue;
     const meta = yaml.load(fs.readFileSync(metaFile, "utf8"));
-    if (meta.id !== id) fail(`components/${id}/component.yaml declares id "${meta.id}" — folder name and id must match`);
+    if (meta.id !== id) fail(`modules/${id}/module.yaml declares id "${meta.id}" — folder name and id must match`);
     const chunks = fs.readdirSync(cdir).filter(f => /^v\d+\.mdx?$/.test(f)).sort().map(f => {
-      const rel = `components/${id}/${f}`;
+      const rel = `modules/${id}/${f}`;
       const src = fs.readFileSync(path.join(cdir, f), "utf8");
       const { front, body } = splitFrontMatter(src, rel);
       if (!front.applies_to || !semver.validRange(front.applies_to)) fail(`${rel}: missing or invalid applies_to range`);
@@ -117,7 +117,7 @@ function loadComponents() {
         ...gitInfo(rel),
       };
     });
-    if (chunks.length === 0) fail(`components/${id}: no vN.md chunk found`);
+    if (chunks.length === 0) fail(`modules/${id}: no vN.md chunk found`);
     registry[id] = { meta, chunks, dir: cdir };
   }
   return registry;
@@ -127,7 +127,7 @@ function loadComponents() {
 const ajv = new Ajv({ allErrors: true, useDefaults: true, strict: false });
 const schema = JSON.parse(fs.readFileSync(path.join(ROOT, "sims", "schema.json"), "utf8"));
 const validate = ajv.compile(schema);
-const registry = loadComponents();
+const registry = loadModules();
 const REPO = repoSlug();
 const summary = [];
 const adminManuals = [];
@@ -144,7 +144,7 @@ for (const simFile of simFiles) {
   if (!fs.existsSync(tplFile)) fail(`${sim.serial}: template "${sim.manual.template}" not found`);
   const tpl = yaml.load(fs.readFileSync(tplFile, "utf8"));
 
-  const installed = Object.entries(sim.components).filter(([, c]) => c.installed !== false).map(([id]) => id);
+  const installed = Object.entries(sim.modules).filter(([, c]) => c.installed !== false).map(([id]) => id);
   const outDir = path.join(ROOT, "docs", sim.slug);
   fs.mkdirSync(outDir, { recursive: true });
 
@@ -166,7 +166,7 @@ for (const simFile of simFiles) {
 
   /**
    * Wraps a page in the running header and footer every controlled page carries: which
-   * device, which issue and revision, which section. Emitted as .mdx so the components
+   * device, which issue and revision, which section. Emitted as .mdx so the modules
    * can be imported; nothing here is authored by hand.
    */
   const emitPage = (front, body, page) => {
@@ -201,8 +201,8 @@ for (const simFile of simFiles) {
   const simGaps = [];
   const issueRev = `${sim.manual.issue}.${sim.manual.revision}`;
 
-  function gapEntry(kind, component, detail, fix, version) {
-    const e = { kind, sim: sim.slug, serial: sim.serial, component, detail, fix, configPath };
+  function gapEntry(kind, module, detail, fix, version) {
+    const e = { kind, sim: sim.slug, serial: sim.serial, module, detail, fix, configPath };
     if (version) e.version = version;
     gaps.push(e);
     simGaps.push(e);
@@ -218,20 +218,20 @@ for (const simFile of simFiles) {
   function walk(node, chapterPath, chapterTitle) {
     const items = [];
     for (const p of node.pages || []) {
-      if (p.component) {
-        const id = p.component;
+      if (p.module) {
+        const id = p.module;
         if (!installed.includes(id)) { warnings.push(`skipped ${id} (not installed)`); continue; }
         const docId = `${chapterPath}/${id}`;
         linkTargets[id] = `/manuals/${sim.slug}/${docId}`;
 
         if (!registry[id]) {
-          gapEntry("missing-component", id, `installed on ${sim.serial} but there is no components/${id}/ folder`,
-            `create components/${id}/component.yaml and a first chunk`);
-          pages.push({ kind: "gap", id, docId, reason: "no-component-folder", chapterTitle });
+          gapEntry("missing-module", id, `installed on ${sim.serial} but there is no modules/${id}/ folder`,
+            `create modules/${id}/module.yaml and a first chunk`);
+          pages.push({ kind: "gap", id, docId, reason: "no-module-folder", chapterTitle });
           items.push(`${sim.slug}/${docId}`);
           continue;
         }
-        const version = sim.components[id].version;
+        const version = sim.modules[id].version;
         if (!version) {
           gapEntry("missing-version", id, `installed on ${sim.serial} with no version in the config`,
             `add a version to "${id}" in ${configPath}`);
@@ -243,12 +243,12 @@ for (const simFile of simFiles) {
         if (!chunk) {
           const have = registry[id].chunks.map(c => c.range).join(", ");
           gapEntry("missing-chunk", id, `no chunk of "${id}" covers installed version ${version} (have: ${have})`,
-            `write components/${id}/v${nextMajor(id)}.md with applies_to covering ${version}`, version);
+            `write modules/${id}/v${nextMajor(id)}.md with applies_to covering ${version}`, version);
           pages.push({ kind: "gap", id, docId, reason: "no-chunk", version, have, chapterTitle });
           items.push(`${sim.slug}/${docId}`);
           continue;
         }
-        pages.push({ kind: "component", id, docId, chunk, version, chapterTitle });
+        pages.push({ kind: "module", id, docId, chunk, version, chapterTitle });
         items.push(`${sim.slug}/${docId}`);
       } else if (p.shared) {
         const file = path.join(ROOT, "shared", `${p.shared}.md`);
@@ -276,26 +276,26 @@ for (const simFile of simFiles) {
   }
 
   // Links are resolved against the pages this manual actually contains. A link to a
-  // component that is not installed here is not an authoring error — it is rendered as
+  // module that is not installed here is not an authoring error — it is rendered as
   // plain text — but a link to an unknown id always is.
   const resolveLinks = (body, where) => body.replace(/\[\[([a-z0-9-]+)\]\]/g, (_, id) => {
     const name = registry[id] ? registry[id].meta.name : id;
     let reason = null;
-    if (!registry[id]) reason = "unknown-component";
+    if (!registry[id]) reason = "unknown-module";
     else if (!installed.includes(id)) reason = "not-installed";
     else if (!linkTargets[id]) reason = "not-in-template";
     if (reason) {
       brokenLink(reason, {
         sim: sim.slug, serial: sim.serial, from: where, target: id,
         detail: {
-          "unknown-component": `[[${id}]] has no components/${id}/ folder`,
+          "unknown-module": `[[${id}]] has no modules/${id}/ folder`,
           "not-installed": `[[${id}]] is not installed on ${sim.serial}`,
           "not-in-template": `[[${id}]] is installed but not placed in template "${tpl.id}"`,
         }[reason],
         fix: {
-          "unknown-component": `create components/${id}/ or correct the link in ${where}`,
+          "unknown-module": `create modules/${id}/ or correct the link in ${where}`,
           "not-installed": `remove the link from ${where}, or install ${id} in ${configPath}`,
-          "not-in-template": `add "- component: ${id}" to templates/${tpl.id}.yaml`,
+          "not-in-template": `add "- module: ${id}" to templates/${tpl.id}.yaml`,
         }[reason],
       });
       return `**${name}**`;
@@ -305,9 +305,9 @@ for (const simFile of simFiles) {
 
   /**
    * Chunks reference their own figures relatively, as `assets/<name>`. Those files live
-   * beside the chunk in components/<id>/assets/ and have to be copied next to the
-   * generated page for the bundler to pick them up. They are namespaced per component
-   * because several components share one chapter directory.
+   * beside the chunk in modules/<id>/assets/ and have to be copied next to the
+   * generated page for the bundler to pick them up. They are namespaced per module
+   * because several modules share one chapter directory.
    *
    * A referenced figure that does not exist is a gap, not a build failure — the same
    * treatment a missing section gets. The reference is replaced with a visible marker so
@@ -323,7 +323,7 @@ for (const simFile of simFiles) {
       const srcFile = path.join(srcDir, name);
       if (!fs.existsSync(srcFile)) {
         gapEntry("missing-asset", id, `${where} references assets/${name}, which does not exist`,
-          `add components/${id}/assets/${name}`);
+          `add modules/${id}/assets/${name}`);
         // Plain text, not a link or an image — either would leave a broken reference on
         // the page and trip Docusaurus's broken-link check.
         const alt = label.replace(/^!?\[|\]$/g, "").trim();
@@ -347,7 +347,7 @@ for (const simFile of simFiles) {
     const file = path.join(outDir, p.docId + ".mdx");
     fs.mkdirSync(path.dirname(file), { recursive: true });
 
-    if (p.kind === "component") {
+    if (p.kind === "module") {
       const rel = p.chunk.source;
       const withAssets = b => resolveAssets(b, p.id, file, rel);
       const front = {
@@ -381,13 +381,13 @@ for (const simFile of simFiles) {
       const why = p.reason === "no-chunk"
         ? `Software version **${p.version}** is installed on this device, but no chunk of \`${p.id}\` documents that version (documented ranges: ${haveCode}).`
         : p.reason === "no-version"
-          ? `Component \`${p.id}\` is listed as installed on this device but its configuration entry has no software version.`
-          : `Component \`${p.id}\` is listed as installed on this device but has no source folder \`components/${p.id}/\`.`;
-      const body = `:::danger[Section not available]\n${why}\n\nThis manual must not be issued while this section is missing. Raise a DOK ticket for component \`${p.id}\`.\n:::\n\nTODO(łukasz): supply the description of **${name}** for this software version.\n`;
+          ? `Module \`${p.id}\` is listed as installed on this device but its configuration entry has no software version.`
+          : `Module \`${p.id}\` is listed as installed on this device but has no source folder \`modules/${p.id}/\`.`;
+      const body = `:::danger[Section not available]\n${why}\n\nThis manual must not be issued while this section is missing. Raise a DOK ticket for module \`${p.id}\`.\n:::\n\nTODO(łukasz): supply the description of **${name}** for this software version.\n`;
       writePage(file, emitPage(front, body, p));
       hashInput.push(p.docId + " GAP:" + p.reason);
       sections.push({ id: p.id, title: name, docId: p.docId, version: p.version || "—", range: "—",
-        hash: "—", date: "—", subject: "section missing", source: `components/${p.id}/`, status: "gap" });
+        hash: "—", date: "—", subject: "section missing", source: `modules/${p.id}/`, status: "gap" });
     }
   }
 
@@ -421,14 +421,17 @@ for (const simFile of simFiles) {
   }
 
   // cover / index page
-  writePage(path.join(outDir, "index.md"), `---\nid: index\ntitle: ${tpl.title}\nsidebar_position: 0\ncustom_edit_url: null\n---\n\n# ${tpl.title}\n\n| | |\n|---|---|\n| Airplane type | ${sim.device_type} |\n| Qualification level | ${sim.qualification} |\n| Serial number | ${sim.serial} |\n| Document version | Issue ${sim.manual.issue} Rev ${sim.manual.revision} |\n| Effective date | ${sim.manual.effective_date || "—"} |\n| Operator / Client | ${sim.client} |\n\nThis manual was generated from configuration file \`${configPath}\` and describes only the components installed on this device.\n`);
+  writePage(path.join(outDir, "index.md"), `---\nid: index\ntitle: ${tpl.title}\nsidebar_position: 0\ncustom_edit_url: null\n---\n\n# ${tpl.title}\n\n| | |\n|---|---|\n| Airplane type | ${sim.device_type} |\n| Qualification level | ${sim.qualification} |\n| Serial number | ${sim.serial} |\n| Document version | Issue ${sim.manual.issue} Rev ${sim.manual.revision} |\n| Effective date | ${sim.manual.effective_date || "—"} |\n| Operator / Client | ${sim.client} |\n\nThis manual was generated from configuration file \`${configPath}\` and describes only the modules installed on this device.\n`);
   sidebar.unshift(`${sim.slug}/index`);
 
   // Content hash covers what an operator reads: authored bodies plus the installed
   // configuration. It deliberately excludes issue/revision/effective_date and the
   // generated pages, which are derived from the hash and would otherwise be circular.
+  // Hashed as a positional array, not an object with named keys: the hash must track what
+  // an operator reads, so renaming a configuration key must not invalidate a released
+  // revision. Keying it by name once meant a pure terminology change bumped every manual.
   const contentHash = crypto.createHash("sha256")
-    .update(JSON.stringify({ template: tpl.id, components: sim.components, pages: hashInput.sort() }))
+    .update(JSON.stringify([tpl.id, sim.modules, hashInput.sort()]))
     .digest("hex").slice(0, 16);
   const storedHash = sim.manual.content_hash || null;
 
@@ -437,7 +440,7 @@ for (const simFile of simFiles) {
   writePage(path.join(outDir, "manifest.json"), JSON.stringify(
     { sim, issueRev, sections, warnings, gaps: simGaps, brokenLinks: simBroken, contentHash }, null, 2));
 
-  // Drop pages this run did not produce — a component uninstalled, renamed or moved to
+  // Drop pages this run did not produce — a module uninstalled, renamed or moved to
   // another chapter. Runs after every write, so nothing current is deleted and recreated,
   // and before the sidebar is rewritten, so the sidebar on disk never names a file that
   // is about to disappear.
@@ -459,13 +462,13 @@ for (const simFile of simFiles) {
   simMeta.push({ slug: sim.slug, serial: sim.serial });
 
   // coverage matrix cells
-  for (const id of new Set([...Object.keys(registry), ...Object.keys(sim.components)])) {
-    const entry = sim.components[id];
-    const page = pages.find(p => p.id === id && (p.kind === "component" || p.kind === "gap"));
+  for (const id of new Set([...Object.keys(registry), ...Object.keys(sim.modules)])) {
+    const entry = sim.modules[id];
+    const page = pages.find(p => p.id === id && (p.kind === "module" || p.kind === "gap"));
     coverageCells[`${id}|${sim.slug}`] = !entry ? { status: "absent" }
       : entry.installed === false ? { status: "not-installed", note: entry.note || null }
       // docId lets the admin panel link straight to the rendered page.
-      : page && page.kind === "component" ? { status: "ok", version: entry.version, chunk: page.chunk.file, range: page.chunk.range, docId: page.docId }
+      : page && page.kind === "module" ? { status: "ok", version: entry.version, chunk: page.chunk.file, range: page.chunk.range, docId: page.docId }
       : page ? { status: "gap", version: entry.version || null, reason: page.reason, docId: page.docId }
       : { status: "not-in-template", version: entry.version || null };
   }
@@ -476,7 +479,7 @@ for (const simFile of simFiles) {
 }
 
 // ---------- cross-cutting outputs ----------
-const adminComponents = Object.entries(registry).map(([id, c]) => ({
+const adminModules = Object.entries(registry).map(([id, c]) => ({
   id,
   name: c.meta.name,
   category: c.meta.category || null,
@@ -485,7 +488,7 @@ const adminComponents = Object.entries(registry).map(([id, c]) => ({
   jira_component: c.meta.jira_component || null,
   software_component: c.meta.software_component || null,
   optional: c.meta.optional === true,
-  configPath: `components/${id}/component.yaml`,
+  configPath: `modules/${id}/module.yaml`,
   nextMajor: Math.max(...c.chunks.map(x => x.major)) + 1,
   chunks: c.chunks.map(x => ({ file: x.file, major: x.major, range: x.range, title: x.front.title || c.meta.name,
     summary: x.front.summary || "", source: x.source, hash: x.hash, date: x.date, subject: x.subject, links: x.links })),
@@ -508,15 +511,15 @@ for (const [id, c] of Object.entries(registry)) {
 const referenced = new Set(edges.map(e => e.to));
 const orphans = Object.keys(registry).filter(id => !referenced.has(id));
 
-// Component ids mentioned by a template but never authored, and the chapter/sub-section
+// Module ids mentioned by a template but never authored, and the chapter/sub-section
 // skeleton of every template — the admin panel needs it to place a brand-new section.
 const templateIds = new Set();
 const adminTemplates = [];
 for (const f of fs.readdirSync(path.join(ROOT, "templates")).filter(f => f.endsWith(".yaml")).sort()) {
   const t = yaml.load(fs.readFileSync(path.join(ROOT, "templates", f), "utf8"));
-  const collect = n => { for (const p of n.pages || []) if (p.component) templateIds.add(p.component); for (const s of n.sections || []) collect(s); };
+  const collect = n => { for (const p of n.pages || []) if (p.module) templateIds.add(p.module); for (const s of n.sections || []) collect(s); };
   for (const ch of t.chapters || []) collect(ch);
-  const componentsOf = n => (n.pages || []).filter(p => p.component).map(p => p.component);
+  const componentsOf = n => (n.pages || []).filter(p => p.module).map(p => p.module);
   adminTemplates.push({
     id: t.id || f.replace(/\.yaml$/, ""),
     title: t.title || t.id || f,
@@ -524,8 +527,8 @@ for (const f of fs.readdirSync(path.join(ROOT, "templates")).filter(f => f.endsW
     chapters: (t.chapters || []).map(ch => ({
       id: ch.id,
       title: ch.title,
-      components: componentsOf(ch),
-      sections: (ch.sections || []).map(s => ({ id: s.id, title: s.title, components: componentsOf(s) })),
+      modules: componentsOf(ch),
+      sections: (ch.sections || []).map(s => ({ id: s.id, title: s.title, modules: componentsOf(s) })),
     })),
   });
 }
@@ -537,17 +540,17 @@ const admin = {
   defaultBranch: DEFAULT_BRANCH,
   totals: {
     manuals: adminManuals.length,
-    components: adminComponents.length,
-    chunks: adminComponents.reduce((n, c) => n + c.chunks.length, 0),
+    modules: adminModules.length,
+    chunks: adminModules.reduce((n, c) => n + c.chunks.length, 0),
     gaps: gaps.length,
     brokenLinks: brokenLinks.length,
     unreleased: adminManuals.filter(m => m.unreleased).length,
   },
   manuals: adminManuals,
-  components: adminComponents,
+  modules: adminModules,
   templates: adminTemplates,
   coverage: {
-    componentIds: [...new Set([...Object.keys(registry), ...templateIds])].sort(),
+    moduleIds: [...new Set([...Object.keys(registry), ...templateIds])].sort(),
     sims: simMeta,
     cells: coverageCells,
   },
@@ -560,9 +563,9 @@ fs.writeFileSync(path.join(ROOT, "docs", "manuals.json"), JSON.stringify(summary
 fs.writeFileSync(path.join(ROOT, "docs", "admin.json"), JSON.stringify(admin, null, 2));
 
 // ---------- report ----------
-for (const g of gaps) console.error(`⚠ GAP  ${g.serial} · ${g.component}: ${g.detail}\n       fix: ${g.fix}`);
+for (const g of gaps) console.error(`⚠ GAP  ${g.serial} · ${g.module}: ${g.detail}\n       fix: ${g.fix}`);
 for (const b of brokenLinks) console.error(`⚠ LINK ${b.serial} · ${b.from}: ${b.detail}\n       fix: ${b.fix}`);
-if (undocumented.length) console.error(`⚠ template references components with no folder: ${undocumented.join(", ")}`);
+if (undocumented.length) console.error(`⚠ template references modules with no folder: ${undocumented.join(", ")}`);
 
 if (STRICT && (gaps.length || brokenLinks.length)) {
   console.error(`\n✖ --strict: ${gaps.length} gap(s), ${brokenLinks.length} broken link(s) — not releasable`);
@@ -626,5 +629,5 @@ function renderLOES(sim, sections) {
   const banner = missing.length
     ? `\n:::danger[Incomplete]\n${missing.length} section(s) marked ⚠️ below are not available. This manual must not be issued in this state.\n:::\n`
     : "";
-  return `This manual is controlled at section level. Each section below is effective for the serial number on the cover page at the stated issue and revision.\n${banner}\n| Section | Component id | Installed version | Documented range | Issue | Rev. | Effective date |\n|---|---|---|---|---|---|---|\n${rows}\n`;
+  return `This manual is controlled at section level. Each section below is effective for the serial number on the cover page at the stated issue and revision.\n${banner}\n| Section | Module id | Installed version | Documented range | Issue | Rev. | Effective date |\n|---|---|---|---|---|---|---|\n${rows}\n`;
 }

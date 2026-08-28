@@ -25,7 +25,7 @@ const argv = process.argv.slice(2);
 const PORT = Number(argv[argv.indexOf("--port") + 1]) || 3001;
 
 /** Only these prefixes may be read or written. Everything else is generated or tooling. */
-const WRITABLE = ["components/", "shared/", "sims/", "templates/"];
+const WRITABLE = ["modules/", "shared/", "sims/", "templates/"];
 
 function git(...args) {
   return gitRaw(...args).trim();
@@ -75,8 +75,8 @@ function validate(rel, content) {
   if (typeof front !== "object" || front === null || Array.isArray(front)) {
     throw new Error("front matter must be a mapping of key: value");
   }
-  // Component chunks are version-ranged; shared pages are not.
-  if (rel.startsWith("components/")) {
+  // Module chunks are version-ranged; shared pages are not.
+  if (rel.startsWith("modules/")) {
     if (!front.applies_to) throw new Error("front matter is missing applies_to");
     if (!semver.validRange(String(front.applies_to))) {
       throw new Error(`applies_to "${front.applies_to}" is not a valid semver range`);
@@ -141,7 +141,7 @@ function gitState() {
 
 // ------------------------------------------------------------- new sections
 
-/** Component ids are English kebab-case, match the software component and are never renamed. */
+/** Module ids are English kebab-case, match the software module and are never renamed. */
 const ID_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 function readTemplate(templateId) {
@@ -158,12 +158,12 @@ function readTemplate(templateId) {
   return { id, rel, abs, text, doc };
 }
 
-/** Where a template places a component, or null. A component appears at most once. */
-function findPlacement(doc, componentId) {
+/** Where a template places a module, or null. A module appears at most once. */
+function findPlacement(doc, moduleId) {
   for (const ch of doc.chapters || []) {
-    if ((ch.pages || []).some(p => p.component === componentId)) return { chapter: ch.id, section: null };
+    if ((ch.pages || []).some(p => p.module === moduleId)) return { chapter: ch.id, section: null };
     for (const s of ch.sections || []) {
-      if ((s.pages || []).some(p => p.component === componentId)) return { chapter: ch.id, section: s.id };
+      if ((s.pages || []).some(p => p.module === moduleId)) return { chapter: ch.id, section: s.id };
     }
   }
   return null;
@@ -193,11 +193,11 @@ function findListItem(lines, from, to, id, dashIndent) {
 }
 
 /**
- * Add `- component: <id>` to a chapter (or sub-section) of a template, textually, so the
+ * Add `- module: <id>` to a chapter (or sub-section) of a template, textually, so the
  * file's comments and formatting survive. The caller re-parses the result and checks the
- * component really landed where it was asked for before anything is committed.
+ * module really landed where it was asked for before anything is committed.
  */
-function placeComponentInTemplate(text, chapterId, sectionId, componentId) {
+function placeComponentInTemplate(text, chapterId, sectionId, moduleId) {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const chaptersLine = lines.findIndex(l => /^chapters:\s*$/.test(l));
   if (chaptersLine === -1) throw new Error("template has no top-level chapters: list");
@@ -224,7 +224,7 @@ function placeComponentInTemplate(text, chapterId, sectionId, componentId) {
 
   if (pagesLine === -1) {
     const pad = " ".repeat(contentIndent);
-    lines.splice(end, 0, `${pad}pages:`, `${pad}  - component: ${componentId}`);
+    lines.splice(end, 0, `${pad}pages:`, `${pad}  - module: ${moduleId}`);
     return lines.join("\n");
   }
   let last = pagesLine;
@@ -235,7 +235,7 @@ function placeComponentInTemplate(text, chapterId, sectionId, componentId) {
     if (/^[ \t]*-\s/.test(lines[i])) itemIndent = indentOf(lines[i]);
     last = i;
   }
-  lines.splice(last + 1, 0, `${" ".repeat(itemIndent)}- component: ${componentId}`);
+  lines.splice(last + 1, 0, `${" ".repeat(itemIndent)}- module: ${moduleId}`);
   return lines.join("\n");
 }
 
@@ -246,7 +246,7 @@ function frontMatterOf(content) {
 }
 
 /**
- * The first chunk of a new component. Every front-matter value is emitted with
+ * The first chunk of a new module. Every front-matter value is emitted with
  * JSON.stringify: a title or summary containing ":" is invalid YAML unquoted.
  */
 function firstChunk(name, title, summary) {
@@ -258,11 +258,11 @@ function firstChunk(name, title, summary) {
     "---",
     "",
     `TODO(łukasz): describe ${name} for software version 1.x — what it is, where it is`,
-    "and how it is operated. One component per chunk; link to any other component as [[COMPONENT-ID]] (lower-case kebab id, see CLAUDE.md rule 4).",
+    "and how it is operated. One module per chunk; link to any other module as [[MODULE-ID]] (lower-case kebab id, see CLAUDE.md rule 4).",
     "",
     "## Related",
     "",
-    "- TODO(łukasz): link related components as [[COMPONENT-ID]].",
+    "- TODO(łukasz): link related modules as [[MODULE-ID]].",
     "",
   ].join("\n");
 }
@@ -301,7 +301,7 @@ const routes = {
     if (typeof body.content !== "string") throw new Error("content is required");
     const branch = String(body.branch || "").trim();
     if (!/^doc\/[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(branch)) {
-      throw new Error('branch must look like doc/<component-id>-<topic>');
+      throw new Error('branch must look like doc/<module-id>-<topic>');
     }
     if (fs.existsSync(abs) && !body.overwrite) throw new Error(`${rel} already exists`);
     validate(rel, body.content);
@@ -322,8 +322,8 @@ const routes = {
   },
 
   /**
-   * Create a brand-new section: components/<id>/component.yaml, components/<id>/v1.md and
-   * the component's placement in a manual template — a component that is not placed in a
+   * Create a brand-new section: modules/<id>/module.yaml, modules/<id>/v1.md and
+   * the module's placement in a manual template — a module that is not placed in a
    * template never renders and every [[link]] to it degrades to plain text.
    *
    * Everything is validated before anything is written, and the branch is only created
@@ -334,13 +334,13 @@ const routes = {
   "POST /api/section": body => {
     const id = String(body.id || "").trim();
     if (!ID_RE.test(id)) {
-      throw new Error(`"${id}" is not a valid component id — English kebab-case, e.g. cargo-fire-panel`);
+      throw new Error(`"${id}" is not a valid module id — English kebab-case, e.g. cargo-fire-panel`);
     }
-    const cdir = path.join(ROOT, "components", id);
-    if (fs.existsSync(cdir)) throw new Error(`components/${id}/ already exists — component ids are never reused or renamed`);
+    const cdir = path.join(ROOT, "modules", id);
+    if (fs.existsSync(cdir)) throw new Error(`modules/${id}/ already exists — module ids are never reused or renamed`);
 
     const name = String(body.name || "").trim();
-    if (!name) throw new Error("a component name is required");
+    if (!name) throw new Error("a module name is required");
 
     // ----- placement -----
     const tpl = readTemplate(body.template || "fcom-fnpt2");
@@ -348,7 +348,7 @@ const routes = {
     const chapterId = body.chapter ? String(body.chapter).trim() : (already ? already.chapter : "");
     const sectionId = body.section ? String(body.section).trim() : (already && !body.chapter ? already.section : null);
     if (!chapterId) {
-      throw new Error(`a chapter of templates/${tpl.id}.yaml is required — a component that is not placed `
+      throw new Error(`a chapter of templates/${tpl.id}.yaml is required — a module that is not placed `
         + "in the template never renders and every [[link]] to it degrades to plain text");
     }
     const chapter = tpl.doc.chapters.find(c => c.id === chapterId);
@@ -358,12 +358,12 @@ const routes = {
     }
     if (already && (already.chapter !== chapterId || already.section !== sectionId)) {
       throw new Error(`"${id}" is already placed in templates/${tpl.id}.yaml under `
-        + `${already.chapter}${already.section ? "/" + already.section : ""} — a component appears once per template`);
+        + `${already.chapter}${already.section ? "/" + already.section : ""} — a module appears once per template`);
     }
 
     // ----- files -----
-    const metaRel = `components/${id}/component.yaml`;
-    const chunkRel = `components/${id}/v1.md`;
+    const metaRel = `modules/${id}/module.yaml`;
+    const chunkRel = `modules/${id}/v1.md`;
     safePath(metaRel); safePath(chunkRel); safePath(tpl.rel);
 
     const meta = {
@@ -404,7 +404,7 @@ const routes = {
     // ----- branch -----
     const branch = String(body.branch || `doc/${id}-v1`).trim();
     if (!/^doc\/[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(branch)) {
-      throw new Error('branch must look like doc/<component-id>-<topic>');
+      throw new Error('branch must look like doc/<module-id>-<topic>');
     }
     const from = git("rev-parse", "--abbrev-ref", "HEAD");
     const reused = git("branch", "--format=%(refname:short)").split("\n").includes(branch);

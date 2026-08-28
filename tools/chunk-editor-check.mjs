@@ -6,13 +6,13 @@
  *
  * It does three things:
  *
- *   1. Round-trip: every chunk in components/ and shared/ is parsed into the editor model
+ *   1. Round-trip: every chunk in modules/ and shared/ is parsed into the editor model
  *      (src/components/chunkMarkdown.mjs) and serialised straight back. The result must be
  *      byte-identical to the file on disk. This is exactly what happens when an author opens
  *      a chunk in rich-text mode and saves it without typing anything.
  *   2. Refusal: a set of constructs the model deliberately cannot represent must be *refused*
  *      (rich-text mode stays closed) rather than silently mangled.
- *   3. SSR: the editor component is rendered with react-dom/server in both modes, to prove it
+ *   3. SSR: the editor module is rendered with react-dom/server in both modes, to prove it
  *      does not touch window/document at render time and that the protected blocks and the
  *      mode toggle appear.
  *
@@ -36,7 +36,7 @@ const bad = s => `  ✗ ${s}`;
 
 function chunkFiles() {
   const out = [];
-  const comp = path.join(ROOT, "components");
+  const comp = path.join(ROOT, "modules");
   for (const id of fs.readdirSync(comp)) {
     const dir = path.join(comp, id);
     if (!fs.statSync(dir).isDirectory()) continue;
@@ -86,7 +86,7 @@ console.log(`\n  block census: ${Object.entries(totals).map(([k, v]) => `${k}=${
 
 const FM = '---\napplies_to: ">=1.0.0 <2.0.0"\ntitle: Fixture\n---\n\n';
 const REFUSALS = [
-  ["JSX element with children", FM + "<Panel>\n  text inside a component\n</Panel>\n"],
+  ["JSX element with children", FM + "<Panel>\n  text inside a module\n</Panel>\n"],
   ["multi-line JSX tag", FM + '<StartingPanelDemo\n  variant="wide"\n/>\n'],
   ["raw HTML block", FM + '<div class="note">raw html</div>\n'],
   ["unterminated admonition", FM + ":::caution\nThe bolt is fully down.\n"],
@@ -222,10 +222,10 @@ try {
   }
   const ChunkRichEditor = editorModule.default;
 
-  const sample = fs.readFileSync(path.join(ROOT, "components/starting-panel/v2.mdx"), "utf8");
+  const sample = fs.readFileSync(path.join(ROOT, "modules/starting-panel/v2.mdx"), "utf8");
 
   const html = renderToString(React.createElement(ChunkRichEditor, {
-    value: sample, onChange: () => {}, path: "components/starting-panel/v2.mdx",
+    value: sample, onChange: () => {}, path: "modules/starting-panel/v2.mdx",
   }));
   const editables = (html.match(/contenteditable="true"/gi) || []).length;
   const checks = [
@@ -243,7 +243,7 @@ try {
 
   // A file the model refuses must render the refusal notice instead of any editing surface.
   const refusedHtml = renderToString(React.createElement(ChunkRichEditor, {
-    value: FM + "<Panel>\n  hello\n</Panel>\n", onChange: () => {}, path: "components/x/v1.mdx",
+    value: FM + "<Panel>\n  hello\n</Panel>\n", onChange: () => {}, path: "modules/x/v1.mdx",
   }));
   if (/cannot be opened|not supported/i.test(refusedHtml) && !/contenteditable/i.test(refusedHtml)) {
     console.log(ok("rich mode SSR — refused file shows the reason and no editing surface"));
@@ -261,7 +261,7 @@ try {
       close: () => {},
     })));
 
-  const chunkDrawer = drawer("components/starting-panel/v2.mdx", sample);
+  const chunkDrawer = drawer("modules/starting-panel/v2.mdx", sample);
   const jsonDrawer = drawer("sims/b73m-f2m-04-2026.json", "{}");
   const drawerChecks = [
     ["mode toggle offered for a chunk", /Rich text/.test(chunkDrawer) && /Source/.test(chunkDrawer)],
