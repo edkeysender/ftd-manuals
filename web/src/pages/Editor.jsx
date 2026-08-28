@@ -17,6 +17,35 @@ function stripPending(html) {
   return doc.body.innerHTML;
 }
 
+function removePendingBlocks(html) {
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  doc.querySelectorAll('.ai-edit-pending').forEach((el) => el.remove());
+  return doc.body.innerHTML;
+}
+
+const hasPendingMarkers = (html) => /class="[^"]*ai-edit-pending/.test(html || '');
+
+/* The pre-edit snapshot survives refreshes in localStorage so Accept/Discard
+   still work after a reload. */
+const snapshotKey = (slug, version) => `ftd-pending-ai:${slug}:${version}`;
+const loadSnapshot = (slug, version) => {
+  try {
+    return JSON.parse(localStorage.getItem(snapshotKey(slug, version)) || 'null');
+  } catch {
+    return null;
+  }
+};
+const saveSnapshot = (slug, version, data) => {
+  try {
+    localStorage.setItem(snapshotKey(slug, version), JSON.stringify(data));
+  } catch {}
+};
+const clearSnapshot = (slug, version) => {
+  try {
+    localStorage.removeItem(snapshotKey(slug, version));
+  } catch {}
+};
+
 export default function Editor() {
   const { slug, version } = useParams();
   const toast = useToast();
@@ -54,12 +83,29 @@ export default function Editor() {
         setDocMeta(d.doc);
         setHtml(d.content);
         setSavedAt(d.doc.updatedAt);
-        setMessages([
-          {
-            role: 'assistant',
-            content: `Editing ${d.module.name} · ${d.doc.version} r${d.doc.revision}. Tell me what to change — e.g. "add a grounding check to Installation" — and I will apply it as a pending edit for you to accept.`,
-          },
-        ]);
+        const greeting = {
+          role: 'assistant',
+          content: `Editing ${d.module.name} · ${d.doc.version} r${d.doc.revision}. Tell me what to change — e.g. "add a grounding check to Installation" — and I will apply it as a pending edit for you to accept.`,
+        };
+        // Recover a pending AI edit that was interrupted (e.g. page refresh).
+        if (hasPendingMarkers(d.content)) {
+          const snap = loadSnapshot(slug, version);
+          setPending({
+            original: snap?.original ?? null,
+            instruction: snap?.instruction ?? 'recovered AI edit',
+            recovered: true,
+          });
+          setMessages([
+            greeting,
+            {
+              role: 'assistant',
+              content:
+                'This draft contains a pending AI edit (recovered after the page was reloaded). Review the highlighted blocks and Accept or Discard them above the document.',
+            },
+          ]);
+        } else {
+          setMessages([greeting]);
+        }
       })
       .catch((e) => toast(e.message, 'err'));
   }, [slug, version]);
@@ -175,6 +221,10 @@ export default function Editor() {
   }
 
   async function submitReview() {
+    if (pending) {
+      toast('Accept or discard the pending AI edit first', 'err');
+      return;
+    }
     try {
       if (dirty) await api.saveContent(slug, version, htmlRef.current, false);
       const meta = await api.submitReview(slug, version);
@@ -234,8 +284,11 @@ export default function Editor() {
       });
       setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
       if (res.html) {
-        setPending({ original: htmlRef.current, instruction: text || `use ${sent.map((a) => a.name).join(', ')}` });
+        const instruction = text || `use ${sent.map((a) => a.name).join(', ')}`;
+        saveSnapshot(slug, version, { original: htmlRef.current, instruction });
+        setPending({ original: htmlRef.current, instruction });
         setEditorHtml(res.html);
+        setDirty(true); // autosave the marked content so a refresh can recover it
       }
     } catch (e) {
       setMessages((m) => [...m, { role: 'assistant', content: `Error: ${e.message}` }]);
@@ -250,13 +303,28 @@ export default function Editor() {
     setEditorHtml(clean);
     const instruction = pending.instruction;
     setPending(null);
+    clearSnapshot(slug, version);
     await commitRevision(`AI edit: ${instruction}`);
   }
 
   function discardAI() {
-    setEditorHtml(pending.original);
+    if (pending.original != null) {
+      setEditorHtml(pending.original);
+    } else {
+      // Recovered edit with no snapshot: the only safe option is to drop the
+      // highlighted blocks (they were inserted or modified by the AI).
+      if (
+        !confirm(
+          'No pre-edit snapshot is available for this recovered edit. Discard will DELETE all highlighted blocks from the draft. Continue?'
+        )
+      )
+        return;
+      setEditorHtml(removePendingBlocks(htmlRef.current));
+    }
     setPending(null);
-    setMessages((m) => [...m, { role: 'assistant', content: 'Edit discarded — the draft is unchanged.' }]);
+    clearSnapshot(slug, version);
+    setDirty(true);
+    setMessages((m) => [...m, { role: 'assistant', content: 'Edit discarded.' }]);
   }
 
   /* ---------- outline ---------- */
@@ -382,6 +450,7 @@ export default function Editor() {
             <div className="ai-pending-bar">
               <span>
                 <strong>AI EDIT · pending</strong> — “{pending.instruction}”
+                {pending.recovered && <em> (recovered after reload)</em>}
               </span>
               <span className="btn-row">
                 <button className="btn btn-sm btn-primary" onClick={acceptAI}>✓ Accept</button>
