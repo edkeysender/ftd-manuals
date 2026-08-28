@@ -76,6 +76,51 @@ try {
   ok(doc0.content.includes('<h2>Installation</h2>'), 'blank template has Installation section');
   ok(doc0.generated.includes('Revision record'), 'sections 1-3 generated');
 
+  // assets: upload, list, serve
+  const png1x1 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const uploaded = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', {
+    files: [{ name: 'Panel Photo.PNG', dataBase64: png1x1 }],
+  });
+  ok(uploaded[0].url.endsWith('/assets/panel-photo.png'), `asset uploaded, sanitized: ${uploaded[0].url}`);
+  const assetRes = await fetch(BASE + uploaded[0].url);
+  ok(assetRes.ok && assetRes.headers.get('content-type') === 'image/png', 'asset served as image/png');
+  const assetList = await req('GET', '/api/modules/starting-panel/assets');
+  ok(assetList.some((a) => a.name === 'panel-photo.png'), 'asset listed');
+
+  // AI settings (guidelines)
+  await req('PUT', '/api/settings/ai', { guidelines: 'Use "flight compartment", never "cockpit".' });
+  const aiSet = await req('GET', '/api/settings/ai');
+  ok(aiSet.guidelines.includes('flight compartment'), 'AI guidelines saved and read back');
+
+  // MCP endpoint: initialize + tools/list + a tool call
+  async function mcpCall(body) {
+    const res = await fetch(BASE + '/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    const json = text.startsWith('event:') || text.startsWith('data:')
+      ? JSON.parse(text.split('\n').find((l) => l.startsWith('data:')).slice(5))
+      : JSON.parse(text);
+    if (json.error) throw new Error(`MCP: ${json.error.message}`);
+    return json.result;
+  }
+  const init = await mcpCall({
+    jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } },
+  });
+  ok(init.serverInfo?.name === 'ftd-docs-console', 'MCP initialize');
+  const tools = await mcpCall({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+  ok(tools.tools.some((t) => t.name === 'create_module') && tools.tools.some((t) => t.name === 'upload_photo'),
+    `MCP exposes ${tools.tools.length} tools`);
+  const search = await mcpCall({
+    jsonrpc: '2.0', id: 3, method: 'tools/call',
+    params: { name: 'search_modules', arguments: { query: 'starting' } },
+  });
+  ok(JSON.parse(search.content[0].text).length === 1, 'MCP search_modules finds starting-panel');
+
   await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
     html: doc0.content + '<p>Autosaved text.</p>',
     bump: false,

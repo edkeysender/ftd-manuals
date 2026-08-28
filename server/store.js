@@ -431,6 +431,66 @@ export async function discardDraft(slug, version) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Assets (images and other files in the module folder)                */
+/* ------------------------------------------------------------------ */
+
+const assetFile = (slug, name) => `modules/${slug}/assets/${name}`;
+
+export function sanitizeAssetName(name) {
+  const base = String(name).split(/[\\/]/).pop() || 'file';
+  const dot = base.lastIndexOf('.');
+  const stem =
+    (dot > 0 ? base.slice(0, dot) : base)
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'file';
+  const ext = dot > 0 ? base.slice(dot).toLowerCase().replace(/[^a-z0-9.]/g, '') : '';
+  return stem + ext;
+}
+
+export const assetUrl = (slug, name) => `/api/modules/${slug}/assets/${encodeURIComponent(name)}`;
+
+/** Commit files into the draft's assets folder. files: [{name, buffer}] */
+export async function saveAssets(slug, version, files) {
+  const { branch } = await loadDraftDoc(slug, version);
+  const saved = [];
+  await repo.lock(async () => {
+    await repo.checkout(branch);
+    for (const f of files) {
+      const name = sanitizeAssetName(f.name);
+      await repo.writeFile(assetFile(slug, name), f.buffer);
+      saved.push(name);
+    }
+    await repo.commitAll(`${slug} ${version}: add asset${saved.length > 1 ? 's' : ''} ${saved.join(', ')}`);
+    await repo.checkout('main');
+  });
+  return saved.map((n) => ({ name: n, url: assetUrl(slug, n) }));
+}
+
+/** Read an asset, preferring the module's live draft branches over main. */
+export async function getAsset(slug, name) {
+  const branches = await repo.branches();
+  const refs = [...branches.filter((b) => b.startsWith(`draft/${slug}-`)), 'main'];
+  for (const ref of refs) {
+    const buf = await repo.showBinary(ref, assetFile(slug, name));
+    if (buf && buf.length) return buf;
+  }
+  return null;
+}
+
+export async function listAssets(slug) {
+  const branches = await repo.branches();
+  const refs = [...branches.filter((b) => b.startsWith(`draft/${slug}-`)), 'main'];
+  const names = new Set();
+  for (const ref of refs) {
+    for (const f of await repo.lsFiles(ref, `modules/${slug}/assets`)) {
+      names.add(f.split('/').pop());
+    }
+  }
+  return [...names].map((n) => ({ name: n, url: assetUrl(slug, n) }));
+}
+
+/* ------------------------------------------------------------------ */
 /* Software release feed                                               */
 /* ------------------------------------------------------------------ */
 
@@ -473,6 +533,25 @@ export async function linkReleaseToDoc(slug, docVersion, swName, swVersion) {
     await repo.commitAll(`${slug} ${docVersion}: cover ${swName} ${swVersion}`);
   });
   return meta;
+}
+
+/* ------------------------------------------------------------------ */
+/* Settings                                                            */
+/* ------------------------------------------------------------------ */
+
+const AI_GUIDELINES_FILE = 'settings/ai-guidelines.md';
+
+export async function getAiGuidelines() {
+  return (await repo.show('main', AI_GUIDELINES_FILE)) || '';
+}
+
+export async function saveAiGuidelines(text) {
+  await repo.lock(async () => {
+    await repo.checkout('main');
+    await repo.writeFile(AI_GUIDELINES_FILE, String(text ?? ''));
+    await repo.commitAll('settings: update AI agent guidelines');
+  });
+  return text;
 }
 
 /* ------------------------------------------------------------------ */

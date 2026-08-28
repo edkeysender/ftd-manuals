@@ -13,15 +13,18 @@ export function aiAvailable() {
 
 async function callOpenAI(messages, { json = false } = {}) {
   if (!aiAvailable()) throw new Error('OPENAI_API_KEY is not set — AI assistant is unavailable');
+  const supportsReasoning = /^(gpt-5|o\d)/.test(MODEL);
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
     },
+    signal: AbortSignal.timeout(240000),
     body: JSON.stringify({
       model: MODEL,
       messages,
+      ...(supportsReasoning ? { reasoning_effort: process.env.OPENAI_REASONING_EFFORT || 'low' } : {}),
       ...(json ? { response_format: { type: 'json_object' } } : {}),
     }),
   });
@@ -41,8 +44,14 @@ const HTML_RULES = `Allowed HTML only: <h2> (top-level sections), <h3> (subsecti
 Style: operating-manual English, present tense, no marketing language. Procedures are numbered lists (<ol>), one action per step, with the expected indication after the action. Do not invent behaviour, timings, part numbers or limits — write TODO(author): … where facts are missing.
 The document's top-level <h2> sections are Installation, Operation, Maintenance, Appendixes (sections 4–7 of the FTD standard; sections 1–3 are auto-generated elsewhere — never produce them).`;
 
-export async function generateFirstDraft(module) {
+const guidelinesBlock = (guidelines) =>
+  guidelines && guidelines.trim()
+    ? `\nOPERATOR GUIDELINES — set by the documentation owner in Settings; always follow them:\n${guidelines.trim()}\n`
+    : '';
+
+export async function generateFirstDraft(module, guidelines = '') {
   const sys = `You draft module manuals for FTD.aero flight simulation training devices. Produce the body HTML of a mini-manual (sections 4–7 only, starting at <h2>Installation</h2>). ${HTML_RULES}
+${guidelinesBlock(guidelines)}
 Return ONLY the raw HTML, no markdown fences, no commentary.`;
   const user = `Module metadata:\n${JSON.stringify(module, null, 2)}\n\nDraft the manual body. Keep it a plausible skeleton with concrete structure, and use TODO(author) markers for every fact you cannot know.`;
   const html = await callOpenAI([
@@ -57,14 +66,41 @@ Return ONLY the raw HTML, no markdown fences, no commentary.`;
  * sections 4–7 HTML with every inserted or modified element wrapped in
  * <div class="ai-edit-pending" data-ai-source="…">…</div>, or html=null when
  * the assistant only answers without editing.
+ *
+ * `context` is gathered server-side before the call: pages fetched from URLs
+ * the user pasted, images already downloaded into the module's asset store,
+ * and text attachments from the chat.
  */
-export async function chatEdit({ module, doc, content, messages }) {
+export async function chatEdit({ module, doc, content, messages, context = {}, guidelines = '' }) {
+  const { pages = [], assets = [], attachmentsText = [] } = context;
+
+  const assetBlock = assets.length
+    ? `IMAGES available in the module's asset store — these files exist and are served by the console. Embed images ONLY from this list, using the src exactly as given, as <figure><img src="URL" alt="…"><figcaption>…</figcaption></figure>:
+${assets.map((a) => `- ${a.url}${a.alt ? ` — alt: ${a.alt}` : ''}${a.from ? ` — origin: ${a.from}` : ''}`).join('\n')}
+Never invent an image path. If no listed asset fits, write TODO(author): figure needed — no <img> tag.`
+    : 'No images are available in the asset store — never insert <img> tags; write TODO(author): figure needed instead.';
+
+  const pageBlock = pages.length
+    ? `SOURCE PAGES — the console has fetched these URLs for you (you do have this content; do not claim you cannot open websites). Use them as the factual source and cite the URL in data-ai-source:
+${pages.map((p) => `=== ${p.url}${p.title ? ` — ${p.title}` : ''} ===\n${p.text}`).join('\n\n')}`
+    : '';
+
+  const attachBlock = attachmentsText.length
+    ? `ATTACHED FILES from the chat:\n${attachmentsText.map((a) => `=== ${a.name} ===\n${a.text}`).join('\n\n')}`
+    : '';
+
   const sys = `You are the AI assistant of the FTD.aero Documentation Console, working inside the manual editor for module "${module.name}" (doc ${doc.version} r${doc.revision}, status ${doc.status}).
 You receive the CURRENT DOCUMENT BODY (sections 4–7 HTML) and the user's instruction.
 ${HTML_RULES}
+${guidelinesBlock(guidelines)}
+${assetBlock}
 
-If the instruction asks for a document change: apply it and return the FULL updated body HTML. Wrap every element you inserted or modified (and only those) in <div class="ai-edit-pending" data-ai-source="SOURCE">…</div>, where SOURCE is a short citation of what the edit is based on (the user's instruction, module metadata, or general FTD manual conventions). Never wrap unchanged elements. Never delete content the user did not ask to change.
+If the instruction asks for a document change: apply it and return the FULL updated body HTML. Wrap every element you inserted or modified (and only those) in <div class="ai-edit-pending" data-ai-source="SOURCE">…</div>, where SOURCE is a short citation of what the edit is based on (a source page URL, an attached file, the user's instruction, module metadata, or general FTD manual conventions). Never wrap unchanged elements. Never delete content the user did not ask to change.
 If the instruction is only a question, answer it and return no HTML.
+
+${pageBlock}
+
+${attachBlock}
 
 Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences>", "html": "<full updated body HTML>" } — set "html" to null when no change is made.`;
 
@@ -84,4 +120,100 @@ Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences
     reply: parsed.reply || 'Done.',
     html: typeof parsed.html === 'string' && parsed.html.trim() ? parsed.html : null,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Web sourcing — the console fetches URLs on the model's behalf       */
+/* ------------------------------------------------------------------ */
+
+const FETCH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; FTD-Documentation-Console/0.1)',
+  'Accept-Language': 'en,pl;q=0.8',
+};
+
+export function extractUrls(text) {
+  const found = String(text || '').match(/https?:\/\/[^\s"'<>)\]]+/g) || [];
+  return [...new Set(found.map((u) => u.replace(/[.,;:]+$/, '')))].slice(0, 3);
+}
+
+function htmlToText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<\/(p|div|li|h\d|tr|section|article)>|<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#8217;|&rsquo;/gi, "'")
+    .replace(/&#\d+;|&[a-z]+;/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim();
+}
+
+function extractImages(html, baseUrl) {
+  const out = [];
+  const seen = new Set();
+  for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
+    const tag = m[0];
+    const src = (tag.match(/\bsrc\s*=\s*["']([^"']+)["']/i) || [])[1];
+    const alt = (tag.match(/\balt\s*=\s*["']([^"']*)["']/i) || [])[1] || '';
+    if (!src || src.startsWith('data:')) continue;
+    let abs;
+    try {
+      abs = new URL(src, baseUrl).href;
+    } catch {
+      continue;
+    }
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    out.push({ url: abs, alt });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+export async function fetchPage(url) {
+  const res = await fetch(url, {
+    headers: FETCH_HEADERS,
+    redirect: 'follow',
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]?.trim() || '';
+  return {
+    url: res.url || url,
+    title,
+    text: htmlToText(html).slice(0, 18000),
+    images: extractImages(html, res.url || url),
+  };
+}
+
+const EXT_BY_TYPE = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/svg+xml': '.svg',
+};
+
+/** Download one image; returns {name, buffer} or null (non-image, icon-sized, or oversized). */
+export async function downloadImage(url) {
+  const res = await fetch(url, { headers: FETCH_HEADERS, redirect: 'follow', signal: AbortSignal.timeout(20000) });
+  if (!res.ok) return null;
+  const type = (res.headers.get('content-type') || '').split(';')[0].trim();
+  if (!type.startsWith('image/')) return null;
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (buffer.length < 4096 || buffer.length > 6 * 1024 * 1024) return null;
+  let name = 'image';
+  try {
+    name = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'image');
+  } catch {}
+  if (!/\.[a-z0-9]{2,5}$/i.test(name)) name += EXT_BY_TYPE[type] || '.img';
+  return { name, buffer };
 }

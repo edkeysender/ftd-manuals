@@ -32,6 +32,25 @@ export class GitRepo {
     return stdout;
   }
 
+  async rawBuffer(args) {
+    const { stdout } = await execFileP('git', args, {
+      cwd: this.dir,
+      maxBuffer: 64 * 1024 * 1024,
+      windowsHide: true,
+      encoding: 'buffer',
+    });
+    return stdout;
+  }
+
+  /** Binary file content at ref:path (Buffer), or null. */
+  async showBinary(ref, file) {
+    try {
+      return await this.rawBuffer(['show', `${ref}:${file}`]);
+    } catch {
+      return null;
+    }
+  }
+
   async init() {
     const gitDir = path.join(this.dir, '.git');
     try {
@@ -140,6 +159,6 @@ export class GitRepo {
   async writeFile(relPath, content) {
     const abs = path.join(this.dir, relPath);
     await fs.mkdir(path.dirname(abs), { recursive: true });
-    await fs.writeFile(abs, content, 'utf8');
+    await fs.writeFile(abs, content, typeof content === 'string' ? 'utf8' : undefined);
   }
 }

@@ -33,9 +33,13 @@ export default function Editor() {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
+  const [aiStart, setAiStart] = useState(null);
+  const [attachments, setAttachments] = useState([]);
   const [, forceTick] = useState(0);
 
   const editorRef = useRef(null);
+  const chatRef = useRef(null);
+  const fileRef = useRef(null);
   const htmlRef = useRef('');
   htmlRef.current = html;
 
@@ -92,9 +96,14 @@ export default function Editor() {
   }, [dirty, html, editable]);
 
   useEffect(() => {
-    const t = setInterval(() => forceTick((x) => x + 1), 5000);
+    const t = setInterval(() => forceTick((x) => x + 1), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Keep the chat pinned to the newest message.
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+  }, [messages, aiBusy, attachments]);
 
   /* ---------- editing ---------- */
   const onInput = () => {
@@ -188,24 +197,51 @@ export default function Editor() {
   }
 
   /* ---------- AI loop ---------- */
+  async function addFiles(fileList) {
+    const files = [...fileList];
+    const read = await Promise.all(
+      files.map(
+        (f) =>
+          new Promise((resolve) => {
+            const r = new FileReader();
+            r.onload = () => resolve({ name: f.name, type: f.type, size: f.size, dataBase64: String(r.result).split(',')[1] || '' });
+            r.onerror = () => resolve(null);
+            r.readAsDataURL(f);
+          })
+      )
+    );
+    setAttachments((a) => [...a, ...read.filter(Boolean)]);
+  }
+
   async function sendChat() {
     const text = chatInput.trim();
-    if (!text || aiBusy || pending) return;
-    const next = [...messages, { role: 'user', content: text }];
+    if ((!text && attachments.length === 0) || aiBusy || pending) return;
+    const sent = attachments;
+    const label = sent.length ? `${text}${text ? '\n' : ''}📎 ${sent.map((a) => a.name).join(', ')}` : text;
+    const next = [...messages, { role: 'user', content: label }];
     setMessages(next);
     setChatInput('');
+    setAttachments([]);
     setAiBusy(true);
+    setAiStart(Date.now());
     try {
-      const res = await api.aiChat({ slug, version, messages: next, html: htmlRef.current });
+      const res = await api.aiChat({
+        slug,
+        version,
+        messages: [...messages, { role: 'user', content: text || 'See the attached files.' }],
+        html: htmlRef.current,
+        attachments: sent,
+      });
       setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
       if (res.html) {
-        setPending({ original: htmlRef.current, instruction: text });
+        setPending({ original: htmlRef.current, instruction: text || `use ${sent.map((a) => a.name).join(', ')}` });
         setEditorHtml(res.html);
       }
     } catch (e) {
       setMessages((m) => [...m, { role: 'assistant', content: `Error: ${e.message}` }]);
     } finally {
       setAiBusy(false);
+      setAiStart(null);
     }
   }
 
@@ -389,31 +425,80 @@ export default function Editor() {
           <div className="pane-title">
             AI assistant <span className="ai-tag">API · MCP enabled</span>
           </div>
-          <div className="chat">
+          <div className="chat" ref={chatRef}>
             {messages.map((m, i) => (
               <div key={i} className={`msg msg-${m.role}`}>
                 {m.content}
               </div>
             ))}
-            {aiBusy && <div className="msg msg-assistant">…</div>}
+            {aiBusy && (
+              <div className="msg msg-assistant thinking">
+                <span className="typing">
+                  <span /><span /><span />
+                </span>
+                <span className="thinking-label">
+                  working… {aiStart ? Math.round((Date.now() - aiStart) / 1000) : 0}s
+                  <span className="thinking-stage"> · fetching sources, drafting, marking pending edits</span>
+                </span>
+              </div>
+            )}
           </div>
           {editable ? (
-            <div className="chat-input">
-              <textarea
-                value={chatInput}
-                placeholder={pending ? 'Accept or discard the pending edit first' : 'e.g. add a grounding check to 4.1'}
-                disabled={aiBusy || !!pending}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendChat();
+            <div className="chat-composer">
+              {attachments.length > 0 && (
+                <div className="attach-chips">
+                  {attachments.map((a, i) => (
+                    <span className="attach-chip" key={i}>
+                      {a.name}
+                      <button onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="chat-input">
+                <button
+                  className="btn btn-sm attach-btn"
+                  title="Attach images or text files — images are stored in the module's assets"
+                  disabled={aiBusy || !!pending}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  📎
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  hidden
+                  accept="image/*,.txt,.md,.html,.csv"
+                  onChange={(e) => {
+                    addFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+                <textarea
+                  value={chatInput}
+                  placeholder={
+                    pending
+                      ? 'Accept or discard the pending edit first'
+                      : 'e.g. add a grounding check to 4.1 — paste a URL to source a website, attach photos to embed them'
                   }
-                }}
-              />
-              <button className="btn btn-primary btn-sm" disabled={aiBusy || !!pending || !chatInput.trim()} onClick={sendChat}>
-                Send
-              </button>
+                  disabled={aiBusy || !!pending}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendChat();
+                    }
+                  }}
+                />
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={aiBusy || !!pending || (!chatInput.trim() && !attachments.length)}
+                  onClick={sendChat}
+                >
+                  Send
+                </button>
+              </div>
             </div>
           ) : (
             <div className="chat-input muted">Read-only — {docMeta.status} docs cannot be edited.</div>

@@ -4,6 +4,7 @@ import { api, timeAgo } from './api.js';
 import ModulesList from './pages/ModulesList.jsx';
 import ModuleDetail from './pages/ModuleDetail.jsx';
 import Editor from './pages/Editor.jsx';
+import Settings from './pages/Settings.jsx';
 
 const ToastContext = createContext(() => {});
 export const useToast = () => useContext(ToastContext);
@@ -39,6 +40,7 @@ export default function App() {
             </NavLink>
             <span className="nav-disabled" title="Coming later">Manuals</span>
             <span className="nav-disabled" title="Coming later">Exports</span>
+            <NavLink to="/settings">Settings</NavLink>
           </nav>
           <div className="sync-state">
             {status ? (
@@ -58,6 +60,7 @@ export default function App() {
             <Route path="/" element={<ModulesList />} />
             <Route path="/modules/:slug" element={<ModuleDetail />} />
             <Route path="/modules/:slug/docs/:version/edit" element={<Editor />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
         <div className="toasts">

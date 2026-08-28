@@ -30,6 +30,12 @@ export const api = {
   coverRelease: (slug, version, name, swVersion) =>
     request(`/api/modules/${slug}/docs/${version}/cover`, { method: 'POST', body: { name, version: swVersion } }),
   aiChat: (body) => request('/api/ai/chat', { method: 'POST', body }),
+  aiSettings: () => request('/api/settings/ai'),
+  saveAiSettings: (guidelines) => request('/api/settings/ai', { method: 'PUT', body: { guidelines } }),
+  mcpInfo: () => request('/api/mcp-info'),
+  uploadAssets: (slug, version, files) =>
+    request(`/api/modules/${slug}/docs/${version}/assets`, { method: 'POST', body: { files } }),
+  listAssets: (slug) => request(`/api/modules/${slug}/assets`),
 };
 
 export const CATEGORIES = [
