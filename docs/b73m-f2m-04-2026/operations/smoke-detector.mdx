@@ -13,7 +13,7 @@ import { ManualHeader, ManualFooter } from "@site/src/components/ManualPage";
 <ManualHeader manual={"FCOM"} serial={"B73M/F2M/04/2026"} issue={1} revision={1} chapter={"FNPT operations"} section={"Smoke Detector"} effective={"2026-08-27"} />
 
 :::info[Effectivity]
-Component **`smoke-detector`** · installed software **1.0.0** · documented range `>=1.0.0 <2.0.0` · chunk revision `2d0912f` (2026-08-27)
+Component **`smoke-detector`** · installed software **1.0.0** · documented range `>=1.0.0 <2.0.0` · chunk revision `9873b88` (2026-08-27)
 :::
 
 
@@ -59,7 +59,11 @@ Three audible signals are produced.
 
 <SmokeAlarmSignal />
 
-TODO(łukasz): the manufacturer documents neither the pulse pattern nor the tone frequency of the fire alarm signal itself, only that of the test answer. The values that drive the player are marked `UNCONFIRMED_` in `src/components/SmokeAlarmSignal.jsx` and need a measurement on the installed unit.
+TODO(łukasz): record the audible signals from the installed alarm — at least the test response, and
+the low-battery beep if it can be produced safely — and save them under `static/audio/`. Then pass the
+path to the player above, for example `<SmokeAlarmSignal src="/audio/st-622-test.mp3" label="Test response" />`.
+No sound is played until then: the manufacturer publishes neither the tone frequency nor the pulse
+timing, so a synthesised signal could not be verified against the device.
 
 ### If the alarm sounds
 

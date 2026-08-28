@@ -96,9 +96,9 @@
       "docId": "operations/smoke-detector",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "2d0912f",
+      "hash": "9873b88",
       "date": "2026-08-27",
-      "subject": "New sections from /admin, component assets, and two authored components",
+      "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
       "source": "components/smoke-detector/v1.mdx",
       "status": "ok"
     },
@@ -108,9 +108,9 @@
       "docId": "operations/starting-panel",
       "version": "2.0.1",
       "range": ">=2.0.0 <3.0.0",
-      "hash": "2690985",
+      "hash": "9873b88",
       "date": "2026-08-27",
-      "subject": "Starting panel: rebuild from the F.7 starting panel manual",
+      "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
       "source": "components/starting-panel/v2.mdx",
       "status": "ok"
     },
@@ -120,9 +120,9 @@
       "docId": "operations/starting-panel-error-codes",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "uncommitted",
-      "date": "—",
-      "subject": "not yet committed",
+      "hash": "9873b88",
+      "date": "2026-08-27",
+      "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
       "source": "components/starting-panel-error-codes/v1.md",
       "status": "ok"
     },
@@ -168,9 +168,9 @@
       "docId": "systems/circuit-breakers/circuit-breaker-wall",
       "version": "1.0.0",
       "range": ">=1.0.0 <2.0.0",
-      "hash": "uncommitted",
-      "date": "—",
-      "subject": "not yet committed",
+      "hash": "9873b88",
+      "date": "2026-08-27",
+      "subject": "Circuit breaker wall, error code catalogue, and ST-622 photographs",
       "source": "components/circuit-breaker-wall/v1.md",
       "status": "ok"
     }
@@ -181,5 +181,5 @@
   ],
   "gaps": [],
   "brokenLinks": [],
-  "contentHash": "19f3506bfd09eff1"
+  "contentHash": "2df3ede22b1b981b"
 }
