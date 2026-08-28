@@ -52,10 +52,12 @@ let collectCache = null;
 let feedCache = null;
 const assetCache = new Map();
 const historyCache = new Map();
+let manualsCache = null;
 
 function invalidateCache() {
   collectCache = null;
   feedCache = null;
+  manualsCache = null;
   assetCache.clear();
   historyCache.clear();
 }
@@ -607,6 +609,154 @@ export async function getStatus() {
 }
 
 export { blankContent };
+
+/* ------------------------------------------------------------------ */
+/* Manuals — assembled from module docs                                */
+/* ------------------------------------------------------------------ */
+
+const manualFile = (slug) => `manuals/${slug}/manual.json`;
+
+export async function listManuals() {
+  if (manualsCache) return manualsCache;
+  const files = await repo.lsFiles('main', 'manuals');
+  const out = [];
+  for (const f of files) {
+    if (!/^manuals\/[^/]+\/manual\.json$/.test(f)) continue;
+    const m = await readJson('main', f);
+    if (m) out.push(m);
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  manualsCache = out;
+  return out;
+}
+
+export async function getManual(slug) {
+  return (await listManuals()).find((m) => m.slug === slug) || null;
+}
+
+export async function createManual({ name, code, group, modules }) {
+  const slug = slugify(name);
+  if (!slug) throw new Error('Manual name is required');
+  if (await getManual(slug)) throw new Error(`A manual with slug "${slug}" already exists`);
+  const ts = now();
+  const manual = {
+    slug,
+    name,
+    code: code || null,
+    group: group || null,
+    modules: Array.isArray(modules) ? modules : [],
+    createdAt: ts,
+    updatedAt: ts,
+  };
+  await mutate(async () => {
+    await repo.checkout('main');
+    await repo.writeFile(manualFile(slug), JSON.stringify(manual, null, 2) + '\n');
+    await repo.commitAll(`manuals: create ${slug}`);
+  });
+  return manual;
+}
+
+export async function updateManual(slug, patch) {
+  const existing = await getManual(slug);
+  if (!existing) throw new Error(`Manual "${slug}" not found`);
+  const manual = { ...existing };
+  if (patch.name !== undefined) manual.name = patch.name;
+  if (patch.code !== undefined) manual.code = patch.code || null;
+  if (patch.group !== undefined) manual.group = patch.group || null;
+  if (patch.modules !== undefined) manual.modules = patch.modules;
+  manual.updatedAt = now();
+  await mutate(async () => {
+    await repo.checkout('main');
+    await repo.writeFile(manualFile(slug), JSON.stringify(manual, null, 2) + '\n');
+    await repo.commitAll(`manuals: update ${slug}`);
+  });
+  return manual;
+}
+
+export async function deleteManual(slug) {
+  if (!(await getManual(slug))) throw new Error(`Manual "${slug}" not found`);
+  await mutate(async () => {
+    await repo.checkout('main');
+    await repo.removePath(`manuals/${slug}`);
+    await repo.commitAll(`manuals: delete ${slug}`);
+  });
+}
+
+/**
+ * Assemble a manual: one chapter per selected module, using its latest
+ * Released doc version, or — flagged — its latest draft when nothing is
+ * released yet.
+ */
+export async function compileManual(slug) {
+  const manual = await getManual(slug);
+  if (!manual) return null;
+  const { modules } = await collectAll();
+  const chapters = [];
+  for (const mslug of manual.modules) {
+    const entry = modules.find((m) => m.module.slug === mslug);
+    if (!entry) {
+      chapters.push({ slug: mslug, missing: true });
+      continue;
+    }
+    const doc = entry.docs.find((d) => d.status === 'released') || entry.docs[0] || null;
+    if (!doc) {
+      chapters.push({ slug: mslug, module: entry.module, missing: true });
+      continue;
+    }
+    const content = (await repo.show(doc.ref, contentFile(mslug, doc.version))) || '';
+    chapters.push({
+      slug: mslug,
+      module: entry.module,
+      doc,
+      generated: generatedSections(entry.module, doc),
+      content,
+      isDraft: doc.status !== 'released',
+    });
+  }
+  return { manual, chapters };
+}
+
+/* ------------------------------------------------------------------ */
+/* Branding: logo (settings/logo.*) and manual covers (manuals/x/cover.*) */
+/* ------------------------------------------------------------------ */
+
+const IMAGE_EXT = /\.(png|jpe?g|svg|webp|gif)$/i;
+
+async function findSingleton(dir, base) {
+  const files = await repo.lsFiles('main', dir);
+  return files.find((f) => new RegExp(`^${dir}/${base}\\.(png|jpe?g|svg|webp|gif)$`, 'i').test(f)) || null;
+}
+
+async function readSingleton(dir, base) {
+  const key = `__${dir}/${base}`;
+  if (assetCache.has(key)) return assetCache.get(key);
+  const file = await findSingleton(dir, base);
+  if (!file) return null;
+  const buffer = await repo.showBinary('main', file);
+  const result = buffer && buffer.length ? { name: file.split('/').pop(), buffer } : null;
+  if (result) assetCache.set(key, result);
+  return result;
+}
+
+async function saveSingleton(dir, base, name, buffer, message) {
+  const ext = (String(name).match(IMAGE_EXT) || [])[0];
+  if (!ext) throw new Error('Image must be png, jpg, svg, webp or gif');
+  const existing = await findSingleton(dir, base);
+  const target = `${dir}/${base}${ext.toLowerCase()}`;
+  await mutate(async () => {
+    await repo.checkout('main');
+    if (existing && existing !== target) await repo.removePath(existing);
+    await repo.writeFile(target, buffer);
+    await repo.commitAll(message);
+  });
+  return { name: target.split('/').pop() };
+}
+
+export const getBrandLogo = () => readSingleton('settings', 'logo');
+export const saveBrandLogo = (name, buffer) => saveSingleton('settings', 'logo', name, buffer, 'settings: update logo');
+export const getManualCover = (slug) => readSingleton(`manuals/${slug}`, 'cover');
+export const saveManualCover = (slug, name, buffer) =>
+  saveSingleton(`manuals/${slug}`, 'cover', name, buffer, `manuals: ${slug} cover image`);
 
 /* ------------------------------------------------------------------ */
 /* Module metadata edits                                               */

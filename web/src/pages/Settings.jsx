@@ -1,6 +1,54 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import React, { useEffect, useRef, useState } from 'react';
+import { api, readFileAsBase64 } from '../api.js';
 import { useToast } from '../App.jsx';
+
+function BrandingCard() {
+  const toast = useToast();
+  const [version, setVersion] = useState(Date.now());
+  const [hasLogo, setHasLogo] = useState(false);
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    fetch(`/api/settings/logo?v=${version}`).then((r) => setHasLogo(r.ok)).catch(() => setHasLogo(false));
+  }, [version]);
+
+  async function upload(file) {
+    try {
+      await api.uploadLogo(await readFileAsBase64(file));
+      setVersion(Date.now());
+      toast('Logo saved — it appears in the header box of every manual');
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  return (
+    <section className="settings-card">
+      <h2>Branding</h2>
+      <p>
+        Company logo shown in the header box of assembled manuals (cover and every printed page). Without one, a
+        built-in FTD.aero mark is used.
+      </p>
+      <div className="pair">
+        {hasLogo && <img className="logo-thumb" alt="logo" src={`/api/settings/logo?v=${version}`} />}
+        <button className="btn" onClick={() => fileRef.current?.click()}>
+          {hasLogo ? 'Replace logo…' : 'Upload logo…'}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+          hidden
+          onChange={(e) => {
+            if (e.target.files[0]) upload(e.target.files[0]);
+            e.target.value = '';
+          }}
+        />
+        <span className="hint">PNG or SVG with transparent background works best.</span>
+      </div>
+    </section>
+  );
+}
 
 export default function Settings() {
   const toast = useToast();
@@ -67,6 +115,8 @@ export default function Settings() {
           {dirty && <span className="hint">unsaved changes</span>}
         </div>
       </section>
+
+      <BrandingCard />
 
       <section className="settings-card">
         <h2>MCP connector</h2>

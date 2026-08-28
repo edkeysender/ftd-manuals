@@ -3,8 +3,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import * as store from './store.js';
 import * as ai from './ai.js';
-import { blankContent } from './docgen.js';
+import { blankContent, manualBodyHtml, manualExportHtml, MANUAL_CSS } from './docgen.js';
 import { handleMcpRequest, TOOLS as MCP_TOOLS } from './mcp.js';
+import { GitTransientError } from './git.js';
 
 const PORT = process.env.PORT || 5179;
 const app = express();
@@ -13,7 +14,8 @@ app.use(express.json({ limit: '40mb' }));
 const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((e) => {
     console.error(e);
-    res.status(400).json({ error: e.message || String(e) });
+    if (e instanceof GitTransientError) res.set('Retry-After', '1');
+    res.status(e instanceof GitTransientError ? 503 : 400).json({ error: e.message || String(e) });
   });
 
 /* ---------- status ---------- */
@@ -125,14 +127,22 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-app.get('/api/modules/:slug/assets/:file', wrap(async (req, res) => {
-  const buf = await store.getAsset(req.params.slug, req.params.file);
+app.get('/api/modules/:slug/assets/:file', async (req, res) => {
+  let buf;
+  try {
+    buf = await store.getAsset(req.params.slug, req.params.file);
+  } catch (e) {
+    // A failed read must never look like the image: explicit 503 + JSON.
+    console.error('asset read failed:', e.message);
+    res.set('Retry-After', '1');
+    return res.status(503).json({ error: 'Asset temporarily unavailable: ' + e.message });
+  }
   if (!buf) return res.status(404).json({ error: 'Asset not found' });
   const ext = path.extname(req.params.file).toLowerCase();
   res.set('Content-Type', MIME[ext] || 'application/octet-stream');
   res.set('Cache-Control', 'no-cache');
   res.send(buf);
-}));
+});
 
 app.get('/api/modules/:slug/assets', wrap(async (req, res) => {
   res.json(await store.listAssets(req.params.slug));
@@ -230,6 +240,107 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
 
   if (notes.length) result.reply = `${result.reply}\n\n${notes.join('\n')}`;
   res.json(result);
+}));
+
+/* ---------- manuals ---------- */
+app.get('/api/manuals', wrap(async (req, res) => {
+  const manuals = await store.listManuals();
+  const modules = await store.listModules();
+  res.json(
+    manuals.map((m) => ({
+      ...m,
+      moduleNames: m.modules.map((s) => modules.find((x) => x.slug === s)?.name || s),
+      unreleased: m.modules.filter((s) => {
+        const mod = modules.find((x) => x.slug === s);
+        return !mod || mod.status !== 'released';
+      }).length,
+    }))
+  );
+}));
+
+app.post('/api/manuals', wrap(async (req, res) => {
+  res.json(await store.createManual(req.body));
+}));
+
+async function manualRenderOpts(slug, manual) {
+  const logo = await store.getBrandLogo();
+  const cover = await store.getManualCover(slug);
+  return {
+    logoUrl: logo ? `/api/settings/logo?v=${encodeURIComponent(logo.name)}` : null,
+    coverUrl: cover ? `/api/manuals/${slug}/cover?v=${encodeURIComponent(manual.updatedAt || '')}` : null,
+  };
+}
+
+app.get('/api/manuals/:slug', wrap(async (req, res) => {
+  const compiled = await store.compileManual(req.params.slug);
+  if (!compiled) return res.status(404).json({ error: 'Manual not found' });
+  const opts = await manualRenderOpts(req.params.slug, compiled.manual);
+  res.json({ ...compiled, hasCover: !!opts.coverUrl, hasLogo: !!opts.logoUrl, css: MANUAL_CSS, html: manualBodyHtml(compiled, opts) });
+}));
+
+function sendImage(res, file) {
+  if (!file) return res.status(404).json({ error: 'Not found' });
+  res.set('Content-Type', MIME[path.extname(file.name).toLowerCase()] || 'application/octet-stream');
+  res.set('Cache-Control', 'no-cache');
+  res.send(file.buffer);
+}
+
+app.get('/api/manuals/:slug/cover', wrap(async (req, res) => sendImage(res, await store.getManualCover(req.params.slug))));
+
+app.post('/api/manuals/:slug/cover', wrap(async (req, res) => {
+  const buffer = Buffer.from(req.body.dataBase64 || '', 'base64');
+  if (!buffer.length) throw new Error('No image data');
+  if (!(await store.getManual(req.params.slug))) throw new Error('Manual not found');
+  res.json(await store.saveManualCover(req.params.slug, req.body.name || 'cover.png', buffer));
+}));
+
+app.get('/api/settings/logo', wrap(async (req, res) => sendImage(res, await store.getBrandLogo())));
+
+app.post('/api/settings/logo', wrap(async (req, res) => {
+  const buffer = Buffer.from(req.body.dataBase64 || '', 'base64');
+  if (!buffer.length) throw new Error('No image data');
+  res.json(await store.saveBrandLogo(req.body.name || 'logo.png', buffer));
+}));
+
+app.put('/api/manuals/:slug', wrap(async (req, res) => {
+  res.json(await store.updateManual(req.params.slug, req.body));
+}));
+
+app.delete('/api/manuals/:slug', wrap(async (req, res) => {
+  await store.deleteManual(req.params.slug);
+  res.json({ ok: true });
+}));
+
+// Standalone HTML export with images inlined as data URIs.
+app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
+  const compiled = await store.compileManual(req.params.slug);
+  if (!compiled) return res.status(404).json({ error: 'Manual not found' });
+  const opts = await manualRenderOpts(req.params.slug, compiled.manual);
+  let html = manualExportHtml(compiled, opts);
+  // Inline every console-served image (module assets, logo, cover) as a data URI.
+  const refs = [...new Set([...html.matchAll(/\/api\/(?:modules\/[^/"']+\/assets\/[^"' >)?]+|settings\/logo|manuals\/[^/"']+\/cover)(?:\?[^"' >)]*)?/g)].map((m) => m[0]))];
+  for (const ref of refs) {
+    const clean = ref.split('?')[0];
+    let file = null;
+    let m;
+    if ((m = /^\/api\/modules\/([^/]+)\/assets\/(.+)$/.exec(clean))) {
+      const name = decodeURIComponent(m[2]);
+      const buf = await store.getAsset(m[1], name);
+      if (buf) file = { name, buffer: buf };
+    } else if (clean === '/api/settings/logo') {
+      file = await store.getBrandLogo();
+    } else if ((m = /^\/api\/manuals\/([^/]+)\/cover$/.exec(clean))) {
+      file = await store.getManualCover(m[1]);
+    }
+    if (!file) continue;
+    const mime = MIME[path.extname(file.name).toLowerCase()] || 'application/octet-stream';
+    html = html.split(ref).join(`data:${mime};base64,${file.buffer.toString('base64')}`);
+  }
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  if (req.query.download !== undefined) {
+    res.set('Content-Disposition', `attachment; filename="${compiled.manual.slug}.html"`);
+  }
+  res.send(html);
 }));
 
 /* ---------- settings ---------- */

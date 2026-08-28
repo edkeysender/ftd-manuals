@@ -141,6 +141,31 @@ try {
     params: { name: 'replace_in_doc', arguments: { slug: 'starting-panel', version: 'A1.0', find: 'nope-not-there', replace: 'x' } },
   });
   ok(bad.isError === true, 'replace_in_doc reports missing text as error');
+  const revBefore = (await req('GET', '/api/modules/starting-panel/docs/A1.0')).doc.revision;
+  const batch = await mcpCall({
+    jsonrpc: '2.0', id: 60, method: 'tools/call',
+    params: { name: 'edit_doc', arguments: { slug: 'starting-panel', version: 'A1.0', summary: 'batch', edits: [
+      { find: 'Replaced via MCP.', replace: 'Batched via MCP.' },
+      { section: 'Maintenance', html: '<p>Batch insert.</p>' },
+    ] } },
+  });
+  ok(!batch.isError && JSON.parse(batch.content[0].text).revision === revBefore + 1, 'MCP edit_doc applies 2 edits with one revision bump');
+  body = (await req('GET', '/api/modules/starting-panel/docs/A1.0')).content;
+  ok(body.includes('Batched via MCP.') && body.indexOf('Batch insert.') > body.indexOf('<h2>Maintenance</h2>'), 'edit_doc batch applied');
+  const batchBad = await mcpCall({
+    jsonrpc: '2.0', id: 61, method: 'tools/call',
+    params: { name: 'edit_doc', arguments: { slug: 'starting-panel', version: 'A1.0', edits: [
+      { section: 'Maintenance', html: '<p>should not land</p>' },
+      { find: 'nope-not-there', replace: 'x' },
+    ] } },
+  });
+  body = (await req('GET', '/api/modules/starting-panel/docs/A1.0')).content;
+  ok(batchBad.isError === true && batchBad.content[0].text.includes('edit[1]') && !body.includes('should not land'), 'edit_doc is atomic and names the failing edit');
+  const withAssets = await mcpCall({
+    jsonrpc: '2.0', id: 62, method: 'tools/call',
+    params: { name: 'get_doc', arguments: { slug: 'starting-panel', include_assets: true } },
+  });
+  ok(Array.isArray(JSON.parse(withAssets.content[0].text).assets), 'get_doc include_assets returns assets');
   const fromUrl = await mcpCall({
     jsonrpc: '2.0', id: 7, method: 'tools/call',
     params: { name: 'upload_photo_from_url', arguments: { slug: 'starting-panel', version: 'A1.0', url: BASE + uploaded[0].url, name: 'copy-of-photo.png' } },
@@ -159,7 +184,7 @@ try {
     bump: false,
   });
   const afterAuto = await req('GET', '/api/modules/starting-panel/docs/A1.0');
-  ok(afterAuto.doc.revision === 3, 'autosave keeps revision (r3)');
+  ok(afterAuto.doc.revision === 4, 'autosave keeps revision (r4)');
 
   await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
     html: afterAuto.content + '<p>Grounding check added.</p>',
@@ -167,7 +192,7 @@ try {
     summary: 'Add grounding check',
   });
   const afterBump = await req('GET', '/api/modules/starting-panel/docs/A1.0');
-  ok(afterBump.doc.revision === 4, 'committed change bumps to r4');
+  ok(afterBump.doc.revision === 5, 'committed change bumps to r5');
   ok(afterBump.doc.revisionRecord.some((r) => r.summary === 'Add grounding check'), 'revision record entry written');
 
   // review + release
@@ -223,6 +248,39 @@ try {
   await req('POST', '/api/modules/ios-panel/docs/A1.0/discard');
   list = await req('GET', '/api/modules');
   ok(list.length === 1, 'discarded never-released module disappears');
+
+  // manuals: create from selected modules, compile, export, update, delete
+  const manual = await req('POST', '/api/manuals', { name: 'B737 Simulator Manual', group: 'SIM', modules: ['starting-panel'] });
+  ok(manual.slug === 'b737-simulator-manual' && manual.modules.length === 1, 'manual created from selected modules');
+  const compiled = await req('GET', '/api/manuals/b737-simulator-manual');
+  ok(compiled.chapters.length === 1 && compiled.chapters[0].doc.version === 'A1.1' && !compiled.chapters[0].isDraft,
+    'manual compiles the released A1.1 as chapter 1');
+  ok(compiled.html.includes('class="chapter"') && compiled.html.includes('Table of contents') && compiled.html.includes('Grounding check added'),
+    'compiled html has chapter, TOC and module content');
+  ok(compiled.html.includes('href="#c1-s4"') && compiled.html.includes('id="c1-s4"') && compiled.html.includes('href="#ch-starting-panel"'),
+    'TOC links point at anchored headings');
+  ok(compiled.html.includes('proprietary material protected by international law') && compiled.html.includes('class="head-box"'),
+    'manual has header box and proprietary footer');
+  // cover + logo upload, then export inlines them
+  const png1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  await req('POST', '/api/manuals/b737-simulator-manual/cover', { name: 'sim.png', dataBase64: png1 });
+  await req('POST', '/api/settings/logo', { name: 'Logo.PNG', dataBase64: png1 });
+  const coverRes = await fetch(BASE + '/api/manuals/b737-simulator-manual/cover');
+  ok(coverRes.ok && coverRes.headers.get('content-type') === 'image/png', 'manual cover served');
+  const withCover = await req('GET', '/api/manuals/b737-simulator-manual');
+  ok(withCover.hasCover && withCover.hasLogo && withCover.html.includes('/api/settings/logo'), 'compiled manual uses cover and logo');
+  const exp2 = await (await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html')).text();
+  ok(!exp2.includes('/api/settings/logo') && !exp2.includes('/api/manuals/') && exp2.includes('data:image/png;base64,'),
+    'export inlines logo and cover as data URIs');
+  const exp = await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html');
+  const expHtml = await exp.text();
+  ok(exp.ok && expHtml.startsWith('<!doctype html>') && expHtml.includes('<style>'), 'standalone export served');
+  const mlist = await req('GET', '/api/manuals');
+  ok(mlist.length === 1 && mlist[0].unreleased === 0, 'manual listed as all released');
+  await req('PUT', '/api/manuals/b737-simulator-manual', { modules: [] });
+  ok((await req('GET', '/api/manuals/b737-simulator-manual')).chapters.length === 0, 'manual modules updated');
+  await req('DELETE', '/api/manuals/b737-simulator-manual');
+  ok((await req('GET', '/api/manuals')).length === 0, 'manual deleted');
 
   // history exists
   detail = await req('GET', '/api/modules/starting-panel');

@@ -39,7 +39,11 @@ export const TOOLS = [
       'Get a doc version of a module: metadata, revision record and the editable body HTML (sections 4–7). Omit version for the latest one.',
     inputSchema: {
       type: 'object',
-      properties: { slug: SLUG_VER.slug, version: { type: 'string', description: 'e.g. A1.0; omit for latest' } },
+      properties: {
+        slug: SLUG_VER.slug,
+        version: { type: 'string', description: 'e.g. A1.0; omit for latest' },
+        include_assets: { type: 'boolean', description: 'Also return the module assets list (saves a list_assets call)' },
+      },
       required: ['slug'],
     },
     annotations: { title: 'Get doc', ...RO },
@@ -105,7 +109,7 @@ export const TOOLS = [
   {
     name: 'replace_in_doc',
     description:
-      'Edit part of the body HTML: replace an exact substring of the current body (get it with get_doc) with new HTML. Fails if the substring is not found or is ambiguous. Bumps the revision.',
+      'Edit part of the body HTML: replace an exact substring of the current body (get it with get_doc) with new HTML. Fails if the substring is not found or is ambiguous. Bumps the revision. For several changes at once use edit_doc (one call, one revision).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -121,7 +125,7 @@ export const TOOLS = [
   {
     name: 'insert_into_section',
     description:
-      'Append (or prepend) HTML inside one of the body sections — Installation, Operation, Maintenance or Appendixes — without touching the rest. Use it to add a paragraph, a procedure, a warning or a <figure> with an uploaded image. Bumps the revision.',
+      'Append (or prepend) HTML inside one of the body sections — Installation, Operation, Maintenance or Appendixes — without touching the rest. Use it to add a paragraph, a procedure, a warning or a <figure> with an uploaded image. Bumps the revision. For several changes at once use edit_doc (one call, one revision).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -134,6 +138,34 @@ export const TOOLS = [
       required: ['slug', 'version', 'section', 'html'],
     },
     annotations: { title: 'Insert into section', ...RW },
+  },
+  {
+    name: 'edit_doc',
+    description:
+      'Apply MANY edits to a Draft/In-review doc body in ONE call: a list of replace ({find, replace}) and insert ({section, html, position}) operations, applied in order to the current body, committed once with a single revision bump. Prefer this over repeated replace_in_doc / insert_into_section calls — it keeps the number of tool calls per task low. Atomic: if any edit fails (text not found / ambiguous, unknown section) nothing is saved and the error names the failing edit index.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...SLUG_VER,
+        edits: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              find: { type: 'string', description: 'replace op: exact substring of the current body HTML' },
+              replace: { type: 'string', description: 'replace op: replacement HTML (empty string deletes)' },
+              section: { type: 'string', description: 'insert op: section <h2> title, e.g. Operation' },
+              html: { type: 'string', description: 'insert op: HTML to insert' },
+              position: { type: 'string', enum: ['end', 'start'], description: 'insert op: default end' },
+            },
+          },
+        },
+        summary: { type: 'string', description: 'Revision record entry for the whole batch' },
+      },
+      required: ['slug', 'version', 'edits'],
+    },
+    annotations: { title: 'Edit doc (batch)', ...RW },
   },
   {
     name: 'upload_photo',
@@ -210,6 +242,14 @@ async function currentBody(slug, version) {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+function replaceOnce(body, find, replace) {
+  if (!find) throw new Error('find must be a non-empty string');
+  const count = body.split(find).length - 1;
+  if (count === 0) throw new Error('find text not found in the current body — call get_doc and copy the exact HTML');
+  if (count > 1) throw new Error(`find text occurs ${count} times — include more context to make it unique`);
+  return body.replace(find, () => replace);
+}
+
 function insertIntoSection(content, section, html, position = 'end') {
   const re = new RegExp(`<h2[^>]*>\\s*${escapeRe(section.trim())}\\s*</h2>`, 'i');
   const m = re.exec(content);
@@ -244,7 +284,9 @@ async function callTool(name, args) {
       const version = args.version || (await latestVersion(args.slug));
       const d = await store.getDoc(args.slug, version);
       if (!d) throw new Error(`Doc ${args.slug} ${version} not found`);
-      return { module: d.module, doc: d.doc, content: d.content };
+      const out = { module: d.module, doc: d.doc, content: d.content };
+      if (args.include_assets) out.assets = await store.listAssets(args.slug);
+      return out;
     }
     case 'list_assets':
       return await store.listAssets(args.slug);
@@ -275,10 +317,7 @@ async function callTool(name, args) {
       });
     case 'replace_in_doc': {
       const body = await currentBody(args.slug, args.version);
-      const count = body.split(args.find).length - 1;
-      if (count === 0) throw new Error('find text not found in the current body — call get_doc and copy the exact HTML');
-      if (count > 1) throw new Error(`find text occurs ${count} times — include more context to make it unique`);
-      const html = body.replace(args.find, () => args.replace);
+      const html = replaceOnce(body, args.find, args.replace);
       return await store.saveDraftContent(args.slug, args.version, html, {
         bump: true,
         summary: args.summary || 'Edit via MCP (replace)',
@@ -290,6 +329,23 @@ async function callTool(name, args) {
       return await store.saveDraftContent(args.slug, args.version, html, {
         bump: true,
         summary: args.summary || `Add content to ${args.section} via MCP`,
+      });
+    }
+    case 'edit_doc': {
+      if (!Array.isArray(args.edits) || !args.edits.length) throw new Error('edits must be a non-empty array');
+      let html = await currentBody(args.slug, args.version);
+      args.edits.forEach((e, i) => {
+        try {
+          if (typeof e.find === 'string') html = replaceOnce(html, e.find, e.replace ?? '');
+          else if (e.section) html = insertIntoSection(html, e.section, e.html || '', e.position || 'end');
+          else throw new Error('each edit needs either {find, replace} or {section, html}');
+        } catch (err) {
+          throw new Error(`edit[${i}]: ${err.message}`);
+        }
+      });
+      return await store.saveDraftContent(args.slug, args.version, html, {
+        bump: true,
+        summary: args.summary || `${args.edits.length} edits via MCP`,
       });
     }
     case 'upload_photo': {

@@ -30,6 +30,13 @@ export const api = {
   coverRelease: (slug, version, name, swVersion) =>
     request(`/api/modules/${slug}/docs/${version}/cover`, { method: 'POST', body: { name, version: swVersion } }),
   aiChat: (body) => request('/api/ai/chat', { method: 'POST', body }),
+  manuals: () => request('/api/manuals'),
+  manual: (slug) => request(`/api/manuals/${slug}`),
+  createManual: (body) => request('/api/manuals', { method: 'POST', body }),
+  updateManual: (slug, body) => request(`/api/manuals/${slug}`, { method: 'PUT', body }),
+  deleteManual: (slug) => request(`/api/manuals/${slug}`, { method: 'DELETE' }),
+  uploadManualCover: (slug, file) => request(`/api/manuals/${slug}/cover`, { method: 'POST', body: file }),
+  uploadLogo: (file) => request('/api/settings/logo', { method: 'POST', body: file }),
   aiSettings: () => request('/api/settings/ai'),
   saveAiSettings: (guidelines) => request('/api/settings/ai', { method: 'PUT', body: { guidelines } }),
   mcpInfo: () => request('/api/mcp-info'),
@@ -59,6 +66,16 @@ export const STATUS_LABELS = {
   superseded: 'Superseded',
   missing: 'Missing doc',
 };
+
+/** Read a File into {name, type, size, dataBase64} for JSON upload endpoints. */
+export function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve({ name: file.name, type: file.type, size: file.size, dataBase64: String(r.result).split(',')[1] || '' });
+    r.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    r.readAsDataURL(file);
+  });
+}
 
 export function timeAgo(iso) {
   if (!iso) return '—';

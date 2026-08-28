@@ -5,6 +5,33 @@ import path from 'node:path';
 
 const execFileP = promisify(execFile);
 
+/** git stderr patterns meaning "that ref/path simply is not there" (not a failure). */
+const MISSING_RE = /does not exist in|not a valid object name|invalid object name|exists on disk, but not in|unknown revision|bad revision|ambiguous argument/i;
+/** Failures that come from the OS / process spawn rather than from git — worth a retry. */
+const TRANSIENT_RE = /EAGAIN|ENOMEM|EBUSY|EPERM|ETIMEDOUT|spawn .* failed|Out of memory|OutOfMemory|Resource temporarily unavailable|index.lock/i;
+
+export class GitMissingError extends Error {}
+export class GitTransientError extends Error {}
+
+// Each git call is a child process; under load the spawns themselves fail
+// (EAGAIN / out-of-memory), so cap how many run at once.
+const MAX_CONCURRENT = 4;
+let running = 0;
+const waiters = [];
+function acquire() {
+  if (running < MAX_CONCURRENT) {
+    running++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => waiters.push(resolve));
+}
+function release() {
+  const next = waiters.shift();
+  if (next) next();
+  else running--;
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 /**
  * Thin wrapper around the git CLI for the document store repository.
  * All mutating operations must go through lock() — the store keeps a single
@@ -17,37 +44,72 @@ export class GitRepo {
   }
 
   lock(fn) {
-    const run = () => fn();
+    const run = async () => {
+      try {
+        return await fn();
+      } catch (e) {
+        await this.recover().catch((re) => console.error('git recover failed:', re.message));
+        throw e;
+      }
+    };
     const p = this._chain.then(run, run);
     this._chain = p.catch(() => {});
     return p;
   }
 
+  /**
+   * Put the working tree back on a clean main after a failed mutation. Every
+   * change is committed inside the same lock() call that makes it, so anything
+   * left behind here is a half-done operation, never user data.
+   */
+  async recover() {
+    await this.raw(['reset', '-q', '--hard']);
+    await this.raw(['clean', '-fdq']);
+    await this.raw(['checkout', '-q', '-f', 'main']);
+  }
+
+  /**
+   * Run git with the concurrency cap, retrying transient spawn/OS failures.
+   * A "ref or path is not there" answer is raised as GitMissingError so
+   * callers can tell it from a real failure instead of swallowing both.
+   */
+  async _exec(args, encoding) {
+    const opts = { cwd: this.dir, maxBuffer: 64 * 1024 * 1024, windowsHide: true };
+    if (encoding) opts.encoding = encoding;
+    for (let attempt = 0; ; attempt++) {
+      await acquire();
+      try {
+        const { stdout } = await execFileP('git', args, opts);
+        return stdout;
+      } catch (e) {
+        const text = [e.message || '', e.stderr || ''].join(' ');
+        if (e.code === 128 && MISSING_RE.test(text)) throw new GitMissingError(text.trim());
+        const transient = TRANSIENT_RE.test(text) || (typeof e.code === 'string' && e.code.startsWith('E'));
+        if (!transient) throw e;
+        if (attempt >= 3) throw new GitTransientError(`git ${args[0]} failed after ${attempt + 1} attempts: ${text.trim()}`);
+        console.warn(`git ${args[0]}: transient failure, retrying (${attempt + 1}/3)`);
+      } finally {
+        release();
+      }
+      await sleep(150 * (attempt + 1));
+    }
+  }
+
   async raw(args) {
-    const { stdout } = await execFileP('git', args, {
-      cwd: this.dir,
-      maxBuffer: 64 * 1024 * 1024,
-      windowsHide: true,
-    });
-    return stdout;
+    return this._exec(args);
   }
 
   async rawBuffer(args) {
-    const { stdout } = await execFileP('git', args, {
-      cwd: this.dir,
-      maxBuffer: 64 * 1024 * 1024,
-      windowsHide: true,
-      encoding: 'buffer',
-    });
-    return stdout;
+    return this._exec(args, 'buffer');
   }
 
   /** Binary file content at ref:path (Buffer), or null. */
   async showBinary(ref, file) {
     try {
       return await this.rawBuffer(['show', `${ref}:${file}`]);
-    } catch {
-      return null;
+    } catch (e) {
+      if (e instanceof GitMissingError) return null;
+      throw e;
     }
   }
 
@@ -76,8 +138,9 @@ export class GitRepo {
   async show(ref, file) {
     try {
       return await this.raw(['show', `${ref}:${file}`]);
-    } catch {
-      return null;
+    } catch (e) {
+      if (e instanceof GitMissingError) return null;
+      throw e;
     }
   }
 
@@ -86,8 +149,9 @@ export class GitRepo {
     try {
       const out = await this.raw(['ls-tree', '-r', '--name-only', ref, '--', prefix]);
       return out.split('\n').filter(Boolean);
-    } catch {
-      return [];
+    } catch (e) {
+      if (e instanceof GitMissingError) return [];
+      throw e;
     }
   }
 
@@ -154,6 +218,10 @@ export class GitRepo {
 
   async deleteBranch(branch) {
     await this.raw(['branch', '-D', branch]);
+  }
+
+  async removePath(relPath) {
+    await this.raw(['rm', '-r', '-q', '--', relPath]);
   }
 
   async writeFile(relPath, content) {
