@@ -44,6 +44,32 @@ const docFile = (slug, version) => `modules/${slug}/docs/${version}/doc.json`;
 const contentFile = (slug, version) => `modules/${slug}/docs/${version}/content.html`;
 
 /* ------------------------------------------------------------------ */
+/* Cache — every read spawns git processes, which is slow on Windows.  */
+/* All reads are cached in memory and invalidated on any store write.  */
+/* ------------------------------------------------------------------ */
+
+let collectCache = null;
+let feedCache = null;
+const assetCache = new Map();
+const historyCache = new Map();
+
+function invalidateCache() {
+  collectCache = null;
+  feedCache = null;
+  assetCache.clear();
+  historyCache.clear();
+}
+
+/** Run a mutation inside the repo lock and drop caches afterwards. */
+async function mutate(fn) {
+  try {
+    return await repo.lock(fn);
+  } finally {
+    invalidateCache();
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Reading                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -54,6 +80,7 @@ const contentFile = (slug, version) => `modules/${slug}/docs/${version}/content.
  *   - otherwise the copy on main (released / merged).
  */
 async function collectAll() {
+  if (collectCache) return collectCache;
   const branches = await repo.branches();
   const draftBranches = branches.filter((b) => b.startsWith('draft/'));
   const refs = ['main', ...draftBranches];
@@ -115,7 +142,8 @@ async function collectAll() {
     modules.push({ module, docs, draftBranches });
   }
   modules.sort((a, b) => a.module.name.localeCompare(b.module.name));
-  return { modules, draftBranches };
+  collectCache = { modules, draftBranches };
+  return collectCache;
 }
 
 function latestDocLabel(doc) {
@@ -152,7 +180,9 @@ function needsDoc(module, docs, softwareFeed) {
 }
 
 export async function getSoftwareFeed() {
-  return (await readJson('main', 'softwares.json')) || {};
+  if (feedCache) return feedCache;
+  feedCache = (await readJson('main', 'softwares.json')) || {};
+  return feedCache;
 }
 
 export async function listModules() {
@@ -187,18 +217,22 @@ export async function getModule(slug) {
   const feed = await getSoftwareFeed();
 
   // History: commits touching this module's folder across main + its draft branches.
-  const seen = new Set();
-  const history = [];
-  const refs = ['main', ...entry.docs.filter((d) => d.ref !== 'main').map((d) => d.ref)];
-  for (const ref of refs) {
-    for (const c of await repo.log(ref, `modules/${slug}`, 50)) {
-      if (!seen.has(c.hash)) {
-        seen.add(c.hash);
-        history.push({ ...c, ref });
+  let history = historyCache.get(slug);
+  if (!history) {
+    const seen = new Set();
+    history = [];
+    const refs = ['main', ...entry.docs.filter((d) => d.ref !== 'main').map((d) => d.ref)];
+    for (const ref of refs) {
+      for (const c of await repo.log(ref, `modules/${slug}`, 50)) {
+        if (!seen.has(c.hash)) {
+          seen.add(c.hash);
+          history.push({ ...c, ref });
+        }
       }
     }
+    history.sort((a, b) => b.date.localeCompare(a.date));
+    historyCache.set(slug, history);
   }
-  history.sort((a, b) => b.date.localeCompare(a.date));
 
   return {
     module: entry.module,
@@ -275,7 +309,7 @@ export async function createModuleDoc(input, content, revisionRecordSeed) {
     copiedFrom: input.copiedFrom || null,
   };
 
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout('main');
     await repo.createBranch(branch, 'main');
     await repo.writeFile(moduleFile(slug), JSON.stringify(module, null, 2) + '\n');
@@ -320,7 +354,7 @@ export async function createNextDocVersion(slug, bump = 'minor') {
     copiedFrom: { slug, version: latest.version },
   };
 
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout('main');
     await repo.createBranch(branch, 'main');
     await repo.writeFile(docFile(slug, version), JSON.stringify(doc, null, 2) + '\n');
@@ -358,7 +392,7 @@ export async function saveDraftContent(slug, version, html, { bump = false, summ
   }
   meta.updatedAt = ts;
 
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout(branch);
     await repo.writeFile(contentFile(slug, version), html);
     await repo.writeFile(docFile(slug, version), JSON.stringify(meta, null, 2) + '\n');
@@ -375,7 +409,7 @@ export async function setDocStatus(slug, version, status) {
   const { branch, meta } = await loadDraftDoc(slug, version);
   meta.status = status;
   meta.updatedAt = now();
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout(branch);
     await repo.writeFile(docFile(slug, version), JSON.stringify(meta, null, 2) + '\n');
     await repo.commitAll(`${slug} ${version}: ${status === 'in-review' ? 'submit for review' : 'back to draft'}`);
@@ -390,7 +424,7 @@ export async function releaseDoc(slug, version) {
   const { branch, meta } = await loadDraftDoc(slug, version);
   const ts = now();
 
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout('main');
     await repo.merge(branch, `Merge ${branch}: release ${slug} ${version}`);
 
@@ -424,7 +458,7 @@ export async function discardDraft(slug, version) {
   const branch = docBranchName(slug, version);
   const branches = await repo.branches();
   if (!branches.includes(branch)) throw new Error(`No draft branch ${branch}`);
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout('main');
     await repo.deleteBranch(branch);
   });
@@ -454,7 +488,7 @@ export const assetUrl = (slug, name) => `/api/modules/${slug}/assets/${encodeURI
 export async function saveAssets(slug, version, files) {
   const { branch } = await loadDraftDoc(slug, version);
   const saved = [];
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout(branch);
     for (const f of files) {
       const name = sanitizeAssetName(f.name);
@@ -469,11 +503,16 @@ export async function saveAssets(slug, version, files) {
 
 /** Read an asset, preferring the module's live draft branches over main. */
 export async function getAsset(slug, name) {
+  const key = `${slug}/${name}`;
+  if (assetCache.has(key)) return assetCache.get(key);
   const branches = await repo.branches();
   const refs = [...branches.filter((b) => b.startsWith(`draft/${slug}-`)), 'main'];
   for (const ref of refs) {
     const buf = await repo.showBinary(ref, assetFile(slug, name));
-    if (buf && buf.length) return buf;
+    if (buf && buf.length) {
+      assetCache.set(key, buf);
+      return buf;
+    }
   }
   return null;
 }
@@ -502,7 +541,7 @@ export async function registerSoftwareRelease({ name, version, manualAffecting, 
   releases.push({ version, date: now(), manualAffecting: !!manualAffecting, note: note || '' });
   releases.sort((a, b) => compareSwVersions(a.version, b.version));
   feed[name] = releases;
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout('main');
     await repo.writeFile('softwares.json', JSON.stringify(feed, null, 2) + '\n');
     await repo.commitAll(`softwares: ${name} ${version}${manualAffecting ? ' (manual-affecting)' : ''}`);
@@ -527,7 +566,7 @@ export async function linkReleaseToDoc(slug, docVersion, swName, swVersion) {
   }
   meta.covers = covers;
   meta.updatedAt = now();
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout('main');
     await repo.writeFile(file, JSON.stringify(meta, null, 2) + '\n');
     await repo.commitAll(`${slug} ${docVersion}: cover ${swName} ${swVersion}`);
@@ -546,7 +585,7 @@ export async function getAiGuidelines() {
 }
 
 export async function saveAiGuidelines(text) {
-  await repo.lock(async () => {
+  await mutate(async () => {
     await repo.checkout('main');
     await repo.writeFile(AI_GUIDELINES_FILE, String(text ?? ''));
     await repo.commitAll('settings: update AI agent guidelines');

@@ -204,6 +204,30 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
     context: ctx,
     guidelines: await store.getAiGuidelines(),
   });
+
+  // 4. Generate any illustrations the model requested, before returning the
+  //    edit — the html already references them by name.
+  for (const gi of result.generateImages || []) {
+    if (!editable) break;
+    try {
+      let reference = null;
+      if (gi.reference_asset) {
+        const buf = await store.getAsset(slug, gi.reference_asset);
+        if (buf) reference = { name: gi.reference_asset, buffer: buf };
+      }
+      const buffer = await ai.generateImage({ prompt: gi.prompt, reference });
+      const [saved] = await store.saveAssets(slug, version, [{ name: gi.name, buffer }]);
+      // Keep the html consistent if sanitization changed the file name.
+      if (result.html && saved.name !== gi.name) {
+        result.html = result.html.split(`assets/${gi.name}`).join(`assets/${saved.name}`);
+      }
+      notes.push(`Generated ${saved.name}${gi.reference_asset ? ` from ${gi.reference_asset}` : ''}.`);
+    } catch (e) {
+      notes.push(`Image generation failed for ${gi.name}: ${e.message}`);
+    }
+  }
+  delete result.generateImages;
+
   if (notes.length) result.reply = `${result.reply}\n\n${notes.join('\n')}`;
   res.json(result);
 }));

@@ -102,7 +102,11 @@ ${pageBlock}
 
 ${attachBlock}
 
-Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences>", "html": "<full updated body HTML>" } — set "html" to null when no change is made.`;
+IMAGE GENERATION — you can create new illustrations (diagrams, line-art conversions of photos, style renderings). Add to your JSON:
+"generate_images": [{"name": "kebab-case-name.png", "prompt": "<detailed illustration prompt, including the full style definition to apply>", "reference_asset": "<file name of an existing asset to use as visual reference, or null>"}]
+The console generates each image with an image model (the reference asset is supplied to it as the visual base) and saves it into the asset store BEFORE your edit is displayed — so you may embed it in the html immediately as <img src="/api/modules/${module.slug}/assets/<name>">. Use at most 3 per turn. Use this whenever the user asks for an illustration, a technical drawing, or a photo converted to a drawing style — never refuse such requests and never claim you cannot transform images.
+
+Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences>", "html": "<full updated body HTML>", "generate_images": [...] } — set "html" to null when no change is made, omit "generate_images" when none are needed.`;
 
   const convo = messages.slice(-12).map((m) => ({ role: m.role, content: m.content }));
   const user = {
@@ -119,7 +123,62 @@ Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences
   return {
     reply: parsed.reply || 'Done.',
     html: typeof parsed.html === 'string' && parsed.html.trim() ? parsed.html : null,
+    generateImages: Array.isArray(parsed.generate_images)
+      ? parsed.generate_images.filter((g) => g && g.name && g.prompt).slice(0, 3)
+      : [],
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Image generation (gpt-image-1)                                      */
+/* ------------------------------------------------------------------ */
+
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+const IMAGE_QUALITY = process.env.OPENAI_IMAGE_QUALITY || 'medium';
+
+/**
+ * Generate one image. When a reference buffer is given, the images/edits
+ * endpoint is used so the output is based on the reference (e.g. a photo
+ * converted to a line drawing); otherwise plain generation.
+ * Returns a PNG Buffer.
+ */
+export async function generateImage({ prompt, reference = null }) {
+  if (!aiAvailable()) throw new Error('OPENAI_API_KEY is not set');
+  const headers = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
+  let res;
+  if (reference) {
+    const form = new FormData();
+    form.append('model', IMAGE_MODEL);
+    form.append('quality', IMAGE_QUALITY);
+    form.append('prompt', prompt);
+    const type = /\.png$/i.test(reference.name) ? 'image/png' : /\.webp$/i.test(reference.name) ? 'image/webp' : 'image/jpeg';
+    form.append('image[]', new Blob([reference.buffer], { type }), reference.name);
+    res = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST',
+      headers,
+      body: form,
+      signal: AbortSignal.timeout(180000),
+    });
+  } else {
+    res = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: IMAGE_MODEL, prompt, size: '1024x1024', quality: IMAGE_QUALITY }),
+      signal: AbortSignal.timeout(180000),
+    });
+  }
+  if (!res.ok) {
+    const body = await res.text();
+    let detail = body;
+    try {
+      detail = JSON.parse(body).error?.message || body;
+    } catch {}
+    throw new Error(`Image API error (${res.status}): ${detail}`);
+  }
+  const data = await res.json();
+  const b64 = data.data?.[0]?.b64_json;
+  if (!b64) throw new Error('Image API returned no image data');
+  return Buffer.from(b64, 'base64');
 }
 
 /* ------------------------------------------------------------------ */
