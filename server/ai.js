@@ -262,13 +262,13 @@ const EXT_BY_TYPE = {
 };
 
 /** Download one image; returns {name, buffer} or null (non-image, icon-sized, or oversized). */
-export async function downloadImage(url) {
+export async function downloadImage(url, { minBytes = 4096 } = {}) {
   const res = await fetch(url, { headers: FETCH_HEADERS, redirect: 'follow', signal: AbortSignal.timeout(20000) });
   if (!res.ok) return null;
   const type = (res.headers.get('content-type') || '').split(';')[0].trim();
   if (!type.startsWith('image/')) return null;
   const buffer = Buffer.from(await res.arrayBuffer());
-  if (buffer.length < 4096 || buffer.length > 6 * 1024 * 1024) return null;
+  if (buffer.length < minBytes || buffer.length > 6 * 1024 * 1024) return null;
   let name = 'image';
   try {
     name = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'image');

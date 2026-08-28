@@ -113,7 +113,7 @@ try {
   });
   ok(init.serverInfo?.name === 'ftd-docs-console', 'MCP initialize');
   const tools = await mcpCall({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
-  ok(tools.tools.some((t) => t.name === 'create_module') && tools.tools.some((t) => t.name === 'upload_photo'),
+  ok(tools.tools.some((t) => t.name === 'replace_in_doc') && tools.tools.some((t) => t.name === 'generate_illustration') && tools.tools.every((t) => t.annotations),
     `MCP exposes ${tools.tools.length} tools`);
   const search = await mcpCall({
     jsonrpc: '2.0', id: 3, method: 'tools/call',
@@ -121,12 +121,45 @@ try {
   });
   ok(JSON.parse(search.content[0].text).length === 1, 'MCP search_modules finds starting-panel');
 
+  // MCP editing tools
+  const ins = await mcpCall({
+    jsonrpc: '2.0', id: 4, method: 'tools/call',
+    params: { name: 'insert_into_section', arguments: { slug: 'starting-panel', version: 'A1.0', section: 'Operation', html: '<p>Inserted via MCP.</p>', summary: 'MCP insert' } },
+  });
+  ok(!ins.isError && JSON.parse(ins.content[0].text).revision === 2, 'MCP insert_into_section bumps to r2');
+  let body = (await req('GET', '/api/modules/starting-panel/docs/A1.0')).content;
+  ok(body.indexOf('Inserted via MCP') > body.indexOf('<h2>Operation</h2>') && body.indexOf('Inserted via MCP') < body.indexOf('<h2>Maintenance</h2>'), 'insert landed inside Operation');
+  const rep = await mcpCall({
+    jsonrpc: '2.0', id: 5, method: 'tools/call',
+    params: { name: 'replace_in_doc', arguments: { slug: 'starting-panel', version: 'A1.0', find: 'Inserted via MCP.', replace: 'Replaced via MCP.' } },
+  });
+  ok(!rep.isError, 'MCP replace_in_doc');
+  body = (await req('GET', '/api/modules/starting-panel/docs/A1.0')).content;
+  ok(body.includes('Replaced via MCP.') && !body.includes('Inserted via MCP.'), 'replace applied');
+  const bad = await mcpCall({
+    jsonrpc: '2.0', id: 6, method: 'tools/call',
+    params: { name: 'replace_in_doc', arguments: { slug: 'starting-panel', version: 'A1.0', find: 'nope-not-there', replace: 'x' } },
+  });
+  ok(bad.isError === true, 'replace_in_doc reports missing text as error');
+  const fromUrl = await mcpCall({
+    jsonrpc: '2.0', id: 7, method: 'tools/call',
+    params: { name: 'upload_photo_from_url', arguments: { slug: 'starting-panel', version: 'A1.0', url: BASE + uploaded[0].url, name: 'copy-of-photo.png' } },
+  });
+  ok(!fromUrl.isError && JSON.parse(fromUrl.content[0].text)[0].name === 'copy-of-photo.png', 'MCP upload_photo_from_url');
+  const upd = await mcpCall({
+    jsonrpc: '2.0', id: 8, method: 'tools/call',
+    params: { name: 'update_module', arguments: { slug: 'starting-panel', code: 'SW-STP2' } },
+  });
+  ok(!upd.isError && JSON.parse(upd.content[0].text).code === 'SW-STP2', 'MCP update_module edits metadata');
+  // restore the body (no bump) so the later content checks still hold
+  await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', { html: doc0.content, bump: false });
+
   await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
     html: doc0.content + '<p>Autosaved text.</p>',
     bump: false,
   });
   const afterAuto = await req('GET', '/api/modules/starting-panel/docs/A1.0');
-  ok(afterAuto.doc.revision === 1, 'autosave keeps r1');
+  ok(afterAuto.doc.revision === 3, 'autosave keeps revision (r3)');
 
   await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
     html: afterAuto.content + '<p>Grounding check added.</p>',
@@ -134,7 +167,7 @@ try {
     summary: 'Add grounding check',
   });
   const afterBump = await req('GET', '/api/modules/starting-panel/docs/A1.0');
-  ok(afterBump.doc.revision === 2, 'committed change bumps to r2');
+  ok(afterBump.doc.revision === 4, 'committed change bumps to r4');
   ok(afterBump.doc.revisionRecord.some((r) => r.summary === 'Add grounding check'), 'revision record entry written');
 
   // review + release

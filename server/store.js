@@ -607,3 +607,28 @@ export async function getStatus() {
 }
 
 export { blankContent };
+
+/* ------------------------------------------------------------------ */
+/* Module metadata edits                                               */
+/* ------------------------------------------------------------------ */
+
+/** Update module.json fields. Written on the module's open draft branch when
+ *  one exists (it reaches main at release), otherwise directly on main. */
+export async function updateModule(slug, patch) {
+  const { modules } = await collectAll();
+  const entry = modules.find((m) => m.module.slug === slug);
+  if (!entry) throw new Error(`Module "${slug}" not found`);
+  const draft = entry.docs.find((d) => d.status === 'draft' || d.status === 'in-review');
+  const ref = draft ? draft.branch : 'main';
+  const module = { ...entry.module };
+  for (const k of ['name', 'code', 'category', 'group', 'hardware', 'softwares']) {
+    if (patch[k] !== undefined) module[k] = patch[k];
+  }
+  await mutate(async () => {
+    await repo.checkout(ref);
+    await repo.writeFile(moduleFile(slug), JSON.stringify(module, null, 2) + '\n');
+    await repo.commitAll(`${slug}: update module metadata`);
+    await repo.checkout('main');
+  });
+  return module;
+}
