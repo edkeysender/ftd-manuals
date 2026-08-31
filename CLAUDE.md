@@ -38,6 +38,12 @@ The functional spec lives in this file's history and in the Modules spec provide
   keyed by the English string (missing key → English). Locale = top-right EN|PL switch, stored in
   localStorage `ftd-ui-lang`, else browser language. Wrap every new user-visible string in `t()` and add its
   Polish entry; the doc-body language (EN|PL in the editor / manual view) defaults to the UI locale.
+- Review comments: `comments.json` next to `doc.json` on the draft branch — threads anchored by a text
+  quote (`anchor.quote/section/before/lang`), re-found in the page with `findQuoteRange` (Editor.jsx) and
+  highlighted via the CSS Highlight API. `/modules/:slug/docs/:key/review` is the read-only reviewer view
+  (same `Editor` with `review`); the author handles threads in the editor's Comments tab — **Ask AI to
+  propose** runs the chat with the comment as instruction, and accepting that pending edit resolves the thread.
+  MCP: `list_comments`, `reply_comment`, `resolve_comment`. No auth: the reviewer name is a browser prompt.
 - Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…` while draft,
   own revision record, own draft branch `draft/<slug>-<manual>-a1.0` (one open draft per manual type).
   Only **Released** versions compile into simulator manuals; an assembled manual (`manuals/<slug>/manual.json`)

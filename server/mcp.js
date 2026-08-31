@@ -527,6 +527,39 @@ export const TOOLS = [
     annotations: { title: 'Submit for review', ...RW },
   },
   {
+    name: 'list_comments',
+    description:
+      'Review comments on a Draft/In-review doc: threads viewers left on selected text ({id, status open|resolved, author, text, anchor:{quote, section, lang}, replies}). Open ones first. Address an open comment by editing the quoted passage (replace_in_doc / edit_doc), then resolve_comment with a note saying what changed.',
+    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
+    annotations: { title: 'List review comments', ...RO },
+  },
+  {
+    name: 'reply_comment',
+    description: 'Reply in a review thread (e.g. ask the reviewer a question or explain why nothing changes).',
+    inputSchema: {
+      type: 'object',
+      properties: { ...SLUG_VER, id: { type: 'string', description: 'Thread id from list_comments' }, text: { type: 'string' }, author: { type: 'string', description: 'Default "AI agent"' } },
+      required: ['slug', 'id', 'text'],
+    },
+    annotations: { title: 'Reply to comment', ...RW },
+  },
+  {
+    name: 'resolve_comment',
+    description: 'Resolve (or reopen with reopen: true) a review thread; `note` is posted as the closing reply — say what was changed and in which revision.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...SLUG_VER,
+        id: { type: 'string' },
+        note: { type: 'string' },
+        reopen: { type: 'boolean' },
+        author: { type: 'string', description: 'Default "AI agent"' },
+      },
+      required: ['slug', 'id'],
+    },
+    annotations: { title: 'Resolve comment', ...RW },
+  },
+  {
     name: 'back_to_draft',
     description: 'Return an In-review doc version to Draft.',
     inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
@@ -641,6 +674,15 @@ async function callTool(name, args) {
       return await store.registerSoftwareRelease({ name: args.name, version: args.version, manualAffecting: !!args.manual_affecting, note: args.note });
     case 'cover_release':
       return await store.linkReleaseToDoc(args.slug, args.version, args.software, args.release);
+    case 'list_comments': {
+      const r = await store.listComments(args.slug, args.version);
+      if (!r) throw new Error(`Doc ${args.slug} ${args.version} not found`);
+      return r.threads;
+    }
+    case 'reply_comment':
+      return await store.replyComment(args.slug, args.version, args.id, { author: args.author || 'AI agent', text: args.text });
+    case 'resolve_comment':
+      return await store.setCommentStatus(args.slug, args.version, args.id, args.reopen ? 'open' : 'resolved', { author: args.author || 'AI agent', note: args.note });
     case 'back_to_draft':
       return await store.setDocStatus(args.slug, args.version, 'draft');
     case 'discard_doc':
