@@ -26,6 +26,106 @@ const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ------------------------------------------------------------------ */
+/* Manual types                                                        */
+/* One module is documented for two audiences — the customer who       */
+/* operates the simulator and the technician who installs, wires and  */
+/* configures it — and, when the module is software-related, the      */
+/* software gets the same split. Each type is its own doc stream      */
+/* (A1.0…, own draft branch, own revision record, own template).      */
+/* ------------------------------------------------------------------ */
+
+export const MANUAL_TYPES = {
+  customer: {
+    id: 'customer',
+    label: 'Customer manual',
+    short: 'Customer',
+    kind: 'hardware',
+    audience: 'customer',
+    desc: 'For the operator of the simulator: what the module is, how it is used day to day, what to check and when to call service.',
+    sections: ['Description', 'Operation', 'Maintenance', 'Appendixes'],
+    sectionHints: {
+      Description: 'what the module is, its controls and indications, where it is located',
+      Operation: 'normal use, step by step, with the expected indication after each action',
+      Maintenance: 'operator-level care: cleaning, periodic checks, what to report to service — no servicing procedures',
+      Appendixes: 'reference drawings and third-party user documents',
+    },
+  },
+  technician: {
+    id: 'technician',
+    label: 'Technician manual',
+    short: 'Technician',
+    kind: 'hardware',
+    audience: 'technician',
+    desc: 'For the installer / service technician: components and wiring, network and device configuration, servicing and troubleshooting.',
+    sections: ['Installation', 'Configuration', 'Maintenance', 'Appendixes'],
+    sectionHints: {
+      Installation: 'system components, mounting, wiring and pin-out, power-up',
+      Configuration: 'device and network set-up per unit: finding it on the network, credentials policy, firmware, addressing, function keys, integration with the simulator',
+      Maintenance: 'servicing, troubleshooting, spare parts, restoring a unit to service',
+      Appendixes: 'wiring diagrams, configuration files, vendor documents',
+    },
+  },
+  'software-customer': {
+    id: 'software-customer',
+    label: 'Software customer manual',
+    short: 'SW · Customer',
+    kind: 'software',
+    audience: 'customer',
+    desc: 'For the operator: everyday use of the linked software — the tasks they perform, screen by screen.',
+    sections: ['Overview', 'Operation', 'Troubleshooting', 'Appendixes'],
+    sectionHints: {
+      Overview: 'what the software does for the operator, how to reach it (which computer / page), the roles that use it',
+      Operation: 'one numbered procedure per task (e.g. add a user, enrol a card, pair a phone), with the expected result',
+      Troubleshooting: 'symptoms the operator may see and what to do — no configuration changes',
+      Appendixes: 'quick-reference tables, third-party user guides',
+    },
+  },
+  'software-technician': {
+    id: 'software-technician',
+    label: 'Software technician manual',
+    short: 'SW · Technician',
+    kind: 'software',
+    audience: 'technician',
+    desc: 'For the technician: installing, configuring, updating and administering the linked software.',
+    sections: ['Installation', 'Configuration', 'Administration', 'Appendixes'],
+    sectionHints: {
+      Installation: 'deployment on the simulator computers, firmware / software update procedure, licences',
+      Configuration: 'network addressing, integration settings (APIs, switches, function keys), backup and restore of the configuration',
+      Administration: 'administrator accounts and credentials policy, logs, diagnostics, recovery',
+      Appendixes: 'configuration files, API references, vendor documents',
+    },
+  },
+};
+
+/** The order manuals are listed in everywhere (modules list, module page, wizard). */
+export const MANUAL_ORDER = ['customer', 'technician', 'software-customer', 'software-technician'];
+
+/** The manual type docs created before the split belong to. */
+export const DEFAULT_MANUAL = 'customer';
+
+export const isManualType = (t) => Object.prototype.hasOwnProperty.call(MANUAL_TYPES, t);
+
+export function manualTypeOf(id) {
+  const t = MANUAL_TYPES[id || DEFAULT_MANUAL];
+  if (!t) throw new Error(`Unknown manual type "${id}" — one of ${MANUAL_ORDER.join(', ')}`);
+  return t;
+}
+
+/** Canonical doc key "<manual>:<version>", e.g. technician:A1.0. */
+export const docKey = (manual, version) => `${manual || DEFAULT_MANUAL}:${version}`;
+
+/** Parse a doc key. A bare version ("A1.0") is the customer manual — docs created before
+ *  the split, and every old link, keep resolving. Returns { manual, version }. */
+export function parseDocKey(key) {
+  const s = String(key || '').trim();
+  const i = s.indexOf(':');
+  if (i < 0) return { manual: DEFAULT_MANUAL, version: s };
+  const manual = s.slice(0, i);
+  if (!isManualType(manual)) throw new Error(`Unknown manual type "${manual}" in "${s}" — one of ${MANUAL_ORDER.join(', ')}`);
+  return { manual, version: s.slice(i + 1) };
+}
+
+/* ------------------------------------------------------------------ */
 /* Hardware                                                            */
 /* A module links to N items of the shared hardware catalog            */
 /* (hardware.json on main). Each item is one physical unit type:       */
@@ -68,30 +168,62 @@ export function softwareLabel(softwares) {
   return softwares.map((s) => s.name).join(' · ');
 }
 
-/** Blank content for sections 4–7 (FTD standard template). When the module covers
- *  several hardware items (e.g. three camera types) Installation and Operation get
- *  one sub-section per item so each unit type is described on its own. */
-export function blankContent(moduleName, hardwareItems = []) {
+/** Blank content for sections 4–7 of one manual type (FTD standard template).
+ *  When the module covers several hardware items (e.g. three camera types, or a
+ *  central unit plus two handsets) the per-unit sections get one sub-section per
+ *  item so each unit type is described on its own. Software manuals list the
+ *  linked softwares instead. */
+export function blankContent(moduleName, hardwareItems = [], manual = DEFAULT_MANUAL, softwares = []) {
+  const type = manualTypeOf(manual);
   const items = hardwareItemsOf(hardwareItems);
-  const variants = (verb) =>
+  const sw = (softwares || []).filter((s) => s && s.name);
+  const name = esc(moduleName);
+  const perUnit = (verb) =>
     items.length > 1
       ? items
           .map(
             (h) =>
               `<h3>${esc(hardwareItemLabel(h))}</h3>
-<p>TODO: describe ${verb} of the ${esc(hardwareItemLabel(h))} (${esc(hardwareDetail(h))}).</p>`
+<p>TODO(author): describe ${verb} of the ${esc(hardwareItemLabel(h))} (${esc(hardwareDetail(h))}).</p>`
           )
           .join('\n') + '\n'
       : '';
-  return `<h2>Installation</h2>
-<p>TODO: describe how the ${esc(moduleName)} module is installed and connected.</p>
-${variants('installation and connection')}<h2>Operation</h2>
-<p>TODO: describe normal operation of the ${esc(moduleName)} module.</p>
-${variants('normal operation')}<h2>Maintenance</h2>
-<p>TODO: describe inspection intervals and maintenance actions.</p>
-<h2>Appendixes</h2>
-<p>TODO: reference drawings, wiring diagrams and third-party documents.</p>
-`;
+  const perSw = (verb) =>
+    sw.length > 1
+      ? sw
+          .map((s) => `<h3>${esc(s.name)}</h3>\n<p>TODO(author): describe ${verb} of ${esc(s.name)}${s.fromVersion ? ` (from ${esc(s.fromVersion)})` : ''}.</p>`)
+          .join('\n') + '\n'
+      : '';
+  const swName = sw.length ? sw.map((s) => esc(s.name)).join(' / ') : `the ${name} software`;
+
+  const bodies = {
+    customer: {
+      Description: `<p>TODO(author): describe what the ${name} module is, where it is located and which controls and indications the operator sees.</p>\n${perUnit('the controls and indications')}`,
+      Operation: `<p>TODO(author): describe normal operation of the ${name} module — one numbered procedure per task, with the expected indication after each step.</p>\n${perUnit('normal operation')}`,
+      Maintenance: `<p>TODO(author): operator-level care — cleaning, periodic checks and what to report to service. Servicing procedures belong in the technician manual.</p>\n`,
+      Appendixes: `<p>TODO(author): reference drawings and third-party user documents.</p>\n`,
+    },
+    technician: {
+      Installation: `<p>TODO(author): list the system components of the ${name} module, then describe mounting, wiring (pin-out and polarity) and power-up.</p>\n${perUnit('mounting and wiring')}`,
+      Configuration: `<p>TODO(author): configuration of each unit — finding it on the simulator network, first login and credentials policy, firmware update, addressing, function keys, integration with the simulator. Never write passwords into the manual: refer to the credentials sheet.</p>\n${perUnit('configuration')}`,
+      Maintenance: `<p>TODO(author): servicing, troubleshooting table (symptom → cause → action), spare parts, restoring a unit to service.</p>\n`,
+      Appendixes: `<p>TODO(author): wiring diagrams, configuration files and vendor documents.</p>\n`,
+    },
+    'software-customer': {
+      Overview: `<p>TODO(author): what ${swName} does for the operator, on which computer / page it is reached and who uses it.</p>\n${perSw('the purpose and access')}`,
+      Operation: `<p>TODO(author): one numbered procedure per operator task in ${swName}, with the expected result after each step.</p>\n${perSw('the operator tasks')}`,
+      Troubleshooting: `<p>TODO(author): symptoms the operator may see and what to do — no configuration changes.</p>\n`,
+      Appendixes: `<p>TODO(author): quick-reference tables and third-party user guides.</p>\n`,
+    },
+    'software-technician': {
+      Installation: `<p>TODO(author): deployment of ${swName} on the simulator computers, update procedure and licences.</p>\n${perSw('installation and update')}`,
+      Configuration: `<p>TODO(author): network addressing, integration settings (APIs, switches, function keys), backup and restore of the configuration of ${swName}.</p>\n${perSw('configuration')}`,
+      Administration: `<p>TODO(author): administrator accounts and credentials policy, logs, diagnostics and recovery. Never write passwords into the manual: refer to the credentials sheet.</p>\n`,
+      Appendixes: `<p>TODO(author): configuration files, API references and vendor documents.</p>\n`,
+    },
+  };
+  const body = bodies[type.id];
+  return type.sections.map((s) => `<h2>${esc(s)}</h2>\n${body[s] || `<p>TODO(author): ${esc(type.sectionHints[s] || s)}.</p>\n`}`).join('');
 }
 
 function fmtDate(iso) {
@@ -127,6 +259,16 @@ export function generatedSections(module, doc) {
       )
       .join('\n') || '<tr><td colspan="3">Not hardware-related</td></tr>';
 
+  const type = manualTypeOf(doc.manual);
+  const audience =
+    type.audience === 'technician'
+      ? 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.'
+      : 'It is intended for the operator of the simulator.';
+  const subject =
+    type.kind === 'software'
+      ? `the software of the <strong>${esc(module.name)}</strong> module (${esc(softwareLabel(module.softwares))})`
+      : `the <strong>${esc(module.name)}</strong> module (${esc(module.code || module.slug)})`;
+
   return `<section class="auto-section" data-auto="1">
 <h2>Revision record</h2>
 <h3>Document revisions</h3>
@@ -139,11 +281,9 @@ ${record || '<tr><td colspan="3">No revisions recorded</td></tr>'}
 </section>
 <section class="auto-section" data-auto="2">
 <h2>Introduction</h2>
-<p>This document is the module manual for the <strong>${esc(module.name)}</strong> module (${esc(
-    module.code || module.slug
-  )}) of the FTD.aero flight simulation training device. It is a standalone mini-manual and is compiled into the ${esc(
+<p>This document is the <strong>${esc(type.label.toLowerCase())}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience} It is a standalone mini-manual and is compiled into the ${esc(
     GROUP_LABELS[module.group] || module.group
-  )} when this document version is released.</p>
+  )} (${esc(type.label.toLowerCase())}) when this document version is released.</p>
 <p>Document version ${esc(doc.version)}${doc.status === 'released' ? '' : ` (draft, revision ${esc('r' + doc.revision)})`}. Only released document versions are compiled into simulator manuals.</p>
 </section>
 <section class="auto-section" data-auto="3">
@@ -154,6 +294,7 @@ ${record || '<tr><td colspan="3">No revisions recorded</td></tr>'}
 <tr><th>Code</th><td>${esc(module.code || '—')}</td></tr>
 <tr><th>Category</th><td>${esc(CATEGORY_LABELS[module.category] || module.category || '—')}</td></tr>
 <tr><th>Manual group</th><td>${esc(module.group)}</td></tr>
+<tr><th>Manual type</th><td>${esc(type.label)} — ${esc(type.audience)} audience</td></tr>
 </tbody>
 </table>
 <h3>Hardware</h3>
@@ -357,9 +498,9 @@ ${c.html}
 <section class="cover" id="cover">
   ${headerBox(manual, logoHtml)}
   ${cover}
-  <div class="sub">${esc(GROUP_LABELS[manual.group] || (manual.group ? manual.group : 'Assembled manual'))} · compiled ${date} · ${
-    chapters.length
-  } module${chapters.length === 1 ? '' : 's'}</div>
+  <div class="sub">${esc(GROUP_LABELS[manual.group] || (manual.group ? manual.group : 'Assembled manual'))} · ${esc(
+    manualTypeOf(manual.manual).label
+  )} · compiled ${date} · ${chapters.length} module${chapters.length === 1 ? '' : 's'}</div>
 </section>
 <section class="front" id="front">
   <h2 id="revision-record">Revision record</h2>
@@ -410,8 +551,11 @@ export function compareDocVersions(a, b) {
   return pa.major - pb.major || pa.minor - pb.minor;
 }
 
-export function docBranchName(slug, version) {
-  return `draft/${slug}-${version.toLowerCase()}`;
+/** Draft branch of one doc: draft/<slug>-<manual>-a1.0. Docs created before the
+ *  split live on draft/<slug>-a1.0 — their branch name is read from doc.json,
+ *  never recomputed. */
+export function docBranchName(slug, manual, version) {
+  return `draft/${slug}-${manual || DEFAULT_MANUAL}-${version.toLowerCase()}`;
 }
 
 /** Loose numeric comparison for software versions like 'v2.0.1' or '2.10'. */

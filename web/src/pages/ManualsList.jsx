@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, GROUPS, timeAgo } from '../api.js';
+import { api, GROUPS, MANUAL_TYPES, manualType, timeAgo } from '../api.js';
 import ModulePicker from '../components/ModulePicker.jsx';
 import { useToast } from '../App.jsx';
 
@@ -31,7 +31,8 @@ export default function ManualsList() {
           <p>No manuals yet.</p>
           <p>
             <strong>+ Create manual</strong> assembles one big manual from the modules you select — each module
-            becomes a chapter with its sections 1–7.
+            becomes a chapter with its sections 1–7. Pick the audience: a customer manual compiles the modules'
+            customer manuals, a technician manual their technician manuals.
           </p>
         </div>
       ) : (
@@ -40,6 +41,7 @@ export default function ManualsList() {
             <tr>
               <th>Manual</th>
               <th>Group</th>
+              <th>Type</th>
               <th>Modules</th>
               <th>Readiness</th>
               <th>Updated</th>
@@ -57,6 +59,10 @@ export default function ManualsList() {
                   </div>
                 </td>
                 <td>{m.group ? <span className="chip">{m.group}</span> : <span className="muted">—</span>}</td>
+                <td>
+                  <span className={`manual-kind ${manualType(m.manual).kind}`}>{manualType(m.manual).kind}</span>{' '}
+                  {manualType(m.manual).short}
+                </td>
                 <td>
                   {m.modules.length} <span className="muted">· {m.moduleNames.join(', ')}</span>
                 </td>
@@ -95,6 +101,7 @@ function CreateManual({ onClose, onCreated }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [group, setGroup] = useState('');
+  const [manual, setManual] = useState('customer');
   const [modules, setModules] = useState([]);
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -106,7 +113,7 @@ function CreateManual({ onClose, onCreated }) {
   async function create() {
     setBusy(true);
     try {
-      onCreated(await api.createManual({ name: name.trim(), code: code.trim() || null, group: group || null, modules: selected }));
+      onCreated(await api.createManual({ name: name.trim(), code: code.trim() || null, group: group || null, manual, modules: selected }));
     } catch (e) {
       toast(e.message, 'err');
       setBusy(false);
@@ -141,15 +148,23 @@ function CreateManual({ onClose, onCreated }) {
                   ))}
                 </select>
               </label>
+              <label>
+                Type
+                <select value={manual} onChange={(e) => setManual(e.target.value)} title="Which manual of each module is compiled into this document">
+                  {MANUAL_TYPES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </label>
             </div>
             <div className="field">
-              <span className="field-label">Modules — pick and order the chapters</span>
-              <ModulePicker modules={modules} selected={selected} onChange={setSelected} />
+              <span className="field-label">Modules — pick and order the chapters ({manualType(manual).label.toLowerCase()} of each)</span>
+              <ModulePicker modules={modules} selected={selected} onChange={setSelected} manual={manual} />
             </div>
           </div>
         </div>
         <div className="modal-foot">
-          <span className="hint">Released doc versions are used; modules without one are included from their latest draft and flagged.</span>
+          <span className="hint">Released {manualType(manual).label.toLowerCase()} versions are used; modules without one are included from their latest draft and flagged.</span>
           <button className="btn btn-primary" disabled={!name.trim() || busy} onClick={create}>
             {busy ? 'Creating…' : 'Create manual'}
           </button>

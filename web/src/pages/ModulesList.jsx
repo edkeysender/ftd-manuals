@@ -1,11 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, CATEGORIES, timeAgo } from '../api.js';
-import StatusBadge from '../components/StatusBadge.jsx';
+import { api, CATEGORIES, MANUAL_TYPES, timeAgo } from '../api.js';
 import Wizard from '../components/Wizard.jsx';
 import { useToast } from '../App.jsx';
 
 const catLabel = (c) => (CATEGORIES.find(([k]) => k === c) || [null, c])[1];
+
+/** One pill per manual type the module maintains: "Customer · A1.0 draft r2", coloured by status. */
+export function ManualPills({ manuals, onOpen }) {
+  const have = MANUAL_TYPES.filter((t) => manuals && manuals[t.id]);
+  if (!have.length) return <span className="manual-pill mp-missing"><span className="mp-type">no manual yet</span></span>;
+  return (
+    <span className="manual-pills">
+      {have.map((t) => {
+        const m = manuals[t.id];
+        return (
+          <span
+            key={t.id}
+            className={`manual-pill mp-${m.status}`}
+            title={`${t.label}: ${m.label}${m.released ? ` · released ${m.released}` : ''}${m.fat ? ' · FAT checklist' : ''}`}
+            onClick={onOpen ? (e) => { e.stopPropagation(); onOpen(t.id, m); } : undefined}
+          >
+            <span className="mp-type">{t.short}</span>
+            <span className="mp-ver">{m.label}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 
 export default function ModulesList() {
   const [rows, setRows] = useState(null);
@@ -48,8 +71,8 @@ export default function ModulesList() {
         <div className="empty">
           <p>No modules yet.</p>
           <p>
-            Create the first one with <strong>+ New module doc</strong> — it starts a draft branch and a doc
-            version A1.0 r1.
+            Create the first one with <strong>+ New module doc</strong> — it starts a draft branch and a doc version
+            A1.0 r1 for each manual you pick (customer, technician, and the same split for the linked software).
           </p>
         </div>
       ) : visible.length === 0 ? (
@@ -64,8 +87,7 @@ export default function ModulesList() {
               <th>Manual group</th>
               <th>Hardware</th>
               <th>Software relation</th>
-              <th>Latest doc</th>
-              <th>Status</th>
+              <th>Manuals</th>
               <th>Updated</th>
             </tr>
           </thead>
@@ -104,11 +126,7 @@ export default function ModulesList() {
                 </td>
                 <td className={m.softwares.length ? '' : 'muted'}>{m.softwareLabel}</td>
                 <td>
-                  {m.latestDoc || <span className="muted">—</span>}
-                  {m.fat && <span className="fat-chip" title="Has a FAT checklist">FAT</span>}
-                </td>
-                <td>
-                  <StatusBadge status={m.status} />
+                  <ManualPills manuals={m.manuals} />
                 </td>
                 <td className="muted">{timeAgo(m.updated)}</td>
               </tr>
@@ -122,7 +140,11 @@ export default function ModulesList() {
           onClose={() => setWizardOpen(false)}
           onCreated={(created) => {
             setWizardOpen(false);
-            toast(`Draft created: branch ${created.branch}, doc ${created.version} r1`);
+            toast(
+              created.docs?.length > 1
+                ? `${created.docs.length} drafts created: ${created.docs.map((d) => d.key).join(', ')}`
+                : `Draft created: branch ${created.branch}, doc ${created.key || created.version} r1`
+            );
             if (created.aiNote) toast(created.aiNote, 'err');
             navigate(`/modules/${created.slug}`);
           }}

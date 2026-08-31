@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, readFileAsBase64, timeAgo } from '../api.js';
+import { api, readFileAsBase64, timeAgo, manualType } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { useToast } from '../App.jsx';
@@ -149,7 +149,7 @@ export default function Editor() {
         setSavedAt(d.doc.updatedAt);
         const greeting = {
           role: 'assistant',
-          content: `Editing ${d.module.name} · ${d.doc.version} r${d.doc.revision}. Tell me what to change — e.g. "add a grounding check to Installation" — and I will apply it as a pending edit for you to accept.`,
+          content: `Editing the ${manualType(d.doc.manual).label.toLowerCase()} of ${d.module.name} · ${d.doc.version} r${d.doc.revision} (${manualType(d.doc.manual).audience} audience; sections ${manualType(d.doc.manual).sections.join(', ')}). Tell me what to change — e.g. "add a check to ${manualType(d.doc.manual).sections[1]}" — and I will apply it as a pending edit for you to accept. Paste a wiki/web page and I take only what belongs in this manual type.`,
         };
         // Recover a pending AI edit that was interrupted (e.g. page refresh).
         if (hasPendingMarkers(d.content)) {
@@ -643,6 +643,9 @@ export default function Editor() {
         <div className="editor-title">
           <Link to={`/modules/${slug}`} className="back">←</Link>
           <strong>{data.module.name}</strong>
+          <span className={`manual-tag ${docMeta.manual || 'customer'}`} title={manualType(docMeta.manual).desc}>
+            {manualType(docMeta.manual).label}
+          </span>
           <span className="muted">
             {docMeta.version} r{docMeta.revision}
           </span>

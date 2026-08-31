@@ -362,3 +362,36 @@ label.inline { font-weight: 400; color: var(--muted); }
 
 .btn-col { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .search-input { border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; min-width: 240px; background: var(--panel); }
+
+/* ---------- manual types (customer / technician, hardware / software) ---------- */
+.manual-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.manual-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 2px 8px; font-size: 12px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
+.manual-pill .mp-type { font-weight: 600; }
+.manual-pill .mp-ver { color: var(--muted); }
+.manual-pill.mp-draft { border-color: #b9c9ff; background: #e5edff; }
+.manual-pill.mp-in-review { border-color: #fbd38d; background: #fef3c7; }
+.manual-pill.mp-released { border-color: #a7dbb8; background: #e7f6ec; }
+.manual-pill.mp-superseded { color: var(--muted); }
+.manual-pill.mp-missing { border-style: dashed; color: var(--muted); background: transparent; }
+.manual-pill.mp-missing .mp-type { font-weight: 400; }
+.manual-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
+.manual-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.manual-card.missing { border-style: dashed; background: transparent; }
+.manual-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.manual-card-head h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.manual-card-head .muted.small { margin: 3px 0 0; }
+.manual-card .table { font-size: 13px; }
+.manual-card .table th, .manual-card .table td { padding: 7px 10px; }
+.manual-kind { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; }
+.manual-kind.hardware { color: #1d4ed8; background: #dbeafe; }
+.manual-kind.software { color: #6d28d9; background: #ede9fe; }
+.manual-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.manual-choice { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.manual-choice.selected { border-color: var(--accent); background: #eef4ff; }
+.manual-choice:disabled { opacity: 0.55; cursor: not-allowed; }
+.manual-choice strong { display: flex; align-items: center; gap: 8px; }
+.manual-choice span { color: var(--muted); font-weight: 400; font-size: 12.5px; }
+.manual-choice .sections { color: var(--ink); font-size: 12px; }
+.editor-title .manual-tag { font-size: 12px; font-weight: 600; border-radius: 5px; padding: 2px 8px; background: #eef2f6; }
+.editor-title .manual-tag.technician, .editor-title .manual-tag.software-technician { background: #fde7d3; color: #9a3412; }
+.editor-title .manual-tag.customer, .editor-title .manual-tag.software-customer { background: #dcfce7; color: #166534; }

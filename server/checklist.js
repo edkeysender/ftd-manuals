@@ -22,6 +22,7 @@ import {
   hardwareItemLabel,
   hardwareDetail,
   softwareLabel,
+  manualTypeOf,
 } from './docgen.js';
 
 const esc = (s) =>
@@ -325,9 +326,9 @@ function moduleSection(module, doc, checklist, { chapter = null } = {}) {
   }</h1>
 <p class="intro">Acceptance test of the <strong>${esc(module.name)}</strong> module (${esc(
     CATEGORY_LABELS[module.category] || module.category
-  )}, ${esc(GROUP_LABELS[module.group] || module.group)}) against module manual <strong>${esc(module.code || module.slug)} ${esc(
-    doc.version
-  )}</strong>${isDraft ? ` r${doc.revision}` : ''}, checklist revision r${doc.revision}. Hardware: ${esc(
+  )}, ${esc(GROUP_LABELS[module.group] || module.group)}) against the ${esc(manualTypeOf(doc.manual).label.toLowerCase())} <strong>${esc(
+    module.code || module.slug
+  )} ${esc(doc.version)}</strong>${isDraft ? ` r${doc.revision}` : ''}, checklist revision r${doc.revision}. Hardware: ${esc(
     hardwareLabel(module)
   )}. Software: ${esc(softwareLabel(module.softwares))}.</p>
 <table class="ident">
@@ -380,7 +381,7 @@ export function checklistBodyHtml(module, doc, checklist, opts = {}) {
     {
       code: `FAT — ${module.code || module.slug}`,
       name: `${module.name} · Factory Acceptance Test`,
-      sub: `Module manual ${doc.version}${doc.status !== 'released' ? ` draft r${doc.revision}` : ''} · ${countItems(checklist)} checks · generated ${fmtDate(
+      sub: `${manualTypeOf(doc.manual).label} ${doc.version}${doc.status !== 'released' ? ` draft r${doc.revision}` : ''} · ${countItems(checklist)} checks · generated ${fmtDate(
         new Date().toISOString()
       )}`,
     },

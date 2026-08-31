@@ -17,8 +17,20 @@ The functional spec lives in this file's history and in the Modules spec provide
 
 ## Domain rules (from the Modules spec)
 
-- A module doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…`
-  while draft, own revision record. Only **Released** versions compile into simulator manuals.
+- A module is documented **per audience** — up to four manuals, each its own doc stream: `customer`
+  (operation), `technician` (installation / wiring / configuration / servicing) and, when the module is
+  software-related, `software-customer` and `software-technician`. Manual types live in
+  `MANUAL_TYPES` (`server/docgen.js`, mirrored in `web/src/api.js`); each has its own sections 4–7 template.
+- A doc is addressed by its **key** `<manual>:<version>` (`technician:A1.0`) in URLs, the API, MCP and the
+  editor route; a bare `A1.0` means the customer manual (docs created before the split, stored in
+  `docs/<version>/`, are read as customer manuals — never migrated; new docs go to `docs/<manual>/<version>/`).
+  Every doc record carries `manual`, `key`, `dir`, `branch` — use them, never recompute paths or branch names.
+- Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…` while draft,
+  own revision record, own draft branch `draft/<slug>-<manual>-a1.0` (one open draft per manual type).
+  Only **Released** versions compile into simulator manuals; an assembled manual (`manuals/<slug>/manual.json`)
+  has a `manual` type and takes that type's doc from every chapter module. The FAT checklist sits on the
+  technician manual when the module has one, else the customer manual. Module metadata edits are written
+  identically on main (when released) and on every open draft branch.
 - Sections 1–3 (revision record, introduction, general info) are **generated** from module data —
   they are never hand-edited; the editor stores only sections 4–7 as semantic HTML.
 - Manual groups: `SIM` / `IOS` / `RACK`. Hardware: a shared catalog (`hardware.json` on `main`, items

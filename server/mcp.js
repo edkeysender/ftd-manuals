@@ -12,16 +12,27 @@ import path from 'node:path';
 import * as store from './store.js';
 import * as ai from './ai.js';
 import * as illustrate from './illustrate.js';
-import { blankContent } from './docgen.js';
+import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf } from './docgen.js';
 import { templateChecklist } from './checklist.js';
 import * as inbox from './inbox.js';
 
 const RO = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const RW = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
 
+const MANUAL_HELP = MANUAL_ORDER.map((id) => `"${id}" = ${MANUAL_TYPES[id].label} (${MANUAL_TYPES[id].sections.join(', ')})`).join('; ');
+
 const SLUG_VER = {
   slug: { type: 'string', description: 'Module slug, e.g. starting-panel' },
-  version: { type: 'string', description: 'Doc version, e.g. A1.0 (must be Draft or In review)' },
+  version: {
+    type: 'string',
+    description:
+      'Doc key "<manual>:<version>", e.g. technician:A1.0 or software-customer:A1.0 (must be Draft or In review). A bare version like A1.0 means the customer manual. Keys are listed by get_module.',
+  },
+};
+const MANUAL_PROP = {
+  type: 'string',
+  enum: MANUAL_ORDER,
+  description: `Manual type — a module is documented per audience: ${MANUAL_HELP}. Software manuals need the module linked to a software.`,
 };
 
 export const TOOLS = [
@@ -34,19 +45,21 @@ export const TOOLS = [
   },
   {
     name: 'get_module',
-    description: 'Get one module: metadata, all doc versions with statuses, history and software release feed.',
+    description:
+      'Get one module: metadata, all doc versions of every manual type (customer / technician / software-customer / software-technician — each with its key, status and branch), a per-type summary in `manuals`, history and the software release feed.',
     inputSchema: { type: 'object', properties: { slug: SLUG_VER.slug }, required: ['slug'] },
     annotations: { title: 'Get module', ...RO },
   },
   {
     name: 'get_doc',
     description:
-      'Get a doc version of a module: metadata, revision record, the editable body HTML (sections 4–7) and its FAT checklist (null when none). Omit version for the latest one.',
+      'Get a doc version of a module: metadata (incl. `manual` type and `key`), revision record, the editable body HTML (sections 4–7) and its FAT checklist (null when none). Omit version for the latest version of the given manual type (default customer).',
     inputSchema: {
       type: 'object',
       properties: {
         slug: SLUG_VER.slug,
-        version: { type: 'string', description: 'e.g. A1.0; omit for latest' },
+        version: { type: 'string', description: 'Doc key, e.g. technician:A1.0 (bare A1.0 = customer manual); omit for the latest of `manual`' },
+        manual: MANUAL_PROP,
         include_assets: { type: 'boolean', description: 'Also return the module assets list (saves a list_assets call)' },
       },
       required: ['slug'],
@@ -63,11 +76,16 @@ export const TOOLS = [
   {
     name: 'create_module',
     description:
-      'Create a new module with its first doc draft A1.0 r1 on a draft/<slug>-a1.0 branch (same as the New module doc wizard). Returns slug, version and branch. Edit the body afterwards with save_doc_content / replace_in_doc / insert_into_section.',
+      'Create a new module with the first draft (A1.0 r1) of each requested manual type, each on its own draft/<slug>-<manual>-a1.0 branch (same as the New module doc wizard). Returns slug and `docs` [{manual, key, version, branch}]. Edit each body afterwards with save_doc_content / replace_in_doc / insert_into_section using the doc key.',
     inputSchema: {
       type: 'object',
       properties: {
         name: { type: 'string' },
+        manuals: {
+          type: 'array',
+          items: MANUAL_PROP,
+          description: `Which manuals to create (default ["customer"]). A hardware module typically gets "customer" + "technician"; a software-related one also "software-customer" and/or "software-technician". ${MANUAL_HELP}.`,
+        },
         code: { type: 'string', description: 'Module code like SW-STP' },
         category: { type: 'string', enum: ['software', 'cockpit-hardware', 'structure', 'peripherals', 'rack'] },
         group: { type: 'string', enum: ['SIM', 'IOS', 'RACK'], description: 'Which simulator manual it compiles into' },
@@ -81,16 +99,33 @@ export const TOOLS = [
           type: 'array',
           items: { type: 'object', properties: { name: { type: 'string' }, fromVersion: { type: 'string' } }, required: ['name'] },
         },
-        content_html: { type: 'string', description: 'Optional starting body HTML (sections 4–7). Defaults to the blank FTD template.' },
+        content_html: { type: 'string', description: 'Optional starting body HTML (sections 4–7) for the FIRST listed manual. Other manuals start from their blank template.' },
         checklist: {
           type: 'string',
           enum: ['template', 'none'],
-          description: 'FAT (factory acceptance test) checklist: "template" seeds one from the category template (default), "none" creates the module without one.',
+          description: 'FAT (factory acceptance test) checklist: "template" seeds one from the category template (default) on the technician manual (else the customer manual), "none" creates the module without one.',
         },
       },
       required: ['name', 'group'],
     },
     annotations: { title: 'Create module', ...RW },
+  },
+  {
+    name: 'create_doc_version',
+    description:
+      'Start a new draft of one manual type for an existing module. If the module has no doc of that type yet, its A1.0 r1 is created from the blank template (or content_html); otherwise the next version (bump minor → A1.1, major → A2.0) is created from the latest released content — only when no draft of that type is open. Returns {key, version, branch}.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: SLUG_VER.slug,
+        manual: MANUAL_PROP,
+        bump: { type: 'string', enum: ['minor', 'major'], description: 'Version bump when the manual type already exists (default minor)' },
+        content_html: { type: 'string', description: 'Starting body HTML for a NEW manual type (ignored for a next version)' },
+        checklist: { type: 'string', enum: ['template', 'none'], description: 'FAT checklist for a NEW manual type (default: template for technician / customer, none for software manuals)' },
+      },
+      required: ['slug', 'manual'],
+    },
+    annotations: { title: 'Create doc version', ...RW },
   },
   {
     name: 'update_module',
@@ -157,7 +192,7 @@ export const TOOLS = [
   {
     name: 'save_doc_content',
     description:
-      'Replace the whole body HTML (sections 4–7: <h2>Installation</h2>, Operation, Maintenance, Appendixes) of a Draft/In-review doc. Allowed HTML: h2, h3, p, ol, ul, li, strong, em, table, figure/img/figcaption, <div class="admonition warning|note"><p class="admonition-title">…</p>…</div>. Commits on the draft branch and bumps the revision (r1 → r2 …) with the summary in the revision record. Prefer replace_in_doc or insert_into_section for small changes.',
+      'Replace the whole body HTML (sections 4–7 — the four <h2> sections of the manual type, e.g. Installation, Configuration, Maintenance, Appendixes for a technician manual; see get_doc) of a Draft/In-review doc. Allowed HTML: h2, h3, p, ol, ul, li, strong, em, table, figure/img/figcaption, <div class="admonition warning|note"><p class="admonition-title">…</p>…</div>. Commits on the draft branch and bumps the revision (r1 → r2 …) with the summary in the revision record. Prefer replace_in_doc or insert_into_section for small changes.',
     inputSchema: {
       type: 'object',
       properties: { ...SLUG_VER, html: { type: 'string' }, summary: { type: 'string', description: 'Revision record entry' } },
@@ -184,7 +219,7 @@ export const TOOLS = [
   {
     name: 'insert_into_section',
     description:
-      'Append (or prepend) HTML inside one of the body sections — Installation, Operation, Maintenance or Appendixes — without touching the rest. Use it to add a paragraph, a procedure, a warning or a <figure> with an uploaded image. Bumps the revision. For several changes at once use edit_doc (one call, one revision).',
+      'Append (or prepend) HTML inside one of the body <h2> sections (they depend on the manual type — e.g. Description, Operation, Maintenance, Appendixes for a customer manual; the error lists them) without touching the rest. Use it to add a paragraph, a procedure, a warning or a <figure> with an uploaded image. Bumps the revision. For several changes at once use edit_doc (one call, one revision).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -374,10 +409,15 @@ export const TOOLS = [
   },
 ];
 
-async function latestVersion(slug) {
+async function latestKey(slug, manual) {
   const m = await store.getModule(slug);
   if (!m || !m.docs.length) throw new Error(`Module "${slug}" not found or has no docs`);
-  return m.docs[0].version;
+  const type = manualTypeOf(manual || DEFAULT_MANUAL).id;
+  const doc = m.docs.find((d) => d.manual === type);
+  if (!doc) {
+    throw new Error(`Module "${slug}" has no ${MANUAL_TYPES[type].label.toLowerCase()} — it has: ${Object.keys(m.manuals).join(', ') || 'none'}`);
+  }
+  return doc.key;
 }
 
 async function currentBody(slug, version) {
@@ -427,7 +467,7 @@ async function callTool(name, args) {
       return m;
     }
     case 'get_doc': {
-      const version = args.version || (await latestVersion(args.slug));
+      const version = args.version || (await latestKey(args.slug, args.manual));
       const d = await store.getDoc(args.slug, version);
       if (!d) throw new Error(`Doc ${args.slug} ${version} not found`);
       const out = { module: d.module, doc: d.doc, content: d.content, checklist: d.checklist || null };
@@ -457,13 +497,28 @@ async function callTool(name, args) {
         startSummary: 'Created via MCP',
       };
       input.hardwareItems = await store.previewHardware(input, input.name);
-      const content = args.content_html || blankContent(args.name, input.hardwareItems);
-      input.checklist = args.checklist === 'none' ? null : templateChecklist(input);
-      return await store.createModuleDoc(
-        input,
-        content,
-        []
-      );
+      const manuals = [...new Set((Array.isArray(args.manuals) && args.manuals.length ? args.manuals : [DEFAULT_MANUAL]).map((m) => manualTypeOf(m).id))];
+      const fatManual = ['technician', 'customer', 'software-technician', 'software-customer'].find((t) => manuals.includes(t)) || manuals[0];
+      const specs = manuals.map((manual, i) => ({
+        manual,
+        content: (i === 0 && args.content_html) || blankContent(args.name, input.hardwareItems, manual, input.softwares),
+        checklist: manual === fatManual && args.checklist !== 'none' ? templateChecklist(input) : null,
+        startSummary: 'Created via MCP',
+      }));
+      return await store.createModuleDoc(input, specs);
+    }
+    case 'create_doc_version': {
+      const m = await store.getModule(args.slug);
+      if (!m) throw new Error(`Module "${args.slug}" not found`);
+      const type = manualTypeOf(args.manual);
+      if (m.docs.some((d) => d.manual === type.id)) return await store.createNextDocVersion(args.slug, type.id, args.bump || 'minor');
+      const wantFat = args.checklist ? args.checklist === 'template' : type.kind !== 'software';
+      return await store.addManual(args.slug, {
+        manual: type.id,
+        content: args.content_html || blankContent(m.module.name, m.module.hardwareItems, type.id, m.module.softwares),
+        checklist: wantFat ? templateChecklist(m.module) : null,
+        startSummary: 'Created via MCP',
+      });
     }
     case 'update_module': {
       const { slug, ...patch } = args;

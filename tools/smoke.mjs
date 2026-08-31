@@ -73,11 +73,23 @@ try {
   });
   ok(created.slug === 'starting-panel' && created.version === 'A1.0', 'wizard creates starting-panel A1.0');
   ok(created.fat === true, 'wizard seeds a FAT checklist from the template');
-  ok(created.branch === 'draft/starting-panel-a1.0', `draft branch is ${created.branch}`);
+  ok(created.branch === 'draft/starting-panel-customer-a1.0' && created.key === 'customer:A1.0' && created.docs.length === 1,
+    `draft branch is ${created.branch} (default manual type = customer)`);
 
   let list = await req('GET', '/api/modules');
   ok(list.length === 1 && list[0].status === 'draft', 'module listed as Draft');
   ok(list[0].latestDoc === 'A1.0 draft r1', `latest doc label: ${list[0].latestDoc}`);
+  ok(list[0].manuals.customer?.status === 'draft' && list[0].manuals.customer.key === 'customer:A1.0' && !list[0].manuals.technician,
+    'row summarises manuals per type');
+  const types = await req('GET', '/api/manual-types');
+  ok(types.length === 4 && types.map((t) => t.id).join(',') === 'customer,technician,software-customer,software-technician', 'manual types exposed');
+  const legacyAlias = await req('GET', '/api/modules/starting-panel/docs/A1.0');
+  const typedKey = await req('GET', '/api/modules/starting-panel/docs/customer:A1.0');
+  ok(legacyAlias.doc.key === 'customer:A1.0' && legacyAlias.doc.manual === 'customer' && typedKey.doc.key === legacyAlias.doc.key,
+    'bare version A1.0 and customer:A1.0 address the same doc');
+  ok(legacyAlias.generated.includes('customer manual') && legacyAlias.generated.includes('Manual type'), 'generated intro names the manual type');
+  const badKey = await req('GET', '/api/modules/starting-panel/docs/pilot:A1.0').catch((e) => e);
+  ok(badKey instanceof Error && /Unknown manual type/.test(badKey.message), 'unknown manual type in a key is rejected');
   ok(list[0].hardwareLabel === 'Starting Panel', `legacy hardware input became a catalog item: ${list[0].hardwareLabel}`);
   ok(list[0].hardware.length === 1 && list[0].hardware[0].type === 'ftd' && list[0].hardware[0].version === 'v2', 'module row carries resolved hardware items');
 
@@ -91,31 +103,47 @@ try {
     group: 'SIM',
     category: 'peripherals',
     hardware: [{ id: cam1.id }, { name: 'Cockpit camera — fixed', type: 'cots', manufacturer: 'Axis', model: 'M3086' }, { name: 'Camera bracket', type: 'ftd', version: 'v3' }],
+    manuals: ['customer', 'technician'],
     start: { mode: 'blank' },
     checklist: { mode: 'template' },
   });
   ok(cam.hardware.length === 3, 'module created with 3 hardware units (1 existing + 2 new)');
+  ok(cam.docs.length === 2 && cam.docs.map((d) => d.key).join(',') === 'customer:A1.0,technician:A1.0', `two manuals created: ${cam.docs.map((d) => d.branch).join(', ')}`);
+  ok(cam.docs[0].fat === false && cam.docs[1].fat === true, 'the FAT checklist goes to the technician manual');
   hwList = await req('GET', '/api/hardware');
   ok(hwList.length === 4, `new units joined the catalog (${hwList.length} items)`);
   const camDoc = await req('GET', '/api/modules/camera/docs/A1.0');
   ok(camDoc.module.hardwareItems.length === 3 && camDoc.module.hardwareIds.length === 3, 'module.json stores hardwareIds, read resolves items');
   ok(camDoc.generated.includes('Cockpit camera — fixed') && camDoc.generated.includes('COTS · Axis M3086'), 'section 3 lists every unit');
-  ok((camDoc.content.match(/<h3>/g) || []).length >= 6, 'blank template has one subsection per unit in Installation and Operation');
-  ok(camDoc.checklist.phases[0].items.some((i) => i.check.includes('Camera bracket')), 'FAT identification has a row per unit');
+  ok((camDoc.content.match(/<h3>/g) || []).length >= 6, 'customer template has one subsection per unit in Description and Operation');
+  ok(camDoc.content.includes('<h2>Description</h2>') && !camDoc.content.includes('<h2>Installation</h2>'), 'customer manual sections: Description, Operation, Maintenance, Appendixes');
+  const camTech = await req('GET', '/api/modules/camera/docs/technician:A1.0');
+  ok(camTech.doc.manual === 'technician' && camTech.doc.branch === 'draft/camera-technician-a1.0', 'technician doc on its own branch');
+  ok(camTech.content.includes('<h2>Installation</h2>') && camTech.content.includes('<h2>Configuration</h2>') && (camTech.content.match(/<h3>/g) || []).length >= 6,
+    'technician manual sections: Installation, Configuration, Maintenance, Appendixes with per-unit subsections');
+  ok(camTech.generated.includes('technician manual') && camTech.generated.includes('not part of the documentation handed to the simulator operator'), 'technician intro states the audience');
+  ok(camTech.checklist.phases[0].items.some((i) => i.check.includes('Camera bracket')), 'FAT identification has a row per unit');
+  const swNoLink = await req('POST', '/api/modules/camera/docs', { manual: 'software-customer' }).catch((e) => e);
+  ok(swNoLink instanceof Error && /link the module to a software/.test(swNoLink.message), 'software manual refused without a software relation');
+  const camList = (await req('GET', '/api/modules')).find((m) => m.slug === 'camera');
+  ok(camList.manuals.customer && camList.manuals.technician && camList.status === 'draft', 'list row shows both manuals');
   const patched = await req('PATCH', '/api/modules/camera', { hardware: [{ id: cam1.id }] });
   ok(patched.hardwareIds.length === 1 && patched.hardwareItems[0].id === cam1.id, 'PATCH replaces the assignment');
+  ok((await req('GET', '/api/modules/camera/docs/technician:A1.0')).module.hardwareIds.length === 1, 'metadata edit reaches every open draft branch');
   let delErr = null;
   try { await req('DELETE', `/api/hardware/${cam1.id}`); } catch (e) { delErr = e.message; }
   ok(/assigned to Camera/.test(delErr || ''), 'cannot delete a unit still assigned');
   ok((await req('DELETE', '/api/hardware/camera-bracket')).ok === true, 'unassigned unit can be deleted');
   const hwUpd = await req("PUT", `/api/hardware/${cam1.id}`, { notes: "Above the IOS" });
   ok(hwUpd.notes === "Above the IOS" && (await req('GET', '/api/modules/camera')).module.hardwareItems[0].notes === 'Above the IOS', 'catalog edit is visible through the module');
+  await req('POST', '/api/modules/camera/docs/technician:A1.0/discard');
+  ok((await req('GET', '/api/modules/camera')).docs.length === 1, 'discarding one manual keeps the other');
   await req('POST', '/api/modules/camera/docs/A1.0/discard');
   ok(!(await req('GET', '/api/modules')).find((m) => m.slug === 'camera'), 'camera module discarded (cleanup)');
 
   // edit: autosave, then a committed revision
   const doc0 = await req('GET', '/api/modules/starting-panel/docs/A1.0');
-  ok(doc0.content.includes('<h2>Installation</h2>'), 'blank template has Installation section');
+  ok(doc0.content.includes('<h2>Description</h2>') && doc0.content.includes('<h2>Operation</h2>'), 'blank customer template has Description and Operation sections');
   ok(doc0.generated.includes('Revision record'), 'sections 1-3 generated');
 
   // assets: upload, list, serve
@@ -404,7 +432,7 @@ try {
 
   // next doc version becomes the manual for the uncovered release and clears the dot; later it supersedes A1.0
   const next = await req('POST', '/api/modules/starting-panel/docs', { bump: 'minor' });
-  ok(next.version === 'A1.1', 'next version is A1.1');
+  ok(next.version === 'A1.1' && next.key === 'customer:A1.1' && next.branch === 'draft/starting-panel-customer-a1.1', 'next version is customer A1.1');
   ok(next.covers.length === 1 && next.covers[0].name === 'STP Core' && next.covers[0].from === 'v2.1.0' && next.covers[0].to === 'v2.1.0',
     'new version is seeded to cover STP Core v2.1.0');
   detail = await req('GET', '/api/modules/starting-panel');
@@ -427,7 +455,7 @@ try {
     'verify re-stamps the asset with current versions');
   ok(verified.meta.appliesTo[0] === 'starting-panel', 'verify keeps appliesTo');
   const guarded = await req('DELETE', '/api/modules/starting-panel/docs/A1.1/assets/panel-photo.png').catch((e) => e);
-  ok(guarded instanceof Error && /embedded in released A1.0/.test(guarded.message), 'cannot delete an asset a released doc still embeds');
+  ok(guarded instanceof Error && /embedded in released customer manual A1.0/.test(guarded.message), 'cannot delete an asset a released doc still embeds');
 
   // a second manual-affecting release while A1.1 is still a draft: assign it to the draft
   await req('POST', '/api/softwares', { name: 'STP Core', version: 'v2.1.1', manualAffecting: true });
@@ -451,6 +479,66 @@ try {
     'next doc version inherits the FAT checklist');
   ok((await req('GET', '/api/modules')).find((m) => m.slug === 'starting-panel').fat === true, 'modules list flags FAT');
 
+  // manual types on a released module: technician + software manuals get their own streams
+  const tech = await req('POST', '/api/modules/starting-panel/docs', { manual: 'technician', start: { mode: 'blank' }, checklist: { mode: 'template' } });
+  ok(tech.key === 'technician:A1.0' && tech.branch === 'draft/starting-panel-technician-a1.0' && tech.fat === true, 'technician manual A1.0 added to a released module');
+  const techDoc = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0');
+  ok(techDoc.doc.status === 'draft' && techDoc.content.includes('<h2>Configuration</h2>') && techDoc.doc.covers[0]?.name === 'STP Core', 'technician draft readable, seeded with the software relation');
+  const techDup = await req('POST', '/api/modules/starting-panel/docs', { manual: 'technician', bump: 'minor' }).catch((e) => e);
+  ok(techDup instanceof Error && /draft already exists/.test(techDup.message), 'no second open draft of the same manual type');
+  const swc = await mcpCall({ jsonrpc: '2.0', id: 90, method: 'tools/call', params: { name: 'create_doc_version', arguments: { slug: 'starting-panel', manual: 'software-customer' } } });
+  const swcRes = swc.isError ? null : JSON.parse(swc.content[0].text);
+  ok(swcRes && swcRes.key === 'software-customer:A1.0' && swcRes.fat === false, 'MCP create_doc_version starts the software customer manual');
+  const swcDoc = await req('GET', '/api/modules/starting-panel/docs/software-customer:A1.0');
+  ok(swcDoc.content.includes('<h2>Overview</h2>') && swcDoc.content.includes('STP Core') && swcDoc.generated.includes('software customer manual'), 'software customer manual template names the linked software');
+  detail = await req('GET', '/api/modules/starting-panel');
+  ok(Object.keys(detail.manuals).join(',') === 'customer,technician,software-customer' && detail.status === 'draft', `module now has ${Object.keys(detail.manuals).length} manual types`);
+  ok(detail.docs.filter((d) => d.manual === 'customer').length === 2 && detail.docs.find((d) => d.key === 'customer:A1.1').status === 'released', 'customer stream unaffected by the new types');
+  const mcpLatestTech = JSON.parse((await mcpCall({ jsonrpc: '2.0', id: 91, method: 'tools/call', params: { name: 'get_doc', arguments: { slug: 'starting-panel', manual: 'technician' } } })).content[0].text);
+  ok(mcpLatestTech.doc.key === 'technician:A1.0', 'MCP get_doc picks the latest doc of the requested manual type');
+  const mcpLatestCust = JSON.parse((await mcpCall({ jsonrpc: '2.0', id: 92, method: 'tools/call', params: { name: 'get_doc', arguments: { slug: 'starting-panel' } } })).content[0].text);
+  ok(mcpLatestCust.doc.key === 'customer:A1.1', 'MCP get_doc defaults to the customer manual');
+  const techIns = await mcpCall({
+    jsonrpc: '2.0', id: 93, method: 'tools/call',
+    params: { name: 'insert_into_section', arguments: { slug: 'starting-panel', version: 'technician:A1.0', section: 'Configuration', html: '<p>Set the static IP.</p>' } },
+  });
+  ok(!techIns.isError && (await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).content.includes('Set the static IP.'), 'MCP edits address docs by key');
+  await req('PATCH', '/api/modules/starting-panel', { code: 'SW-STP3' });
+  ok((await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).module.code === 'SW-STP3' && (await req('GET', '/api/modules/starting-panel/docs/A1.1')).module.code === 'SW-STP3',
+    'metadata edit written on main and on every open draft');
+  // orange dot is per manual type: a manual-affecting release uncovered by the new technician manual
+  await req('POST', '/api/softwares', { name: 'STP Core', version: 'v2.2.0', manualAffecting: true });
+  detail = await req('GET', '/api/modules/starting-panel');
+  ok(detail.uncovered.filter((u) => u.version === 'v2.2.0').map((u) => u.manual).sort().join(',') === 'customer,software-customer,technician', 'uncovered release listed per manual type');
+  ok(detail.needsDoc === true, 'customer manual has no open draft → orange dot');
+  await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/cover', { name: 'STP Core', version: 'v2.2.0' });
+  await req('POST', '/api/modules/starting-panel/docs/software-customer:A1.0/cover', { name: 'STP Core', version: 'v2.2.0' });
+  const nextCust = await req('POST', '/api/modules/starting-panel/docs', { manual: 'customer', bump: 'major' });
+  ok(nextCust.key === 'customer:A2.0' && nextCust.covers[0]?.from === 'v2.2.0', 'customer A2.0 seeded with the release the customer stream did not cover');
+  detail = await req('GET', '/api/modules/starting-panel');
+  ok(detail.uncovered.length === 0 && detail.needsDoc === false, 'every manual type covers v2.2.0');
+  // release the technician manual; assemble a technician manual from it
+  await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/submit-review');
+  await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/release');
+  detail = await req('GET', '/api/modules/starting-panel');
+  ok(detail.manuals.technician.status === 'released' && detail.manuals.customer.status === 'draft' && detail.docs.find((d) => d.key === 'customer:A1.1').status === 'released',
+    'releasing the technician manual supersedes nothing in the customer stream');
+  const techManual = await req('POST', '/api/manuals', { name: 'B737 Technician Manual', group: 'SIM', manual: 'technician', modules: ['starting-panel'] });
+  ok(techManual.manual === 'technician', 'assembled manual stores its type');
+  const techCompiled = await req('GET', '/api/manuals/b737-technician-manual');
+  ok(techCompiled.chapters[0].doc.key === 'technician:A1.0' && !techCompiled.chapters[0].isDraft && techCompiled.html.includes('Set the static IP.') && techCompiled.html.includes('Technician manual'),
+    'technician manual compiles the released technician docs');
+  ok((await req('GET', '/api/manuals')).find((m) => m.slug === 'b737-technician-manual').unreleased === 0, 'readiness counts the manual type being assembled');
+  await req('PUT', '/api/manuals/b737-technician-manual', { manual: 'software-technician' });
+  const swtCompiled = await req('GET', '/api/manuals/b737-technician-manual');
+  ok(swtCompiled.chapters[0].missing === true && /software technician manual/.test(swtCompiled.chapters[0].reason || ''), 'a module without that manual type is a missing chapter');
+  await req('DELETE', '/api/manuals/b737-technician-manual');
+  // clean up the extra drafts so the customer-stream checks below keep their assumptions
+  await req('POST', '/api/modules/starting-panel/docs/customer:A2.0/discard');
+  await req('POST', '/api/modules/starting-panel/docs/software-customer:A1.0/discard');
+  detail = await req('GET', '/api/modules/starting-panel');
+  ok(Object.keys(detail.manuals).join(',') === 'customer,technician' && detail.manuals.customer.version === 'A1.1', 'extra drafts discarded (cleanup)');
+
   // copy wizard mode from a released doc
   const copy = await req('POST', '/api/modules', {
     name: 'IOS Panel',
@@ -464,7 +552,21 @@ try {
   const copyDoc = await req('GET', `/api/modules/ios-panel/docs/A1.0`);
   ok(copyDoc.checklist && copyDoc.checklist.phases.length >= 3, 'copy mode copies the FAT checklist');
   ok(copyDoc.content.includes('Grounding check added'), 'copy mode copies content');
-  ok(copyDoc.doc.revisionRecord.some((r) => r.inherited), 'copy mode inherits revision record');
+  ok(copyDoc.doc.revisionRecord.some((r) => r.inherited) && copyDoc.doc.copiedFrom.manual === 'customer', 'copy mode inherits revision record');
+  const copy2 = await req('POST', '/api/modules', {
+    name: 'IOS Panel 2',
+    group: 'IOS',
+    category: 'software',
+    manuals: ['customer', 'technician'],
+    start: { mode: 'copy', sourceSlug: 'starting-panel' },
+    checklist: { mode: 'copy' },
+  });
+  ok(copy2.docs.length === 2 && /no released/.test(copy2.aiNote || '') === false, 'copy without a version takes each manual type from its released doc');
+  const copy2Tech = await req('GET', '/api/modules/ios-panel-2/docs/technician:A1.0');
+  ok(copy2Tech.content.includes('Set the static IP.') && copy2Tech.doc.copiedFrom.version === 'A1.0', 'technician manual copied from the released technician A1.0');
+  ok((await req('GET', '/api/modules/ios-panel-2/docs/A1.0')).content.includes('Grounding check added'), 'customer manual copied from the released customer A1.1');
+  await req('POST', '/api/modules/ios-panel-2/docs/A1.0/discard');
+  await req('POST', '/api/modules/ios-panel-2/docs/technician:A1.0/discard');
 
   // discard a never-released module
   await req('POST', '/api/modules/ios-panel/docs/A1.0/discard');
@@ -473,7 +575,7 @@ try {
 
   // manuals: create from selected modules, compile, export, update, delete
   const manual = await req('POST', '/api/manuals', { name: 'B737 Simulator Manual', group: 'SIM', modules: ['starting-panel'] });
-  ok(manual.slug === 'b737-simulator-manual' && manual.modules.length === 1, 'manual created from selected modules');
+  ok(manual.slug === 'b737-simulator-manual' && manual.modules.length === 1 && manual.manual === 'customer', 'manual created from selected modules (customer manual by default)');
   const compiled = await req('GET', '/api/manuals/b737-simulator-manual');
   ok(compiled.chapters.length === 1 && compiled.chapters[0].doc.version === 'A1.1' && !compiled.chapters[0].isDraft,
     'manual compiles the released A1.1 as chapter 1');

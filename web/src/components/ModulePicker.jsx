@@ -1,11 +1,15 @@
 import React from 'react';
 import StatusBadge from './StatusBadge.jsx';
+import { manualType } from '../api.js';
 
 /**
  * Ordered module selection for a manual: tick modules on the left, the
- * chapter order is shown on the right with up/down controls.
+ * chapter order is shown on the right with up/down controls. `manual` is the
+ * manual type being assembled — each module shows the status of that type.
  */
-export default function ModulePicker({ modules, selected, onChange }) {
+export default function ModulePicker({ modules, selected, onChange, manual = 'customer' }) {
+  const typeStatus = (m) => (m.manuals && m.manuals[manual] ? m.manuals[manual].status : 'missing');
+  const typeLabel = manualType(manual).label.toLowerCase();
   const toggle = (slug) =>
     onChange(selected.includes(slug) ? selected.filter((s) => s !== slug) : [...selected, slug]);
   const move = (i, dir) => {
@@ -29,7 +33,7 @@ export default function ModulePicker({ modules, selected, onChange }) {
                 {m.name} {m.code && <code>{m.code}</code>}
               </span>
               <span className="chip">{m.group}</span>
-              <StatusBadge status={m.status} />
+              <StatusBadge status={typeStatus(m)} />
             </label>
           ))}
           {modules.length === 0 && <div className="muted">No modules yet.</div>}
@@ -41,8 +45,11 @@ export default function ModulePicker({ modules, selected, onChange }) {
           {selected.map((slug, i) => (
             <li key={slug}>
               <span className="picker-name">{bySlug[slug]?.name || slug}</span>
-              {bySlug[slug] && bySlug[slug].status !== 'released' && (
-                <span className="hint" title="No released doc — the latest draft will be used and flagged">draft</span>
+              {bySlug[slug] && typeStatus(bySlug[slug]) === 'missing' && (
+                <span className="hint" title={`This module has no ${typeLabel} — the chapter will be flagged as missing`}>no {typeLabel}</span>
+              )}
+              {bySlug[slug] && typeStatus(bySlug[slug]) !== 'missing' && typeStatus(bySlug[slug]) !== 'released' && !bySlug[slug].manuals?.[manual]?.released && (
+                <span className="hint" title={`No released ${typeLabel} — the latest draft will be used and flagged`}>draft</span>
               )}
               <span className="picker-btns">
                 <button className="btn-icon" title="Move up" disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
