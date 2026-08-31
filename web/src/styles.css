@@ -414,6 +414,3 @@ label.inline { font-weight: 400; color: var(--muted); }
 .lang-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; border: 1px solid #b9c9ff; background: #e5edff; font-size: 13px; }
 .lang-banner.stale { border-color: #fbd38d; background: #fef3c7; }
 .lang-banner strong { margin-right: 4px; }
-.lang-empty { border: 1px dashed var(--line); border-radius: 10px; padding: 26px; text-align: center; color: var(--muted); margin: 20px 0; }
-.lang-empty h3 { margin: 0 0 6px; color: var(--ink); }
-.lang-empty .btn-row { justify-content: center; margin-top: 12px; }

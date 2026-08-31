@@ -197,6 +197,12 @@ export default function Editor() {
   }, [slug, version, lang]);
 
   /* ---------- language switch / translation ---------- */
+  /** A save in a translation language creates that translation (typed by hand) — reflect it without a reload. */
+  function noteLanguageSaved(meta) {
+    if (lang === 'en' || !meta?.languages?.[lang]) return;
+    setLanguages((l) => ({ ...(l || {}), [lang]: { ...(l?.[lang] || {}), ...meta.languages[lang], code: lang, exists: true, stale: l?.[lang]?.stale || false } }));
+  }
+
   async function switchLang(next) {
     if (next === lang) return;
     if (pending) return toast('Accept or discard the pending AI edit first', 'err');
@@ -274,6 +280,7 @@ export default function Editor() {
         setSaving(true);
         const meta = await api.saveContent(slug, version, htmlRef.current, false, "", lang);
         setDocMeta(meta);
+        noteLanguageSaved(meta);
         setSavedAt(new Date().toISOString());
         setDirty(false);
       } catch (e) {
@@ -410,6 +417,7 @@ export default function Editor() {
       setSaving(true);
       const meta = await api.saveContent(slug, version, htmlRef.current, true, summary, lang);
       setDocMeta(meta);
+      noteLanguageSaved(meta);
       setSavedAt(new Date().toISOString());
       setDirty(false);
       toast(`Committed r${meta.revision}`);
@@ -860,6 +868,23 @@ export default function Editor() {
             </div>
           )}
 
+          {tab === 'manual' && translationMissing && (
+            <div className="lang-banner">
+              <span>
+                <strong>{language(lang).label}</strong> — no translation yet. Translate the English body with the AI, copy it as a starting point, or simply start writing here — the text is saved as the {language(lang).label} version.
+              </span>
+              {editable && (
+                <span className="btn-row">
+                  <button className="btn btn-primary btn-sm" disabled={translating} onClick={translate}>
+                    {translating ? 'Translating…' : 'Translate with AI'}
+                  </button>
+                  <button className="btn btn-sm" disabled={translating} onClick={copyEnglish}>
+                    Copy English
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
           {tab === 'manual' && lang !== 'en' && langInfo?.exists && (
             <div className={`lang-banner ${langInfo.stale ? 'stale' : ''}`}>
               <span>
@@ -882,24 +907,7 @@ export default function Editor() {
                 title="Sections 1–3 are generated from module data and the revision record"
                 dangerouslySetInnerHTML={{ __html: data.generated }}
               />
-              {translationMissing ? (
-                <div className="lang-empty">
-                  <h3>No {language(lang).label} translation yet</h3>
-                  <p>The English body is the source. Translate it with the AI and review the result, or copy the English text and translate it in place.</p>
-                  {editable ? (
-                    <div className="btn-row">
-                      <button className="btn btn-primary" disabled={translating} onClick={translate}>
-                        {translating ? 'Translating…' : `Translate to ${language(lang).label} with AI`}
-                      </button>
-                      <button className="btn" disabled={translating} onClick={copyEnglish}>
-                        Copy English as starting point
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="hint">Translations are added to a Draft or In-review doc version.</p>
-                  )}
-                </div>
-              ) : mode === 'rich' ? (
+              {mode === 'rich' ? (
                 <div
                   ref={editorRef}
                   className="content-edit"
