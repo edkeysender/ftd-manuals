@@ -51,6 +51,9 @@ export const api = {
   listAssets: (slug) => request(`/api/modules/${slug}/assets`),
   deleteAsset: (slug, version, name) =>
     request(`/api/modules/${slug}/docs/${version}/assets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  /** body: {appliesTo: [hardware ids]} and/or {verify: true} */
+  setAssetMeta: (slug, version, name, body) =>
+    request(`/api/modules/${slug}/docs/${version}/assets/${encodeURIComponent(name)}/meta`, { method: 'PUT', body }),
   inbox: () => request('/api/inbox'),
   uploadInbox: (files) => request('/api/inbox', { method: 'POST', body: { files } }),
   deleteInbox: (name) => request(`/api/inbox/${encodeURIComponent(name)}`, { method: 'DELETE' }),

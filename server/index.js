@@ -239,6 +239,12 @@ app.delete('/api/modules/:slug/docs/:version/assets/:file', wrap(async (req, res
   res.json(await store.deleteAsset(req.params.slug, req.params.version, req.params.file));
 }));
 
+/** Version stamp of one asset: {appliesTo: [hardware ids]} and/or {verify: true} (re-stamp as current). */
+app.put('/api/modules/:slug/docs/:version/assets/:file/meta', wrap(async (req, res) => {
+  const { appliesTo, verify } = req.body || {};
+  res.json(await store.setAssetMeta(req.params.slug, req.params.version, req.params.file, { appliesTo, verify: !!verify }));
+}));
+
 /* ---------- inbox: drop folder on the console machine, imported into drafts by name ---------- */
 app.get('/api/inbox', wrap(async (req, res) => {
   res.json({ dir: inbox.INBOX_DIR, roots: inbox.IMPORT_ROOTS, files: await inbox.listInbox() });
@@ -353,7 +359,7 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
     saved.forEach((s, i) => ctx.assets.push({ url: s.url, alt: uploads[i].alt || '', from: uploads[i].from || '' }));
   }
   for (const a of await store.listAssets(slug)) {
-    if (!ctx.assets.some((x) => x.url === a.url)) ctx.assets.push({ url: a.url, alt: '', from: 'asset store' });
+    if (!ctx.assets.some((x) => x.url === a.url)) ctx.assets.push({ url: a.url, alt: '', from: 'asset store', version: store.describeAssetVersion(a) });
   }
 
   const result = await ai.chatEdit({

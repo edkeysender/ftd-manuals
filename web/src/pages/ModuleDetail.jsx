@@ -68,19 +68,26 @@ export default function ModuleDetail() {
           </div>
         </div>
         {!hasOpenDraft && docs.length > 0 && (
-          <div className="btn-row">
-            <button
-              className="btn"
-              onClick={() => act(() => api.nextDocVersion(slug, 'minor'), 'New minor doc draft created')}
-            >
-              New doc version (minor)
-            </button>
-            <button
-              className="btn"
-              onClick={() => act(() => api.nextDocVersion(slug, 'major'), 'New major doc draft created')}
-            >
-              New doc version (major)
-            </button>
+          <div className="btn-col">
+            <div className="btn-row">
+              <button
+                className="btn"
+                onClick={() => act(() => api.nextDocVersion(slug, 'minor'), 'New minor doc draft created')}
+              >
+                New doc version (minor)
+              </button>
+              <button
+                className="btn"
+                onClick={() => act(() => api.nextDocVersion(slug, 'major'), 'New major doc draft created')}
+              >
+                New doc version (major)
+              </button>
+            </div>
+            {(data.uncovered || []).length > 0 && (
+              <span className="hint">
+                The new version becomes the manual for {data.uncovered.map((u) => `${u.name} ${u.version}`).join(', ')}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -94,6 +101,12 @@ export default function ModuleDetail() {
         </button>
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
           Assets
+          {data.staleAssets > 0 && (
+            <>
+              {' '}
+              <span className="orange-dot" title={`${data.staleAssets} image${data.staleAssets === 1 ? '' : 's'} may show an older software/hardware version`} />
+            </>
+          )}
         </button>
         <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
           History
@@ -215,7 +228,7 @@ export default function ModuleDetail() {
         </table>
       )}
 
-      {tab === 'assets' && <AssetsTab slug={slug} docs={docs} />}
+      {tab === 'assets' && <AssetsTab slug={slug} docs={docs} module={module} onChanged={load} />}
 
       {tab === 'hardware' && <HardwareTab module={module} slug={slug} reload={load} />}
 
@@ -476,13 +489,45 @@ function HardwareTab({ module, slug, reload }) {
   );
 }
 
-function AssetsTab({ slug, docs }) {
+/** "A1.0 · Starting Panel 2.0.1 · Camera v2" — what the picture showed when it was added. */
+function stampLabel(meta, hwItems) {
+  if (!meta) return null;
+  const parts = [meta.verifiedIn || meta.addedIn];
+  for (const s of meta.software || []) if (s.version) parts.push(`${s.name} ${s.version}`);
+  const applies = meta.appliesTo?.length ? new Set(meta.appliesTo) : null;
+  for (const h of meta.hardware || []) {
+    if (applies && !applies.has(h.id)) continue;
+    if (hwItems.length > 1 && !applies) continue; // "all units" — the versions are on the Hardware tab
+    parts.push(`${h.name}${h.version ? ' ' + h.version : ''}`);
+  }
+  return parts.filter(Boolean).join(' · ');
+}
+
+function AssetsTab({ slug, docs, module, onChanged }) {
   const toast = useToast();
   const [assets, setAssets] = useState(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
   const [drawing, setDrawing] = useState(null); // asset name being converted
+  const [stamping, setStamping] = useState(null); // asset name whose stamp is being saved
   const draft = docs.find((d) => d.status === 'draft' || d.status === 'in-review');
+  const hwItems = (module.hardwareItems || []).filter((h) => h.id && !h.missing);
+
+  /** Save "applies to" / "verified" on the draft branch. */
+  async function stamp(asset, body, okMsg) {
+    if (!draft) return toast('Version stamps are edited on a draft — create a doc draft first', 'err');
+    setStamping(asset.name);
+    try {
+      await api.setAssetMeta(slug, draft.version, asset.name, body);
+      toast(okMsg);
+      load();
+      onChanged?.();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setStamping(null);
+    }
+  }
 
   /** Redraw an existing photo in the FTD house style (same engine as the editor's drop target). */
   async function toLineArt(asset) {
@@ -560,7 +605,7 @@ Optional instructions (what to number, arrows, emphasis):`, '');
       ) : (
         <div className="asset-grid">
           {assets.map((a) => (
-            <div className="asset-card" key={a.name}>
+            <div className={`asset-card ${a.stale?.length ? 'stale' : ''}`} key={a.name}>
               {/\.(png|jpe?g|gif|webp|svg)$/i.test(a.name) ? (
                 <img src={a.url} alt={a.name} loading="lazy" />
               ) : (
@@ -569,6 +614,61 @@ Optional instructions (what to number, arrows, emphasis):`, '');
               <div className="asset-name" title={a.url}>
                 {a.name}
               </div>
+              <div className="asset-meta">
+                {a.stale?.length > 0 && (
+                  <span className="orange-dot" title={`Newer than this picture: ${a.stale.join(', ')}`} />
+                )}
+                {a.meta ? (
+                  <span
+                    className="chip"
+                    title={`${a.meta.verifiedIn ? `Verified in ${a.meta.verifiedIn}` : `Added in ${a.meta.addedIn}`} — software/hardware versions current at that time`}
+                  >
+                    {stampLabel(a.meta, hwItems)}
+                  </span>
+                ) : (
+                  <span className="hint" title="Added before version stamps existed — Verify to stamp it with the current versions">
+                    no version stamp
+                  </span>
+                )}
+              </div>
+              {hwItems.length > 1 && (
+                <label className="asset-applies">
+                  <span className="hint">Shows</span>
+                  <select
+                    value={a.meta?.appliesTo?.length === 1 ? a.meta.appliesTo[0] : ''}
+                    disabled={!draft || stamping === a.name}
+                    title="Which of the module's units this picture shows"
+                    onChange={(e) =>
+                      stamp(
+                        a,
+                        { appliesTo: e.target.value ? [e.target.value] : [] },
+                        e.target.value ? `${a.name} applies to ${hwItems.find((h) => h.id === e.target.value)?.name}` : `${a.name} applies to all units`
+                      )
+                    }
+                  >
+                    <option value="">All units</option>
+                    {hwItems.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {draft && (a.stale?.length > 0 || !a.meta) && (
+                <button
+                  className="btn btn-sm btn-verify"
+                  disabled={stamping === a.name}
+                  title={
+                    a.stale?.length
+                      ? `Confirm this picture is still correct for ${a.stale.join(', ')} (or upload a replacement) — re-stamps it as current`
+                      : 'Stamp this file with the current software/hardware versions'
+                  }
+                  onClick={() => stamp(a, { verify: true }, `${a.name} verified for current versions`)}
+                >
+                  {stamping === a.name ? 'Saving…' : a.stale?.length ? `Verified for ${a.stale[0]}` : 'Stamp version'}
+                </button>
+              )}
               <div className="btn-row">
                 <button
                   className="btn btn-sm"
@@ -620,7 +720,8 @@ function SoftwareTab({ data, slug, reload }) {
   const toast = useToast();
   const { module, docs, softwareFeed } = data;
   const [form, setForm] = useState({ name: module.softwares[0]?.name || '', version: '', manualAffecting: false, note: '' });
-  const releasedDocs = docs.filter((d) => d.status === 'released' || d.status === 'superseded');
+  const releasedDoc = docs.find((d) => d.status === 'released');
+  const openDraft = docs.find((d) => d.status === 'draft' || d.status === 'in-review');
 
   const coveredBy = (swName, version) =>
     docs.find((d) => (d.covers || []).some((c) => c.name === swName && covered(version, c)));
@@ -636,6 +737,13 @@ function SoftwareTab({ data, slug, reload }) {
       return 0;
     };
     return cmp(v, cov.from) >= 0 && cmp(v, cov.to || cov.from) <= 0;
+  }
+
+  function link(doc, swName, swVersion) {
+    api
+      .coverRelease(slug, doc.version, swName, swVersion)
+      .then(() => { toast(`${doc.version} now covers ${swName} ${swVersion}`); reload(); })
+      .catch((e) => toast(e.message, 'err'));
   }
 
   async function register() {
@@ -676,21 +784,25 @@ function SoftwareTab({ data, slug, reload }) {
                     <td>{rel.manualAffecting ? <span className="badge badge-in-review">Yes</span> : 'No'}</td>
                     <td>{doc ? doc.version : <span className="muted">not linked</span>}</td>
                     <td>
-                      {!doc && !rel.manualAffecting && releasedDocs[0] && (
+                      {!doc && !rel.manualAffecting && releasedDoc && (
                         <button
                           className="btn btn-sm"
-                          title="Extend the latest released doc's covered range to this release"
-                          onClick={() =>
-                            api
-                              .coverRelease(slug, releasedDocs[0].version, sw.name, rel.version)
-                              .then(() => { toast(`${releasedDocs[0].version} now covers ${sw.name} ${rel.version}`); reload(); })
-                              .catch((e) => toast(e.message, 'err'))
-                          }
+                          title="Extend the released doc's covered range to this release"
+                          onClick={() => link(releasedDoc, sw.name, rel.version)}
                         >
-                          Link to {releasedDocs[0].version}
+                          Link to {releasedDoc.version}
                         </button>
                       )}
-                      {!doc && rel.manualAffecting && (
+                      {!doc && openDraft && (
+                        <button
+                          className="btn btn-sm"
+                          title={`Make ${openDraft.version} the manual for ${sw.name} ${rel.version}`}
+                          onClick={() => link(openDraft, sw.name, rel.version)}
+                        >
+                          Assign to {openDraft.version} ({openDraft.status})
+                        </button>
+                      )}
+                      {!doc && rel.manualAffecting && !openDraft && (
                         <span className="hint">needs a new doc version</span>
                       )}
                     </td>

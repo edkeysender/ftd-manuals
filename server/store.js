@@ -386,19 +386,36 @@ function moduleStatus(docs) {
 /** Orange dot: a linked software has a manual-affecting release not covered by
  *  any doc version, and no draft/in-review doc exists yet. */
 function needsDoc(module, docs, softwareFeed) {
-  if (!module.softwares || module.softwares.length === 0) return false;
   const hasOpenDraft = docs.some((d) => d.status === 'draft' || d.status === 'in-review');
   if (hasOpenDraft) return false;
-  for (const sw of module.softwares) {
-    const releases = softwareFeed[sw.name] || [];
-    for (const rel of releases) {
+  return uncoveredReleases(module, docs, softwareFeed).length > 0;
+}
+
+/** Manual-affecting releases of the module's softwares (at/after the linked from-version)
+ *  that no doc version covers yet — each one needs its own doc version. */
+function uncoveredReleases(module, docs, softwareFeed) {
+  const out = [];
+  for (const sw of module.softwares || []) {
+    for (const rel of softwareFeed[sw.name] || []) {
       if (!rel.manualAffecting) continue;
       if (sw.fromVersion && compareSwVersions(rel.version, sw.fromVersion) < 0) continue;
       const covered = docs.some((d) => (d.covers || []).some((c) => c.name === sw.name && versionCovered(rel.version, c)));
-      if (!covered) return true;
+      if (!covered) out.push({ name: sw.name, version: rel.version });
     }
   }
-  return false;
+  return out;
+}
+
+/** Fold a release into a covers list: new row, or widen the existing range. */
+function addCover(covers, swName, swVersion) {
+  const cov = covers.find((c) => c.name === swName);
+  if (!cov) {
+    covers.push({ name: swName, from: swVersion, to: swVersion });
+  } else {
+    if (compareSwVersions(swVersion, cov.from) < 0) cov.from = swVersion;
+    if (compareSwVersions(swVersion, cov.to || cov.from) > 0) cov.to = swVersion;
+  }
+  return covers;
 }
 
 export async function getSoftwareFeed() {
@@ -462,7 +479,9 @@ export async function getModule(slug) {
     docs: entry.docs,
     status: moduleStatus(entry.docs),
     needsDoc: needsDoc(entry.module, entry.docs, feed),
+    uncovered: uncoveredReleases(entry.module, entry.docs, feed),
     history: history.slice(0, 50),
+    staleAssets: (await listAssets(slug)).filter((a) => a.stale.length).length,
     softwareFeed: Object.fromEntries(
       (entry.module.softwares || []).map((s) => [s.name, feed[s.name] || []])
     ),
@@ -571,6 +590,14 @@ export async function createNextDocVersion(slug, bump = 'minor') {
 
   const content = (await repo.show('main', contentFile(slug, latest.version))) || blankContent(entry.module.name);
   const checklist = latest.fat ? await repo.show('main', checklistFile(slug, latest.version)) : null;
+  // The new version is the manual for every manual-affecting release nobody covers yet.
+  const covers = uncoveredReleases(entry.module, entry.docs, await getSoftwareFeed()).reduce(
+    (acc, r) => addCover(acc, r.name, r.version),
+    []
+  );
+  const coversLabel = covers
+    .map((c) => `${c.name} ${c.to && c.to !== c.from ? `${c.from}–${c.to}` : c.from}`)
+    .join(', ');
   const doc = {
     version,
     revision: 1,
@@ -579,10 +606,10 @@ export async function createNextDocVersion(slug, bump = 'minor') {
     createdAt: created,
     updatedAt: created,
     releasedAt: null,
-    covers: [],
+    covers,
     revisionRecord: [
       ...latest.revisionRecord.map((r) => ({ ...r, inherited: true })),
-      { rev: 'r1', date: created, summary: `Draft based on ${latest.version}` },
+      { rev: 'r1', date: created, summary: `Draft based on ${latest.version}${coversLabel ? ` for ${coversLabel}` : ''}` },
     ],
     copiedFrom: { slug, version: latest.version },
     fat: !!checklist,
@@ -594,11 +621,11 @@ export async function createNextDocVersion(slug, bump = 'minor') {
     await repo.writeFile(docFile(slug, version), JSON.stringify(doc, null, 2) + '\n');
     await repo.writeFile(contentFile(slug, version), content);
     if (checklist) await repo.writeFile(checklistFile(slug, version), checklist);
-    await repo.commitAll(`${slug}: create doc ${version} r1 (draft)`);
+    await repo.commitAll(`${slug}: create doc ${version} r1 (draft)${coversLabel ? ` for ${coversLabel}` : ''}`);
     await repo.checkout('main');
   });
 
-  return { slug, version, branch, fat: doc.fat };
+  return { slug, version, branch, fat: doc.fat, covers };
 }
 
 async function loadDraftDoc(slug, version) {
@@ -739,6 +766,75 @@ export async function discardDraft(slug, version) {
 /* ------------------------------------------------------------------ */
 
 const assetFile = (slug, name) => `modules/${slug}/assets/${name}`;
+/** Sidecar next to the assets folder: {fileName: stamp}. A stamp records what the image
+ *  showed when it was added — doc version, each linked software's newest release, each
+ *  hardware unit's version — plus `appliesTo` (subset of the module's hardware ids; [] = all). */
+const assetMetaFile = (slug) => `modules/${slug}/assets.json`;
+
+const hwVersionOf = (h) => (h.type === 'ftd' ? h.version || '' : [h.manufacturer, h.model].filter(Boolean).join(' '));
+
+/** What "current" means right now for a module: newest registered release of every linked
+ *  software (else its from-version) and the catalog version of every linked hardware unit. */
+function currentStamp(module, feed) {
+  const software = (module.softwares || []).map((sw) => {
+    let version = sw.fromVersion || '';
+    for (const rel of feed[sw.name] || []) if (compareSwVersions(rel.version, version) > 0) version = rel.version;
+    return { name: sw.name, version };
+  });
+  const hardware = hardwareItemsOf(module)
+    .filter((h) => h.id && !h.missing)
+    .map((h) => ({ id: h.id, name: h.name, version: hwVersionOf(h) }));
+  return { software, hardware };
+}
+
+/** Why a stamped asset may be out of date: a manual-affecting software release newer than
+ *  the stamp, or a hardware unit whose catalog version changed since. Unstamped → []. */
+function assetStaleness(meta, module, feed) {
+  if (!meta) return [];
+  const reasons = [];
+  for (const sw of module.softwares || []) {
+    const stamped = (meta.software || []).find((s) => s.name === sw.name);
+    if (!stamped) continue;
+    let newest = null;
+    for (const rel of feed[sw.name] || []) {
+      if (!rel.manualAffecting || compareSwVersions(rel.version, stamped.version) <= 0) continue;
+      if (!newest || compareSwVersions(rel.version, newest) > 0) newest = rel.version;
+    }
+    if (newest) reasons.push(`${sw.name} ${newest}`);
+  }
+  const applies = Array.isArray(meta.appliesTo) && meta.appliesTo.length ? new Set(meta.appliesTo) : null;
+  for (const h of hardwareItemsOf(module)) {
+    if (!h.id || h.missing || (applies && !applies.has(h.id))) continue;
+    const stamped = (meta.hardware || []).find((x) => x.id === h.id);
+    if (stamped && stamped.version !== hwVersionOf(h)) reasons.push(`${h.name} ${hwVersionOf(h)}`);
+  }
+  return reasons;
+}
+
+/** One-line version note for prompts and tooltips. */
+export function describeAssetVersion(asset) {
+  const m = asset.meta;
+  if (!m) return 'no version stamp';
+  const parts = [m.verifiedIn ? `verified in ${m.verifiedIn}` : `added in ${m.addedIn}`];
+  for (const s of m.software || []) if (s.version) parts.push(`${s.name} ${s.version}`);
+  for (const h of m.hardware || []) if (!m.appliesTo?.length || m.appliesTo.includes(h.id)) parts.push(`${h.name}${h.version ? ' ' + h.version : ''}`);
+  let note = parts.join(' · ');
+  if (asset.stale?.length) note += ` — OUT OF DATE, newer: ${asset.stale.join(', ')}`;
+  return note;
+}
+
+async function moduleOf(slug) {
+  const { modules } = await collectAll();
+  return modules.find((m) => m.module.slug === slug) || null;
+}
+
+/** Sidecar merged across refs; later refs win, so pass main first and the live draft last. */
+async function readAssetMeta(slug, refs) {
+  const json = await readJsonMany(refs.map((ref) => ({ ref, file: assetMetaFile(slug) })));
+  const out = {};
+  for (const ref of refs) Object.assign(out, json.get(`${ref}:${assetMetaFile(slug)}`) || {});
+  return out;
+}
 
 export function sanitizeAssetName(name) {
   const base = String(name).split(/[\\/]/).pop() || 'file';
@@ -759,32 +855,112 @@ export async function saveAssets(slug, version, files) {
   const { branch } = await loadDraftDoc(slug, version);
   if (!files.length) throw new Error('No files to save');
   for (const f of files) validateAsset(f.name, f.buffer); // reject truncated / mislabelled files before anything is committed
+  const entry = await moduleOf(slug);
+  const stamp = currentStamp(entry?.module || {}, await getSoftwareFeed());
+  const ts = now();
   const saved = [];
   await mutate(async () => {
     await repo.checkout(branch);
+    const meta = (await readJson(branch, assetMetaFile(slug))) || {};
     for (const f of files) {
       const name = sanitizeAssetName(f.name);
       await repo.writeFile(assetFile(slug, name), f.buffer);
+      // A re-upload under the same name is a new picture: fresh stamp, same "applies to".
+      meta[name] = { addedIn: version, addedAt: ts, ...stamp, appliesTo: meta[name]?.appliesTo || [] };
       saved.push(name);
     }
+    await repo.writeFile(assetMetaFile(slug), JSON.stringify(meta, null, 2) + '\n');
     await repo.commitAll(`${slug} ${version}: add asset${saved.length > 1 ? 's' : ''} ${saved.join(', ')}`);
     await repo.checkout('main');
   });
   return saved.map((n) => ({ name: n, url: assetUrl(slug, n) }));
 }
 
-/** Remove an asset from a draft's branch (git rm + commit). */
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Released/superseded doc versions on main whose body embeds this asset. The assets folder
+ *  is shared by every version of a module, so removing such a file would break a manual
+ *  that has already been released. */
+async function releasedDocsUsingAsset(slug, name, exceptVersion) {
+  const entry = await moduleOf(slug);
+  const re = new RegExp(`/assets/${escapeRe(encodeURIComponent(name))}(?=["'?\\s>)])`);
+  const users = [];
+  for (const d of entry?.docs || []) {
+    if (d.version === exceptVersion || !(d.status === 'released' || d.status === 'superseded')) continue;
+    const html = await repo.show('main', contentFile(slug, d.version));
+    if (html && re.test(html)) users.push(d.version);
+  }
+  return users;
+}
+
+/** Remove an asset from a draft's branch (git rm + commit). Refuses when a released doc still embeds it. */
 export async function deleteAsset(slug, version, name) {
   const { branch } = await loadDraftDoc(slug, version);
-  const file = assetFile(slug, sanitizeAssetName(name));
+  const base = sanitizeAssetName(name);
+  const file = assetFile(slug, base);
   if (!(await repo.show(branch, file))) throw new Error(`Asset "${name}" not found on ${branch}`);
+  const users = await releasedDocsUsingAsset(slug, base, version);
+  if (users.length) {
+    throw new Error(
+      `"${base}" is embedded in released ${users.join(', ')} — released manuals must keep rendering. Upload the replacement under a new name and re-point the figure instead.`
+    );
+  }
   await mutate(async () => {
     await repo.checkout(branch);
     await repo.removePath(file);
-    await repo.commitAll(`${slug} ${version}: remove asset ${path.basename(file)}`);
+    const meta = (await readJson(branch, assetMetaFile(slug))) || {};
+    if (meta[base]) {
+      delete meta[base];
+      await repo.writeFile(assetMetaFile(slug), JSON.stringify(meta, null, 2) + '\n');
+    }
+    await repo.commitAll(`${slug} ${version}: remove asset ${base}`);
     await repo.checkout('main');
   });
-  return { name: path.basename(file), removed: true };
+  return { name: base, removed: true };
+}
+
+/**
+ * Edit an asset's version stamp on the draft branch.
+ *  - `appliesTo`: hardware ids (subset of the module's) this picture shows; [] = every unit.
+ *  - `verify`: re-stamp with today's software releases / hardware versions — the author has
+ *    checked the picture is still right (or replaced it) after a manual-affecting change.
+ */
+export async function setAssetMeta(slug, version, name, { appliesTo, verify = false } = {}) {
+  const { branch } = await loadDraftDoc(slug, version);
+  const base = sanitizeAssetName(name);
+  if (!(await getAsset(slug, base))) throw new Error(`Asset "${name}" not found`);
+  const entry = await moduleOf(slug);
+  const module = entry?.module || {};
+  const feed = await getSoftwareFeed();
+  const ids = hardwareItemsOf(module).map((h) => h.id).filter(Boolean);
+  if (appliesTo !== undefined) {
+    if (!Array.isArray(appliesTo)) throw new Error('appliesTo must be an array of hardware ids');
+    const bad = appliesTo.find((id) => !ids.includes(id));
+    if (bad) throw new Error(`Hardware "${bad}" is not linked to this module`);
+  }
+  if (appliesTo === undefined && !verify) throw new Error('Nothing to change');
+  const ts = now();
+  let stamp = null;
+  await mutate(async () => {
+    await repo.checkout(branch);
+    const meta = (await readJson(branch, assetMetaFile(slug))) || {};
+    stamp = meta[base] || { addedIn: version, addedAt: ts, software: [], hardware: [], appliesTo: [] };
+    const changes = [];
+    if (appliesTo !== undefined) {
+      stamp.appliesTo = [...new Set(appliesTo)];
+      changes.push(stamp.appliesTo.length ? `applies to ${stamp.appliesTo.join(', ')}` : 'applies to all hardware');
+    }
+    if (verify) {
+      Object.assign(stamp, currentStamp(module, feed), { verifiedIn: version, verifiedAt: ts });
+      const what = [...stamp.software.map((s) => `${s.name} ${s.version}`), ...stamp.hardware.map((h) => `${h.name} ${h.version}`)].filter(Boolean);
+      changes.push(`verified for ${what.join(', ') || 'current versions'}`);
+    }
+    meta[base] = stamp;
+    await repo.writeFile(assetMetaFile(slug), JSON.stringify(meta, null, 2) + '\n');
+    await repo.commitAll(`${slug} ${version}: asset ${base} ${changes.join('; ')}`);
+    await repo.checkout('main');
+  });
+  return { name: base, url: assetUrl(slug, base), meta: stamp, stale: assetStaleness(stamp, module, feed) };
 }
 
 /** Move files from the inbox into a draft's assets (validated on the way in). */
@@ -816,16 +992,23 @@ export async function getAsset(slug, name) {
   return null;
 }
 
+/** Every asset of a module with its version stamp (`meta`, null for files added before
+ *  stamping) and `stale`: reasons it may be out of date (see assetStaleness). */
 export async function listAssets(slug) {
   const branches = await repo.branches();
-  const refs = [...branches.filter((b) => b.startsWith(`draft/${slug}-`)), 'main'];
+  const drafts = branches.filter((b) => b.startsWith(`draft/${slug}-`));
   const names = new Set();
-  for (const ref of refs) {
+  for (const ref of [...drafts, 'main']) {
     for (const f of await repo.lsFiles(ref, `modules/${slug}/assets`)) {
       names.add(f.split('/').pop());
     }
   }
-  return [...names].map((n) => ({ name: n, url: assetUrl(slug, n) }));
+  const [meta, entry, feed] = await Promise.all([readAssetMeta(slug, ['main', ...drafts]), moduleOf(slug), getSoftwareFeed()]);
+  const module = entry?.module || {};
+  return [...names].map((n) => {
+    const m = meta[n] || null;
+    return { name: n, url: assetUrl(slug, n), meta: m, stale: assetStaleness(m, module, feed) };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -848,27 +1031,29 @@ export async function registerSoftwareRelease({ name, version, manualAffecting, 
   return feed;
 }
 
-/** Extend a released doc's covered range to include a (non-manual-affecting) software release. */
+/** Make a doc version the manual for a software release: widen a Released doc's covered
+ *  range (non-manual-affecting releases), or assign the release to an open draft /
+ *  in-review doc (a manual-affecting release that got its own doc version). */
 export async function linkReleaseToDoc(slug, docVersion, swName, swVersion) {
-  const file = docFile(slug, docVersion);
-  const meta = await readJson('main', file);
-  if (!meta) throw new Error('Doc version not found on main');
-  if (meta.status !== 'released') throw new Error('Releases can only be linked to a Released doc version');
-  const covers = meta.covers || [];
-  let cov = covers.find((c) => c.name === swName);
-  if (!cov) {
-    cov = { name: swName, from: swVersion, to: swVersion };
-    covers.push(cov);
-  } else {
-    if (compareSwVersions(swVersion, cov.from) < 0) cov.from = swVersion;
-    if (compareSwVersions(swVersion, cov.to || cov.from) > 0) cov.to = swVersion;
+  const entry = await moduleOf(slug);
+  if (!entry) throw new Error('Module not found');
+  if (!(entry.module.softwares || []).some((s) => s.name === swName)) {
+    throw new Error(`${swName} is not linked to this module`);
   }
-  meta.covers = covers;
+  const doc = entry.docs.find((d) => d.version === docVersion);
+  if (!doc) throw new Error('Doc version not found');
+  if (doc.status === 'superseded') throw new Error('A superseded doc version cannot take new releases');
+  const ref = doc.status === 'released' ? 'main' : docBranchName(slug, docVersion);
+  const file = docFile(slug, docVersion);
+  const meta = await readJson(ref, file);
+  if (!meta) throw new Error('Doc version not found');
+  meta.covers = addCover(meta.covers || [], swName, swVersion);
   meta.updatedAt = now();
   await mutate(async () => {
-    await repo.checkout('main');
+    await repo.checkout(ref);
     await repo.writeFile(file, JSON.stringify(meta, null, 2) + '\n');
     await repo.commitAll(`${slug} ${docVersion}: cover ${swName} ${swVersion}`);
+    await repo.checkout('main');
   });
   return meta;
 }
