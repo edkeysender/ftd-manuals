@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, GROUPS, readFileAsBase64 } from '../api.js';
+import { api, GROUPS, MANUAL_TYPES, manualType, readFileAsBase64 } from '../api.js';
 import ModulePicker from '../components/ModulePicker.jsx';
 import { useToast } from '../App.jsx';
 
@@ -43,6 +43,10 @@ export default function ManualView() {
           </h1>
           <div className="meta-chips">
             {manual.group && <span className="chip">{(GROUPS.find(([k]) => k === manual.group) || [])[1]}</span>}
+            <span className="chip" title={manualType(manual.manual).desc}>
+              <span className={`manual-kind ${manualType(manual.manual).kind}`}>{manualType(manual.manual).kind}</span>{' '}
+              {manualType(manual.manual).label}
+            </span>
             <span className="chip">{chapters.length} chapter{chapters.length === 1 ? '' : 's'}</span>
             {drafts > 0 && <span className="badge badge-in-review">{drafts} from draft</span>}
             {missing > 0 && <span className="badge badge-missing">{missing} without doc</span>}
@@ -103,6 +107,7 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
   const [name, setName] = useState(manual.name);
   const [code, setCode] = useState(manual.code || '');
   const [group, setGroup] = useState(manual.group || '');
+  const [type, setType] = useState(manual.manual || 'customer');
   const [modules, setModules] = useState([]);
   const [selected, setSelected] = useState(manual.modules);
   const [cover, setCover] = useState(null); // pending upload
@@ -116,7 +121,7 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
   async function save() {
     setBusy(true);
     try {
-      await api.updateManual(manual.slug, { name: name.trim(), code: code.trim() || null, group: group || null, modules: selected });
+      await api.updateManual(manual.slug, { name: name.trim(), code: code.trim() || null, group: group || null, manual: type, modules: selected });
       if (cover) await api.uploadManualCover(manual.slug, cover);
       onSaved();
     } catch (e) {
@@ -153,6 +158,14 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
                   ))}
                 </select>
               </label>
+              <label>
+                Type
+                <select value={type} onChange={(e) => setType(e.target.value)} title="Which manual of each module is compiled into this document">
+                  {MANUAL_TYPES.map((t) => (
+                    <option key={t.id} value={t.id}>{t.label}</option>
+                  ))}
+                </select>
+              </label>
             </div>
             <div className="field">
               <span className="field-label">Cover illustration</span>
@@ -181,8 +194,8 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
               </div>
             </div>
             <div className="field">
-              <span className="field-label">Modules — pick and order the chapters</span>
-              <ModulePicker modules={modules} selected={selected} onChange={setSelected} />
+              <span className="field-label">Modules — pick and order the chapters ({manualType(type).label.toLowerCase()} of each)</span>
+              <ModulePicker modules={modules} selected={selected} onChange={setSelected} manual={type} />
             </div>
           </div>
         </div>

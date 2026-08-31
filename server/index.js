@@ -4,7 +4,16 @@ import fs from 'node:fs';
 import * as store from './store.js';
 import * as ai from './ai.js';
 import * as illustrate from './illustrate.js';
-import { blankContent, manualBodyHtml, manualExportHtml, MANUAL_CSS } from './docgen.js';
+import {
+  blankContent,
+  manualBodyHtml,
+  manualExportHtml,
+  MANUAL_CSS,
+  MANUAL_TYPES,
+  MANUAL_ORDER,
+  DEFAULT_MANUAL,
+  manualTypeOf,
+} from './docgen.js';
 import { handleMcpRequest, TOOLS as MCP_TOOLS } from './mcp.js';
 import { GitTransientError } from './git.js';
 import * as inbox from './inbox.js';
@@ -31,49 +40,92 @@ app.get('/api/modules', wrap(async (req, res) => {
   res.json(await store.listModules());
 }));
 
+/** The manual types a module can have (customer / technician, hardware / software) — for pickers. */
+app.get('/api/manual-types', (req, res) => {
+  res.json(MANUAL_ORDER.map((id) => MANUAL_TYPES[id]));
+});
+
+/** The FAT checklist belongs to one manual of the module: the technician manual when there is one
+ *  (acceptance is done against installation + configuration), else the customer manual, else the
+ *  software manuals in the same order. */
+const FAT_ORDER = ['technician', 'customer', 'software-technician', 'software-customer'];
+const fatManualOf = (manualIds) => FAT_ORDER.find((t) => manualIds.includes(t)) || manualIds[0];
+
+/**
+ * Build the starting content of one manual type for a module.
+ * start: { mode: 'blank' | 'copy' | 'ai', sourceSlug?, sourceVersion? } — copy takes the source
+ * module's latest Released doc of the same manual type (or the given version) and falls back to blank.
+ * fat: { mode: 'template' | 'copy' | 'none' } | checklist object | null.
+ * Returns { spec, aiNote } where spec feeds store.createModuleDoc / store.addManual.
+ */
+async function manualSpec(moduleInput, manualId, start, fat) {
+  const type = manualTypeOf(manualId);
+  const blank = () => blankContent(moduleInput.name, moduleInput.hardwareItems, type.id, moduleInput.softwares);
+  const spec = { manual: type.id, content: null, checklist: null, revisionSeed: [], startSummary: null, copiedFrom: null };
+  let aiNote = null;
+  let src = null;
+
+  if (start.mode === 'copy') {
+    if (!start.sourceSlug) throw new Error('Copy: sourceSlug is required');
+    let key = start.sourceVersion ? `${type.id}:${start.sourceVersion}` : null;
+    if (!key) {
+      const m = await store.getModule(start.sourceSlug);
+      const rel = (m?.docs || []).find((d) => d.manual === type.id && d.status === 'released');
+      key = rel ? rel.key : null;
+    }
+    src = key ? await store.getDoc(start.sourceSlug, key) : null;
+    if (src && src.doc.status !== 'released') throw new Error('Source doc must be a Released doc version');
+    if (src) {
+      spec.content = src.content;
+      spec.revisionSeed = (src.doc.revisionRecord || []).map((r) => ({ ...r, inherited: true }));
+      spec.copiedFrom = { slug: start.sourceSlug, manual: src.doc.manual, version: src.doc.version };
+      spec.startSummary = `Draft copied from ${start.sourceSlug} ${type.label.toLowerCase()} ${src.doc.version}`;
+    } else {
+      spec.content = blank();
+      aiNote = `${start.sourceSlug} has no released ${type.label.toLowerCase()} to copy — created the blank template instead.`;
+    }
+  } else if (start.mode === 'ai') {
+    try {
+      spec.content = await ai.generateFirstDraft(moduleInput, await store.getAiGuidelines(), type.id);
+      spec.startSummary = 'AI first draft';
+    } catch (e) {
+      spec.content = blank();
+      aiNote = `AI draft of the ${type.label.toLowerCase()} failed (${e.message}) — created blank template instead.`;
+    }
+  } else {
+    spec.content = blank();
+  }
+
+  if (fat && typeof fat === 'object' && Array.isArray(fat.phases)) spec.checklist = fat;
+  else if (!fat || fat.mode === 'none') spec.checklist = null;
+  else if (fat.mode === 'template') spec.checklist = templateChecklist(moduleInput);
+  else if (fat.mode === 'copy') spec.checklist = src?.checklist || templateChecklist(moduleInput);
+  return { spec, aiNote };
+}
+
 app.post('/api/modules', wrap(async (req, res) => {
   const input = req.body;
   if (!input.name) throw new Error('Module name is required');
   if (!['SIM', 'IOS', 'RACK'].includes(input.group)) throw new Error('Manual group must be SIM, IOS or RACK');
+  const manualIds = [...new Set((Array.isArray(input.manuals) && input.manuals.length ? input.manuals : [DEFAULT_MANUAL]).map((m) => manualTypeOf(m).id))];
 
-  let content;
-  let seed = [];
-  let aiNote = null;
   const start = input.start || { mode: 'blank' };
   // Hardware: catalog ids and/or new items — resolved (not yet written) so the
   // template, the AI draft and the FAT checklist see the same units.
   input.hardwareItems = await store.previewHardware(input, input.name);
 
-  if (start.mode === 'copy') {
-    const src = await store.getDoc(start.sourceSlug, start.sourceVersion);
-    if (!src || src.doc.status !== 'released') throw new Error('Source doc must be a Released doc version');
-    content = src.content;
-    seed = (src.doc.revisionRecord || []).map((r) => ({ ...r, inherited: true }));
-    input.copiedFrom = { slug: start.sourceSlug, version: start.sourceVersion };
-    input.startSummary = `Draft copied from ${start.sourceSlug} ${start.sourceVersion}`;
-  } else if (start.mode === 'ai') {
-    try {
-      content = await ai.generateFirstDraft(input, await store.getAiGuidelines());
-      input.startSummary = 'AI first draft';
-    } catch (e) {
-      content = blankContent(input.name, input.hardwareItems);
-      aiNote = `AI draft failed (${e.message}) — created blank template instead.`;
-    }
-  } else {
-    content = blankContent(input.name, input.hardwareItems);
+  // FAT checklist: { mode: 'template' | 'copy' | 'none' } or a full checklist object — on one manual only.
+  const fatManual = fatManualOf(manualIds);
+  const notes = [];
+  const specs = [];
+  for (const id of manualIds) {
+    const { spec, aiNote } = await manualSpec(input, id, start, id === fatManual ? input.checklist : null);
+    specs.push(spec);
+    if (aiNote) notes.push(aiNote);
   }
 
-  // FAT checklist: { mode: 'template' | 'copy' | 'none' } or a full checklist object
-  const fat = input.checklist;
-  if (!fat || fat.mode === 'none') input.checklist = null;
-  else if (fat.mode === 'template') input.checklist = templateChecklist(input);
-  else if (fat.mode === 'copy') {
-    const src = start.mode === 'copy' ? await store.getDoc(start.sourceSlug, start.sourceVersion) : null;
-    input.checklist = src?.checklist || templateChecklist(input);
-  }
-
-  const created = await store.createModuleDoc(input, content, seed);
-  res.json({ ...created, aiNote });
+  const created = await store.createModuleDoc(input, specs);
+  res.json({ ...created, aiNote: notes.length ? notes.join(' ') : null });
 }));
 
 app.get('/api/modules/:slug', wrap(async (req, res) => {
@@ -108,8 +160,23 @@ app.delete('/api/hardware/:id', wrap(async (req, res) => {
   res.json(await store.deleteHardware(req.params.id));
 }));
 
+/**
+ * New doc draft of one manual type. When the module has no doc of that type yet this
+ * creates its A1.0 (with `start` and `checklist` like the wizard); otherwise the next
+ * version (`bump`: minor | major) based on the latest released content.
+ */
 app.post('/api/modules/:slug/docs', wrap(async (req, res) => {
-  res.json(await store.createNextDocVersion(req.params.slug, req.body.bump || 'minor'));
+  const body = req.body || {};
+  const type = manualTypeOf(body.manual || DEFAULT_MANUAL);
+  const m = await store.getModule(req.params.slug);
+  if (!m) throw new Error('Module not found');
+  if (m.docs.some((d) => d.manual === type.id)) {
+    return res.json(await store.createNextDocVersion(req.params.slug, type.id, body.bump || 'minor'));
+  }
+  const moduleInput = { ...m.module, hardwareItems: m.module.hardwareItems || [] };
+  const { spec, aiNote } = await manualSpec(moduleInput, type.id, body.start || { mode: 'blank' }, body.checklist || null);
+  const created = await store.addManual(req.params.slug, spec);
+  res.json({ ...created, aiNote });
 }));
 
 /* ---------- docs ---------- */
@@ -408,14 +475,19 @@ app.get('/api/manuals', wrap(async (req, res) => {
   const manuals = await store.listManuals();
   const modules = await store.listModules();
   res.json(
-    manuals.map((m) => ({
-      ...m,
-      moduleNames: m.modules.map((s) => modules.find((x) => x.slug === s)?.name || s),
-      unreleased: m.modules.filter((s) => {
-        const mod = modules.find((x) => x.slug === s);
-        return !mod || mod.status !== 'released';
-      }).length,
-    }))
+    manuals.map((m) => {
+      const type = manualTypeOf(m.manual).id;
+      return {
+        ...m,
+        manual: type,
+        moduleNames: m.modules.map((s) => modules.find((x) => x.slug === s)?.name || s),
+        // chapters whose doc of this manual type is not released (or does not exist)
+        unreleased: m.modules.filter((s) => {
+          const mod = modules.find((x) => x.slug === s);
+          return !mod || !mod.manuals[type] || !mod.manuals[type].released;
+        }).length,
+      };
+    })
   );
 }));
 

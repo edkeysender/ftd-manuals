@@ -4,6 +4,8 @@
  * edits to the draft, marking every touched block as a pending AI edit.
  */
 
+import { manualTypeOf, DEFAULT_MANUAL } from './docgen.js';
+
 const API_URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = process.env.OPENAI_MODEL || 'gpt-5';
 
@@ -41,23 +43,42 @@ async function callOpenAI(messages, { json = false } = {}) {
 }
 
 const HTML_RULES = `Allowed HTML only: <h2> (top-level sections), <h3> (subsections), <p>, <ol>, <ul>, <li>, <strong>, <em>, <table>/<thead>/<tbody>/<tr>/<th>/<td>, <figure>/<img>/<figcaption>, and admonitions as <div class="admonition warning"><p class="admonition-title">Warning</p><p>…</p></div> (or class "note" with title "Note").
-Style: operating-manual English, present tense, no marketing language. Procedures are numbered lists (<ol>), one action per step, with the expected indication after the action. Do not invent behaviour, timings, part numbers or limits — write TODO(author): … where facts are missing.
-The document's top-level <h2> sections are Installation, Operation, Maintenance, Appendixes (sections 4–7 of the FTD standard; sections 1–3 are auto-generated elsewhere — never produce them).`;
+Style: operating-manual English, present tense, no marketing language. Procedures are numbered lists (<ol>), one action per step, with the expected indication after the action. Do not invent behaviour, timings, part numbers or limits — write TODO(author): … where facts are missing. Never write passwords or other credentials into a manual — refer to the credentials sheet instead.`;
+
+/** Which manual is being written, for whom, and what its sections 4–7 are. */
+function manualBlock(manualId) {
+  const t = manualTypeOf(manualId);
+  const sections = t.sections.map((s) => `${s} — ${t.sectionHints[s] || ''}`).join('; ');
+  const audience =
+    t.audience === 'technician'
+      ? 'The reader is the installer / service technician: wiring, configuration, servicing and troubleshooting belong here; everyday operation only as far as needed to verify the set-up.'
+      : 'The reader is the operator of the simulator (instructor, technician on duty, school staff): describe use, indications and operator-level checks; NO wiring, configuration, servicing or credentials — those belong in the technician manual.';
+  const subject = t.kind === 'software' ? 'This manual documents the SOFTWARE linked to the module (its screens, tasks and settings), not the hardware unit itself.' : 'This manual documents the hardware module.';
+  return `THIS DOCUMENT is the ${t.label.toUpperCase()} of the module. ${audience} ${subject}
+Its top-level <h2> sections are exactly: ${t.sections.join(', ')} (sections 4–7 of the FTD standard; sections 1–3 are auto-generated elsewhere — never produce them). Section contents: ${sections}.`;
+}
 
 const guidelinesBlock = (guidelines) =>
   guidelines && guidelines.trim()
     ? `\nOPERATOR GUIDELINES — set by the documentation owner in Settings; always follow them:\n${guidelines.trim()}\n`
     : '';
 
-export async function generateFirstDraft(module, guidelines = '') {
-  const sys = `You draft module manuals for FTD.aero flight simulation training devices. Produce the body HTML of a mini-manual (sections 4–7 only, starting at <h2>Installation</h2>). ${HTML_RULES}
+export async function generateFirstDraft(module, guidelines = '', manual = DEFAULT_MANUAL) {
+  const t = manualTypeOf(manual);
+  const sys = `You draft module manuals for FTD.aero flight simulation training devices. Produce the body HTML of a mini-manual (sections 4–7 only, starting at <h2>${t.sections[0]}</h2>). ${HTML_RULES}
+${manualBlock(t.id)}
 ${guidelinesBlock(guidelines)}
 Return ONLY the raw HTML, no markdown fences, no commentary.`;
+  const perUnitSections = t.sections.slice(0, 2); // the two sections that get one <h3> per unit / software
   const hwHint =
-    (module.hardwareItems || []).length > 1
-      ? ` The module covers ${module.hardwareItems.length} hardware unit types (${module.hardwareItems.map((h) => h.name).join(', ')}): describe each one in its own <h3> subsection under Installation and Operation, and keep what is common to all of them in the shared paragraphs.`
+    t.kind !== 'software' && (module.hardwareItems || []).length > 1
+      ? ` The module covers ${module.hardwareItems.length} hardware unit types (${module.hardwareItems.map((h) => h.name).join(', ')}): describe each one in its own <h3> subsection under ${perUnitSections.join(' and ')}, and keep what is common to all of them in the shared paragraphs.`
       : '';
-  const user = `Module metadata:\n${JSON.stringify(module, null, 2)}\n\nDraft the manual body. Keep it a plausible skeleton with concrete structure, and use TODO(author) markers for every fact you cannot know.${hwHint}`;
+  const swHint =
+    t.kind === 'software' && (module.softwares || []).length > 1
+      ? ` The module links ${module.softwares.length} softwares (${module.softwares.map((s) => s.name).join(', ')}): give each its own <h3> subsection where they differ.`
+      : '';
+  const user = `Module metadata:\n${JSON.stringify(module, null, 2)}\n\nDraft the ${t.label.toLowerCase()} body. Keep it a plausible skeleton with concrete structure, and use TODO(author) markers for every fact you cannot know.${hwHint}${swHint}`;
   const html = await callOpenAI([
     { role: 'system', content: sys },
     { role: 'user', content: user },
@@ -97,9 +118,11 @@ ${pages.map((p) => `=== ${p.url}${p.title ? ` — ${p.title}` : ''} ===\n${p.tex
   const hwLine = (module.hardwareItems || []).length
     ? `\nHardware units this manual describes: ${module.hardwareItems.map((h) => `${h.name} (${h.type === 'ftd' ? `FTD.aero ${h.version || 'v1'}` : `COTS ${[h.manufacturer, h.model].filter(Boolean).join(' ')}`})${h.notes ? ` — ${h.notes}` : ''}`).join('; ')}. When several units are listed, keep each one described in its own subsection.`
     : '';
-  const sys = `You are the AI assistant of the FTD.aero Documentation Console, working inside the manual editor for module "${module.name}" (doc ${doc.version} r${doc.revision}, status ${doc.status}).${hwLine}
+  const sys = `You are the AI assistant of the FTD.aero Documentation Console, working inside the manual editor for module "${module.name}" (${manualTypeOf(doc.manual).label.toLowerCase()}, doc ${doc.version} r${doc.revision}, status ${doc.status}).${hwLine}
 You receive the CURRENT DOCUMENT BODY (sections 4–7 HTML) and the user's instruction.
 ${HTML_RULES}
+${manualBlock(doc.manual)}
+When source material mixes audiences (e.g. a wiki page with both wiring/configuration and everyday use), take only what belongs in THIS manual type and tell the user in the reply what belongs in the other manual instead.
 ${guidelinesBlock(guidelines)}
 ${assetBlock}
 

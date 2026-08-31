@@ -20,7 +20,9 @@ export const api = {
   createHardware: (item) => request('/api/hardware', { method: 'POST', body: item }),
   updateHardware: (id, patch) => request(`/api/hardware/${id}`, { method: 'PUT', body: patch }),
   deleteHardware: (id) => request(`/api/hardware/${id}`, { method: 'DELETE' }),
-  nextDocVersion: (slug, bump) => request(`/api/modules/${slug}/docs`, { method: 'POST', body: { bump } }),
+  /** New draft of one manual type: {manual, bump} for a next version, {manual, start, checklist} for a manual the module lacks. */
+  nextDocVersion: (slug, body) => request(`/api/modules/${slug}/docs`, { method: 'POST', body: typeof body === 'string' ? { bump: body } : body }),
+  manualTypes: () => request('/api/manual-types'),
   doc: (slug, version) => request(`/api/modules/${slug}/docs/${version}`),
   saveContent: (slug, version, html, bump = false, summary = '') =>
     request(`/api/modules/${slug}/docs/${version}/content`, {
@@ -83,6 +85,15 @@ export const GROUPS = [
   ['IOS', 'IOS'],
   ['RACK', 'RACK cabinets'],
 ];
+
+/** Manual types — one doc stream per audience (mirrors server/docgen.js MANUAL_TYPES). */
+export const MANUAL_TYPES = [
+  { id: 'customer', label: 'Customer manual', short: 'Customer', kind: 'hardware', audience: 'customer', sections: ['Description', 'Operation', 'Maintenance', 'Appendixes'], desc: 'For the operator of the simulator: what the module is, how it is used day to day, what to check and when to call service.' },
+  { id: 'technician', label: 'Technician manual', short: 'Technician', kind: 'hardware', audience: 'technician', sections: ['Installation', 'Configuration', 'Maintenance', 'Appendixes'], desc: 'For the installer / service technician: components and wiring, network and device configuration, servicing and troubleshooting.' },
+  { id: 'software-customer', label: 'Software customer manual', short: 'SW · Customer', kind: 'software', audience: 'customer', sections: ['Overview', 'Operation', 'Troubleshooting', 'Appendixes'], desc: 'For the operator: everyday use of the linked software — the tasks they perform, screen by screen.' },
+  { id: 'software-technician', label: 'Software technician manual', short: 'SW · Technician', kind: 'software', audience: 'technician', sections: ['Installation', 'Configuration', 'Administration', 'Appendixes'], desc: 'For the technician: installing, configuring, updating and administering the linked software.' },
+];
+export const manualType = (id) => MANUAL_TYPES.find((t) => t.id === id) || { id, label: id, short: id, kind: 'hardware', sections: [] };
 
 export const STATUS_LABELS = {
   released: 'Released',

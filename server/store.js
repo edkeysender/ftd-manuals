@@ -11,6 +11,12 @@ import {
   docBranchName,
   compareSwVersions,
   versionCovered,
+  MANUAL_TYPES,
+  MANUAL_ORDER,
+  DEFAULT_MANUAL,
+  manualTypeOf,
+  docKey,
+  parseDocKey,
 } from './docgen.js';
 import { normalizeChecklist } from './checklist.js';
 import { validateAsset } from './images.js';
@@ -56,9 +62,17 @@ async function readJsonMany(requests) {
 }
 
 const moduleFile = (slug) => `modules/${slug}/module.json`;
-const docFile = (slug, version) => `modules/${slug}/docs/${version}/doc.json`;
-const contentFile = (slug, version) => `modules/${slug}/docs/${version}/content.html`;
-const checklistFile = (slug, version) => `modules/${slug}/docs/${version}/checklist.json`;
+/** Folder of one doc version: modules/<slug>/docs/<manual>/<version>. Docs created before the
+ *  manual split live in modules/<slug>/docs/<version> (customer manual) and are read from there —
+ *  every doc record carries its `dir`, so nothing is ever moved. */
+const docDir = (slug, manual, version) => `modules/${slug}/docs/${manual}/${version}`;
+const docJson = (dir) => `${dir}/doc.json`;
+const contentIn = (dir) => `${dir}/content.html`;
+const checklistIn = (dir) => `${dir}/checklist.json`;
+const VERSION_RE = /^A\d+\.\d+$/;
+const LEGACY_DOC_RE = /^modules\/([^/]+)\/docs\/(A\d+\.\d+)\/doc\.json$/;
+const TYPED_DOC_RE = /^modules\/([^/]+)\/docs\/([a-z][a-z-]*)\/(A\d+\.\d+)\/doc\.json$/;
+const isOpen = (d) => d.status === 'draft' || d.status === 'in-review';
 /** Shared hardware catalog, one file on main: {items: [{id, name, type, version|manufacturer+model, notes}]} */
 const HARDWARE_FILE = 'hardware.json';
 
@@ -127,7 +141,7 @@ async function collectAllUncached() {
   const draftBranches = branches.filter((b) => b.startsWith('draft/'));
   const refs = ['main', ...draftBranches];
 
-  // slug -> { moduleRefs: Set, docs: Map(version -> Set(refs)) }
+  // slug -> { moduleRefs: Set, docs: Map(key -> { manual, version, dir, refs: Set }) }
   const found = new Map();
   const listings = await Promise.all(refs.map((ref) => repo.lsFiles(ref, 'modules')));
   for (let i = 0; i < refs.length; i++) {
@@ -140,14 +154,21 @@ async function collectAllUncached() {
         found.get(slug).moduleRefs.add(ref);
         continue;
       }
-      m = /^modules\/([^/]+)\/docs\/([^/]+)\/doc\.json$/.exec(f);
-      if (m) {
-        const [, slug, version] = m;
-        if (!found.has(slug)) found.set(slug, { moduleRefs: new Set(), docs: new Map() });
-        const docs = found.get(slug).docs;
-        if (!docs.has(version)) docs.set(version, new Set());
-        docs.get(version).add(ref);
-      }
+      let slug;
+      let manual;
+      let version;
+      if ((m = TYPED_DOC_RE.exec(f))) {
+        [, slug, manual, version] = m;
+        if (!MANUAL_TYPES[manual]) continue; // unknown folder — not a manual type we know
+      } else if ((m = LEGACY_DOC_RE.exec(f))) {
+        [, slug, version] = m;
+        manual = DEFAULT_MANUAL;
+      } else continue;
+      if (!found.has(slug)) found.set(slug, { moduleRefs: new Set(), docs: new Map() });
+      const docs = found.get(slug).docs;
+      const key = docKey(manual, version);
+      if (!docs.has(key)) docs.set(key, { manual, version, dir: f.slice(0, -'/doc.json'.length), refs: new Set() });
+      docs.get(key).refs.add(ref);
     }
   }
 
@@ -156,8 +177,8 @@ async function collectAllUncached() {
   for (const [slug, info] of found) {
     const moduleRef = info.moduleRefs.has('main') ? 'main' : [...info.moduleRefs][0];
     wanted.push({ ref: moduleRef, file: moduleFile(slug) });
-    for (const [version, refsSet] of info.docs) {
-      for (const ref of refsSet) wanted.push({ ref, file: docFile(slug, version) });
+    for (const d of info.docs.values()) {
+      for (const ref of d.refs) wanted.push({ ref, file: docJson(d.dir) });
     }
   }
   wanted.push({ ref: 'main', file: HARDWARE_FILE });
@@ -173,30 +194,33 @@ async function collectAllUncached() {
     const module = withHardwareItems(raw, hardware);
 
     const docs = [];
-    for (const [version, refsSet] of info.docs) {
+    for (const [key, d] of info.docs) {
       let chosen = null;
       let chosenRef = null;
-      for (const ref of refsSet) {
+      for (const ref of d.refs) {
         if (ref === 'main') continue;
-        const meta = get(ref, docFile(slug, version));
+        const meta = get(ref, docJson(d.dir));
         if (meta && meta.branch === ref) {
           chosen = meta;
           chosenRef = ref;
           break;
         }
       }
-      if (!chosen && refsSet.has('main')) {
-        chosen = get('main', docFile(slug, version));
+      if (!chosen && d.refs.has('main')) {
+        chosen = get('main', docJson(d.dir));
         chosenRef = 'main';
       }
       if (!chosen) {
-        const ref = [...refsSet][0];
-        chosen = get(ref, docFile(slug, version));
+        const ref = [...d.refs][0];
+        chosen = get(ref, docJson(d.dir));
         chosenRef = ref;
       }
-      if (chosen) docs.push({ ...chosen, ref: chosenRef });
+      if (chosen) docs.push({ ...chosen, manual: d.manual, key, dir: d.dir, ref: chosenRef });
     }
-    docs.sort((a, b) => compareDocVersions(b.version, a.version));
+    // newest version first within a manual type; types in their canonical order
+    docs.sort(
+      (a, b) => MANUAL_ORDER.indexOf(a.manual) - MANUAL_ORDER.indexOf(b.manual) || compareDocVersions(b.version, a.version)
+    );
     modules.push({ module, docs, draftBranches });
   }
   modules.sort((a, b) => a.module.name.localeCompare(b.module.name));
@@ -370,37 +394,72 @@ export async function deleteHardware(id) {
 
 function latestDocLabel(doc) {
   if (!doc) return null;
-  if (doc.status === 'draft' || doc.status === 'in-review') return `${doc.version} draft r${doc.revision}`;
+  if (isOpen(doc)) return `${doc.version} draft r${doc.revision}`;
   return doc.version;
 }
 
-function moduleStatus(docs) {
+/** Docs of one manual type, newest version first (docs are already sorted that way). */
+const docsOfType = (docs, manual) => docs.filter((d) => d.manual === manual);
+
+/** Manual types this module has at least one doc version of, in canonical order. */
+const manualTypesOf = (docs) => MANUAL_ORDER.filter((t) => docs.some((d) => d.manual === t));
+
+/** Status of one manual type: that of its latest version. */
+function typeStatus(docs) {
   if (docs.length === 0) return 'missing';
-  const latest = docs[0];
-  if (latest.status === 'draft') return 'draft';
-  if (latest.status === 'in-review') return 'in-review';
-  if (latest.status === 'released') return 'released';
-  return latest.status;
+  return docs[0].status;
 }
 
-/** Orange dot: a linked software has a manual-affecting release not covered by
- *  any doc version, and no draft/in-review doc exists yet. */
+/** Aggregate status of a module: any manual type still open → draft / in-review,
+ *  everything released → released, no manual at all → missing. */
+function moduleStatus(docs) {
+  if (docs.length === 0) return 'missing';
+  const statuses = manualTypesOf(docs).map((t) => typeStatus(docsOfType(docs, t)));
+  if (statuses.includes('draft')) return 'draft';
+  if (statuses.includes('in-review')) return 'in-review';
+  if (statuses.includes('released')) return 'released';
+  return statuses[0];
+}
+
+/** Per-type summary for list rows and manual assembly: { customer: {key, version, revision, status, label, fat}, … } */
+function manualsSummary(docs) {
+  const out = {};
+  for (const t of manualTypesOf(docs)) {
+    const latest = docsOfType(docs, t)[0];
+    out[t] = {
+      key: latest.key,
+      version: latest.version,
+      revision: latest.revision,
+      status: latest.status,
+      label: latestDocLabel(latest),
+      fat: !!latest.fat,
+      released: docsOfType(docs, t).find((d) => d.status === 'released')?.version || null,
+      updatedAt: latest.updatedAt,
+    };
+  }
+  return out;
+}
+
+/** Orange dot: some manual type has a manual-affecting software release not covered by
+ *  any of its doc versions, and no draft/in-review doc of that type exists yet. */
 function needsDoc(module, docs, softwareFeed) {
-  const hasOpenDraft = docs.some((d) => d.status === 'draft' || d.status === 'in-review');
-  if (hasOpenDraft) return false;
-  return uncoveredReleases(module, docs, softwareFeed).length > 0;
+  return uncoveredReleases(module, docs, softwareFeed).some((u) => !docsOfType(docs, u.manual).some(isOpen));
 }
 
 /** Manual-affecting releases of the module's softwares (at/after the linked from-version)
- *  that no doc version covers yet — each one needs its own doc version. */
+ *  that no doc version of a manual type covers yet — each one needs its own doc version
+ *  of every manual the module maintains. Entries: { manual, name, version }. */
 function uncoveredReleases(module, docs, softwareFeed) {
   const out = [];
-  for (const sw of module.softwares || []) {
-    for (const rel of softwareFeed[sw.name] || []) {
-      if (!rel.manualAffecting) continue;
-      if (sw.fromVersion && compareSwVersions(rel.version, sw.fromVersion) < 0) continue;
-      const covered = docs.some((d) => (d.covers || []).some((c) => c.name === sw.name && versionCovered(rel.version, c)));
-      if (!covered) out.push({ name: sw.name, version: rel.version });
+  for (const manual of manualTypesOf(docs)) {
+    const typed = docsOfType(docs, manual);
+    for (const sw of module.softwares || []) {
+      for (const rel of softwareFeed[sw.name] || []) {
+        if (!rel.manualAffecting) continue;
+        if (sw.fromVersion && compareSwVersions(rel.version, sw.fromVersion) < 0) continue;
+        const covered = typed.some((d) => (d.covers || []).some((c) => c.name === sw.name && versionCovered(rel.version, c)));
+        if (!covered) out.push({ manual, name: sw.name, version: rel.version });
+      }
     }
   }
   return out;
@@ -428,7 +487,9 @@ export async function listModules() {
   const { modules } = await collectAll();
   const feed = await getSoftwareFeed();
   return modules.map(({ module, docs }) => {
-    const latest = docs[0] || null;
+    const manuals = manualsSummary(docs);
+    // "latest doc" of the row: the customer manual when there is one, else the first manual type
+    const primary = manuals[DEFAULT_MANUAL] || manuals[manualTypesOf(docs)[0]] || null;
     const updated =
       docs.reduce((acc, d) => (d.updatedAt > acc ? d.updatedAt : acc), module.createdAt || '') || null;
     return {
@@ -441,11 +502,12 @@ export async function listModules() {
       hardwareLabel: hardwareLabel(module),
       softwares: module.softwares || [],
       softwareLabel: softwareLabel(module.softwares),
-      latestDoc: latestDocLabel(latest),
+      manuals,
+      latestDoc: primary ? primary.label : null,
       status: moduleStatus(docs),
       updated,
       needsDoc: needsDoc(module, docs, feed),
-      fat: !!(latest && latest.fat),
+      fat: !!(primary && primary.fat),
     };
   });
 }
@@ -477,6 +539,7 @@ export async function getModule(slug) {
   return {
     module: entry.module,
     docs: entry.docs,
+    manuals: manualsSummary(entry.docs),
     status: moduleStatus(entry.docs),
     needsDoc: needsDoc(entry.module, entry.docs, feed),
     uncovered: uncoveredReleases(entry.module, entry.docs, feed),
@@ -488,14 +551,23 @@ export async function getModule(slug) {
   };
 }
 
-export async function getDoc(slug, version) {
+/** Find one doc record by key ("technician:A1.0", or bare "A1.0" = customer manual).
+ *  Returns { entry, doc } or null. */
+async function findDoc(slug, key) {
   const { modules } = await collectAll();
   const entry = modules.find((m) => m.module.slug === slug);
   if (!entry) return null;
-  const doc = entry.docs.find((d) => d.version === version);
-  if (!doc) return null;
-  const content = (await repo.show(doc.ref, contentFile(slug, version))) || '';
-  const checklist = doc.fat ? await readJson(doc.ref, checklistFile(slug, version)) : null;
+  const { manual, version } = parseDocKey(key);
+  const doc = entry.docs.find((d) => d.manual === manual && d.version === version);
+  return doc ? { entry, doc } : null;
+}
+
+export async function getDoc(slug, key) {
+  const hit = await findDoc(slug, key);
+  if (!hit) return null;
+  const { entry, doc } = hit;
+  const content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
+  const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
   return {
     module: entry.module,
     doc,
@@ -510,20 +582,68 @@ export async function getDoc(slug, version) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Create a new module with its first doc draft A1.0 r1 on branch draft/<slug>-a1.0.
- * `content` is the starting sections 4–7 HTML (from blank template, copy or AI).
+ * Write the first version (A1.0 r1) of one manual type on its own draft branch.
+ * Must run inside the repo lock with main checked out; leaves main checked out.
+ * spec: { manual, content, checklist|null, revisionSeed, startSummary, copiedFrom }
+ * `module` is written onto the branch when it is not on main yet (never-released module).
  */
-export async function createModuleDoc(input, content, revisionRecordSeed) {
+async function writeFirstDoc(module, spec, moduleOnMain) {
+  const slug = module.slug;
+  const manual = manualTypeOf(spec.manual).id;
+  const version = 'A1.0';
+  const branch = docBranchName(slug, manual, version);
+  const dir = docDir(slug, manual, version);
+  const created = now();
+  const checklist = spec.checklist ? normalizeChecklist(spec.checklist) : null;
+  const doc = {
+    version,
+    manual,
+    revision: 1,
+    status: 'draft',
+    branch,
+    createdAt: created,
+    updatedAt: created,
+    releasedAt: null,
+    covers: (module.softwares || []).map((s) => ({ name: s.name, from: s.fromVersion, to: s.fromVersion })),
+    revisionRecord: [...(spec.revisionSeed || []), { rev: 'r1', date: created, summary: spec.startSummary || 'Initial draft' }],
+    copiedFrom: spec.copiedFrom || null,
+    fat: !!checklist,
+  };
+  await repo.checkout('main');
+  await repo.createBranch(branch, 'main');
+  if (!moduleOnMain) await repo.writeFile(moduleFile(slug), JSON.stringify(module, null, 2) + '\n');
+  await repo.writeFile(docJson(dir), JSON.stringify(doc, null, 2) + '\n');
+  await repo.writeFile(contentIn(dir), spec.content);
+  if (checklist) await repo.writeFile(checklistIn(dir), JSON.stringify(checklist, null, 2) + '\n');
+  await repo.commitAll(`${slug}: create ${MANUAL_TYPES[manual].label.toLowerCase()} ${version} r1 (draft)${checklist ? ' + FAT checklist' : ''}`);
+  await repo.checkout('main');
+  return { manual, key: docKey(manual, version), version, branch, fat: doc.fat };
+}
+
+/**
+ * Create a new module with the first draft (A1.0 r1) of every requested manual type,
+ * each on its own draft/<slug>-<manual>-a1.0 branch.
+ * manuals: [{ manual, content, checklist, revisionSeed, startSummary, copiedFrom }] — at least one.
+ */
+export async function createModuleDoc(input, manuals) {
   const slug = slugify(input.name);
   if (!slug) throw new Error('Module name is required');
+  if (!Array.isArray(manuals) || !manuals.length) throw new Error('At least one manual type is required');
+  const seen = new Set();
+  for (const m of manuals) {
+    const id = manualTypeOf(m.manual).id;
+    if (seen.has(id)) throw new Error(`Manual type "${id}" listed twice`);
+    seen.add(id);
+    if (MANUAL_TYPES[id].kind === 'software' && !(input.softwares || []).length) {
+      throw new Error(`${MANUAL_TYPES[id].label}: link the module to a software first`);
+    }
+  }
   const existing = await readJson('main', moduleFile(slug));
   const branches = await repo.branches();
   if (existing || branches.some((b) => b.startsWith(`draft/${slug}-`))) {
     throw new Error(`A module with slug "${slug}" already exists`);
   }
 
-  const version = 'A1.0';
-  const branch = docBranchName(slug, version);
   const created = now();
   const { hardware: catalog } = await collectAll();
   const hw = resolveHardwareInput(input, catalog, input.name);
@@ -539,67 +659,66 @@ export async function createModuleDoc(input, content, revisionRecordSeed) {
     createdAt: created,
   };
 
-  const doc = {
-    version,
-    revision: 1,
-    status: 'draft',
-    branch,
-    createdAt: created,
-    updatedAt: created,
-    releasedAt: null,
-    covers: (module.softwares || []).map((s) => ({ name: s.name, from: s.fromVersion, to: s.fromVersion })),
-    revisionRecord: [
-      ...(revisionRecordSeed || []),
-      { rev: 'r1', date: created, summary: input.startSummary || 'Initial draft' },
-    ],
-    copiedFrom: input.copiedFrom || null,
-    fat: false,
-  };
-  const checklist = input.checklist ? normalizeChecklist(input.checklist) : null;
-  doc.fat = !!checklist;
-
+  const docs = [];
   await mutate(async () => {
-    await commitNewHardware(catalog, hw.newItems); // the catalog lives on main; the branch is cut after it
-    await repo.checkout('main');
-    await repo.createBranch(branch, 'main');
-    await repo.writeFile(moduleFile(slug), JSON.stringify(module, null, 2) + '\n');
-    await repo.writeFile(docFile(slug, version), JSON.stringify(doc, null, 2) + '\n');
-    await repo.writeFile(contentFile(slug, version), content);
-    if (checklist) await repo.writeFile(checklistFile(slug, version), JSON.stringify(checklist, null, 2) + '\n');
-    await repo.commitAll(`${slug}: create doc ${version} r1 (draft)${checklist ? ' + FAT checklist' : ''}`);
-    await repo.checkout('main');
+    await commitNewHardware(catalog, hw.newItems); // the catalog lives on main; the branches are cut after it
+    for (const spec of manuals) docs.push(await writeFirstDoc(module, spec, false));
   });
 
-  return { slug, version, branch, fat: doc.fat, hardware: hw.items };
+  const first = docs[0];
+  return { slug, docs, manual: first.manual, key: first.key, version: first.version, branch: first.branch, fat: first.fat, hardware: hw.items };
 }
 
-/** Create the next doc version for an existing module, starting from the latest released content. */
-export async function createNextDocVersion(slug, bump = 'minor') {
-  const { modules } = await collectAll();
-  const entry = modules.find((m) => m.module.slug === slug);
-  if (!entry) throw new Error('Module not found');
-  if (entry.docs.some((d) => d.status === 'draft' || d.status === 'in-review')) {
-    throw new Error('A draft already exists for this module — release or discard it first');
+/** Add a manual type to an existing module: its first version A1.0 r1 on a new draft branch.
+ *  spec: { manual, content, checklist, revisionSeed, startSummary, copiedFrom } */
+export async function addManual(slug, spec) {
+  const entry = await moduleOf(slug);
+  if (!entry) throw new Error(`Module "${slug}" not found`);
+  const type = manualTypeOf(spec.manual);
+  if (docsOfType(entry.docs, type.id).length) throw new Error(`${type.label} already exists for this module — create a new version instead`);
+  if (type.kind === 'software' && !(entry.module.softwares || []).length) {
+    throw new Error(`${type.label}: link the module to a software first (Module → Software)`);
   }
-  const latest = entry.docs[0];
-  if (!latest) throw new Error('Module has no doc to start from');
+  const { hardwareItems, ...module } = entry.module;
+  const onMain = !!(await readJson('main', moduleFile(slug)));
+  let doc;
+  await mutate(async () => {
+    doc = await writeFirstDoc(module, spec, onMain);
+  });
+  return { slug, ...doc };
+}
+
+/** Create the next doc version of one manual type, starting from its latest released content. */
+export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump = 'minor') {
+  const entry = await moduleOf(slug);
+  if (!entry) throw new Error('Module not found');
+  const type = manualTypeOf(manual);
+  const typed = docsOfType(entry.docs, type.id);
+  if (!typed.length) throw new Error(`This module has no ${type.label.toLowerCase()} yet — create one first`);
+  if (typed.some(isOpen)) {
+    throw new Error(`A ${type.label.toLowerCase()} draft already exists — release or discard it first`);
+  }
+  const latest = typed[0];
   const pv = parseDocVersion(latest.version);
   const version = bump === 'major' ? `A${pv.major + 1}.0` : `A${pv.major}.${pv.minor + 1}`;
-  const branch = docBranchName(slug, version);
+  const branch = docBranchName(slug, type.id, version);
+  const dir = docDir(slug, type.id, version);
   const created = now();
 
-  const content = (await repo.show('main', contentFile(slug, latest.version))) || blankContent(entry.module.name);
-  const checklist = latest.fat ? await repo.show('main', checklistFile(slug, latest.version)) : null;
-  // The new version is the manual for every manual-affecting release nobody covers yet.
-  const covers = uncoveredReleases(entry.module, entry.docs, await getSoftwareFeed()).reduce(
-    (acc, r) => addCover(acc, r.name, r.version),
-    []
-  );
+  const content =
+    (await repo.show('main', contentIn(latest.dir))) ||
+    blankContent(entry.module.name, entry.module.hardwareItems, type.id, entry.module.softwares);
+  const checklist = latest.fat ? await repo.show('main', checklistIn(latest.dir)) : null;
+  // The new version is the manual for every manual-affecting release this manual type does not cover yet.
+  const covers = uncoveredReleases(entry.module, entry.docs, await getSoftwareFeed())
+    .filter((r) => r.manual === type.id)
+    .reduce((acc, r) => addCover(acc, r.name, r.version), []);
   const coversLabel = covers
     .map((c) => `${c.name} ${c.to && c.to !== c.from ? `${c.from}–${c.to}` : c.from}`)
     .join(', ');
   const doc = {
     version,
+    manual: type.id,
     revision: 1,
     status: 'draft',
     branch,
@@ -611,30 +730,35 @@ export async function createNextDocVersion(slug, bump = 'minor') {
       ...latest.revisionRecord.map((r) => ({ ...r, inherited: true })),
       { rev: 'r1', date: created, summary: `Draft based on ${latest.version}${coversLabel ? ` for ${coversLabel}` : ''}` },
     ],
-    copiedFrom: { slug, version: latest.version },
+    copiedFrom: { slug, manual: type.id, version: latest.version },
     fat: !!checklist,
   };
 
   await mutate(async () => {
     await repo.checkout('main');
     await repo.createBranch(branch, 'main');
-    await repo.writeFile(docFile(slug, version), JSON.stringify(doc, null, 2) + '\n');
-    await repo.writeFile(contentFile(slug, version), content);
-    if (checklist) await repo.writeFile(checklistFile(slug, version), checklist);
-    await repo.commitAll(`${slug}: create doc ${version} r1 (draft)${coversLabel ? ` for ${coversLabel}` : ''}`);
+    await repo.writeFile(docJson(dir), JSON.stringify(doc, null, 2) + '\n');
+    await repo.writeFile(contentIn(dir), content);
+    if (checklist) await repo.writeFile(checklistIn(dir), checklist);
+    await repo.commitAll(`${slug}: create ${type.label.toLowerCase()} ${version} r1 (draft)${coversLabel ? ` for ${coversLabel}` : ''}`);
     await repo.checkout('main');
   });
 
-  return { slug, version, branch, fat: doc.fat, covers };
+  return { slug, manual: type.id, key: docKey(type.id, version), version, branch, fat: doc.fat, covers };
 }
 
-async function loadDraftDoc(slug, version) {
-  const branch = docBranchName(slug, version);
+/** The live copy of an open draft: its branch, folder and doc.json as on the branch. */
+async function loadDraftDoc(slug, key) {
+  const hit = await findDoc(slug, key);
+  if (!hit) throw new Error(`Doc ${slug} ${key} not found`);
+  const { doc } = hit;
+  const branch = doc.branch;
+  if (!branch) throw new Error(`Doc ${doc.version} (${MANUAL_TYPES[doc.manual].label}) is ${doc.status} — it has no draft branch`);
   const branches = await repo.branches();
   if (!branches.includes(branch)) throw new Error(`No draft branch ${branch}`);
-  const meta = await readJson(branch, docFile(slug, version));
+  const meta = await readJson(branch, docJson(doc.dir));
   if (!meta) throw new Error('Draft doc not found');
-  return { branch, meta };
+  return { branch, dir: doc.dir, meta, manual: doc.manual, key: doc.key };
 }
 
 /**
@@ -642,11 +766,10 @@ async function loadDraftDoc(slug, version) {
  * an entry is appended to the revision record (accepted change); otherwise it
  * is a plain autosave commit on the same revision.
  */
-export async function saveDraftContent(slug, version, html, { bump = false, summary = '' } = {}) {
-  const { branch, meta } = await loadDraftDoc(slug, version);
-  if (meta.status !== 'draft' && meta.status !== 'in-review') {
-    throw new Error(`Doc ${version} is ${meta.status} — not editable`);
-  }
+export async function saveDraftContent(slug, key, html, { bump = false, summary = '' } = {}) {
+  const { branch, dir, meta } = await loadDraftDoc(slug, key);
+  if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
+  const version = meta.version;
   const ts = now();
   if (bump) {
     meta.revision += 1;
@@ -656,8 +779,8 @@ export async function saveDraftContent(slug, version, html, { bump = false, summ
 
   await mutate(async () => {
     await repo.checkout(branch);
-    await repo.writeFile(contentFile(slug, version), html);
-    await repo.writeFile(docFile(slug, version), JSON.stringify(meta, null, 2) + '\n');
+    await repo.writeFile(contentIn(dir), html);
+    await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
     await repo.commitAll(
       bump ? `${slug} ${version}: r${meta.revision} — ${summary || 'content update'}` : `${slug} ${version}: autosave`
     );
@@ -667,21 +790,19 @@ export async function saveDraftContent(slug, version, html, { bump = false, summ
 }
 
 /** The FAT checklist of a doc version (any status): { module, doc, checklist|null }, or null if the doc does not exist. */
-export async function getChecklist(slug, version) {
-  const { modules } = await collectAll();
-  const entry = modules.find((m) => m.module.slug === slug);
-  const doc = entry && entry.docs.find((d) => d.version === version);
-  if (!doc) return null;
-  const checklist = doc.fat ? await readJson(doc.ref, checklistFile(slug, version)) : null;
+export async function getChecklist(slug, key) {
+  const hit = await findDoc(slug, key);
+  if (!hit) return null;
+  const { entry, doc } = hit;
+  const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
   return { module: entry.module, doc, checklist };
 }
 
 /** Save (or remove, with null) the FAT checklist of a Draft/In-review doc; bumps the revision like a content edit. */
-export async function saveChecklist(slug, version, checklist, { summary = '' } = {}) {
-  const { branch, meta } = await loadDraftDoc(slug, version);
-  if (meta.status !== 'draft' && meta.status !== 'in-review') {
-    throw new Error(`Doc ${version} is ${meta.status} — not editable`);
-  }
+export async function saveChecklist(slug, key, checklist, { summary = '' } = {}) {
+  const { branch, dir, meta } = await loadDraftDoc(slug, key);
+  if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
+  const version = meta.version;
   const normalized = checklist ? normalizeChecklist(checklist) : null;
   const ts = now();
   const text = summary || (normalized ? 'FAT checklist update' : 'FAT checklist removed');
@@ -692,69 +813,66 @@ export async function saveChecklist(slug, version, checklist, { summary = '' } =
   meta.fat = !!normalized;
   await mutate(async () => {
     await repo.checkout(branch);
-    if (normalized) await repo.writeFile(checklistFile(slug, version), JSON.stringify(normalized, null, 2) + '\n');
-    else if (had) await repo.removePath(checklistFile(slug, version));
-    await repo.writeFile(docFile(slug, version), JSON.stringify(meta, null, 2) + '\n');
+    if (normalized) await repo.writeFile(checklistIn(dir), JSON.stringify(normalized, null, 2) + '\n');
+    else if (had) await repo.removePath(checklistIn(dir));
+    await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
     await repo.commitAll(`${slug} ${version}: r${meta.revision} — ${text}`);
     await repo.checkout('main');
   });
   return { doc: meta, checklist: normalized };
 }
 
-export async function setDocStatus(slug, version, status) {
+export async function setDocStatus(slug, key, status) {
   if (!['draft', 'in-review'].includes(status)) throw new Error('Invalid status transition');
-  const { branch, meta } = await loadDraftDoc(slug, version);
+  const { branch, dir, meta } = await loadDraftDoc(slug, key);
   meta.status = status;
   meta.updatedAt = now();
   await mutate(async () => {
     await repo.checkout(branch);
-    await repo.writeFile(docFile(slug, version), JSON.stringify(meta, null, 2) + '\n');
-    await repo.commitAll(`${slug} ${version}: ${status === 'in-review' ? 'submit for review' : 'back to draft'}`);
+    await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
+    await repo.commitAll(`${slug} ${meta.version}: ${status === 'in-review' ? 'submit for review' : 'back to draft'}`);
     await repo.checkout('main');
   });
   return meta;
 }
 
 /** Release: merge the draft branch into main, freeze the revision counter,
- *  supersede older released versions, delete the branch. */
-export async function releaseDoc(slug, version) {
-  const { branch, meta } = await loadDraftDoc(slug, version);
+ *  supersede older released versions of the same manual type, delete the branch. */
+export async function releaseDoc(slug, key) {
+  const { branch, dir, meta, manual } = await loadDraftDoc(slug, key);
+  const entry = await moduleOf(slug);
+  const version = meta.version;
   const ts = now();
 
   await mutate(async () => {
     await repo.checkout('main');
-    await repo.merge(branch, `Merge ${branch}: release ${slug} ${version}`);
+    await repo.merge(branch, `Merge ${branch}: release ${slug} ${MANUAL_TYPES[manual].label.toLowerCase()} ${version}`);
 
     meta.status = 'released';
     meta.releasedAt = ts;
     meta.updatedAt = ts;
     meta.branch = null;
-    await repo.writeFile(docFile(slug, version), JSON.stringify(meta, null, 2) + '\n');
+    await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
 
-    // Supersede older released versions of the same module.
-    const files = await repo.lsFiles('main', `modules/${slug}/docs`);
-    for (const f of files) {
-      const m = /^modules\/[^/]+\/docs\/([^/]+)\/doc\.json$/.exec(f);
-      if (!m || m[1] === version) continue;
-      const other = await readJson('main', f);
-      if (other && other.status === 'released' && compareDocVersions(other.version, version) < 0) {
-        other.status = 'superseded';
-        other.updatedAt = ts;
-        await repo.writeFile(f, JSON.stringify(other, null, 2) + '\n');
-      }
+    // Supersede older released versions of the same manual type.
+    for (const other of docsOfType(entry.docs, manual)) {
+      if (other.version === version || other.status !== 'released' || compareDocVersions(other.version, version) >= 0) continue;
+      const onMain = await readJson('main', docJson(other.dir));
+      if (!onMain || onMain.status !== 'released') continue;
+      onMain.status = 'superseded';
+      onMain.updatedAt = ts;
+      await repo.writeFile(docJson(other.dir), JSON.stringify(onMain, null, 2) + '\n');
     }
 
-    await repo.commitAll(`${slug}: release ${version}`);
+    await repo.commitAll(`${slug}: release ${MANUAL_TYPES[manual].label.toLowerCase()} ${version}`);
     await repo.deleteBranch(branch);
   });
   return meta;
 }
 
-/** Discard a draft: delete its branch. A never-released module disappears entirely. */
-export async function discardDraft(slug, version) {
-  const branch = docBranchName(slug, version);
-  const branches = await repo.branches();
-  if (!branches.includes(branch)) throw new Error(`No draft branch ${branch}`);
+/** Discard a draft: delete its branch. A never-released module with no other draft disappears entirely. */
+export async function discardDraft(slug, key) {
+  const { branch } = await loadDraftDoc(slug, key);
   await mutate(async () => {
     await repo.checkout('main');
     await repo.deleteBranch(branch);
@@ -881,25 +999,25 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Released/superseded doc versions on main whose body embeds this asset. The assets folder
  *  is shared by every version of a module, so removing such a file would break a manual
  *  that has already been released. */
-async function releasedDocsUsingAsset(slug, name, exceptVersion) {
+async function releasedDocsUsingAsset(slug, name, exceptKey) {
   const entry = await moduleOf(slug);
   const re = new RegExp(`/assets/${escapeRe(encodeURIComponent(name))}(?=["'?\\s>)])`);
   const users = [];
   for (const d of entry?.docs || []) {
-    if (d.version === exceptVersion || !(d.status === 'released' || d.status === 'superseded')) continue;
-    const html = await repo.show('main', contentFile(slug, d.version));
-    if (html && re.test(html)) users.push(d.version);
+    if (d.key === exceptKey || !(d.status === 'released' || d.status === 'superseded')) continue;
+    const html = await repo.show('main', contentIn(d.dir));
+    if (html && re.test(html)) users.push(`${MANUAL_TYPES[d.manual].label.toLowerCase()} ${d.version}`);
   }
   return users;
 }
 
 /** Remove an asset from a draft's branch (git rm + commit). Refuses when a released doc still embeds it. */
 export async function deleteAsset(slug, version, name) {
-  const { branch } = await loadDraftDoc(slug, version);
+  const { branch, key } = await loadDraftDoc(slug, version);
   const base = sanitizeAssetName(name);
   const file = assetFile(slug, base);
   if (!(await repo.show(branch, file))) throw new Error(`Asset "${name}" not found on ${branch}`);
-  const users = await releasedDocsUsingAsset(slug, base, version);
+  const users = await releasedDocsUsingAsset(slug, base, key);
   if (users.length) {
     throw new Error(
       `"${base}" is embedded in released ${users.join(', ')} — released manuals must keep rendering. Upload the replacement under a new name and re-point the figure instead.`
@@ -1034,17 +1152,16 @@ export async function registerSoftwareRelease({ name, version, manualAffecting, 
 /** Make a doc version the manual for a software release: widen a Released doc's covered
  *  range (non-manual-affecting releases), or assign the release to an open draft /
  *  in-review doc (a manual-affecting release that got its own doc version). */
-export async function linkReleaseToDoc(slug, docVersion, swName, swVersion) {
-  const entry = await moduleOf(slug);
-  if (!entry) throw new Error('Module not found');
+export async function linkReleaseToDoc(slug, docKeyOrVersion, swName, swVersion) {
+  const hit = await findDoc(slug, docKeyOrVersion);
+  if (!hit) throw new Error('Doc version not found');
+  const { entry, doc } = hit;
   if (!(entry.module.softwares || []).some((s) => s.name === swName)) {
     throw new Error(`${swName} is not linked to this module`);
   }
-  const doc = entry.docs.find((d) => d.version === docVersion);
-  if (!doc) throw new Error('Doc version not found');
   if (doc.status === 'superseded') throw new Error('A superseded doc version cannot take new releases');
-  const ref = doc.status === 'released' ? 'main' : docBranchName(slug, docVersion);
-  const file = docFile(slug, docVersion);
+  const ref = doc.status === 'released' ? 'main' : doc.branch;
+  const file = docJson(doc.dir);
   const meta = await readJson(ref, file);
   if (!meta) throw new Error('Doc version not found');
   meta.covers = addCover(meta.covers || [], swName, swVersion);
@@ -1052,7 +1169,7 @@ export async function linkReleaseToDoc(slug, docVersion, swName, swVersion) {
   await mutate(async () => {
     await repo.checkout(ref);
     await repo.writeFile(file, JSON.stringify(meta, null, 2) + '\n');
-    await repo.commitAll(`${slug} ${docVersion}: cover ${swName} ${swVersion}`);
+    await repo.commitAll(`${slug} ${MANUAL_TYPES[doc.manual].label.toLowerCase()} ${doc.version}: cover ${swName} ${swVersion}`);
     await repo.checkout('main');
   });
   return meta;
@@ -1145,7 +1262,7 @@ export async function getManual(slug) {
   return (await listManuals()).find((m) => m.slug === slug) || null;
 }
 
-export async function createManual({ name, code, group, modules }) {
+export async function createManual({ name, code, group, modules, manual: type }) {
   const slug = slugify(name);
   if (!slug) throw new Error('Manual name is required');
   if (await getManual(slug)) throw new Error(`A manual with slug "${slug}" already exists`);
@@ -1155,6 +1272,7 @@ export async function createManual({ name, code, group, modules }) {
     name,
     code: code || null,
     group: group || null,
+    manual: manualTypeOf(type).id, // which manual type of each module is compiled
     modules: Array.isArray(modules) ? modules : [],
     createdAt: ts,
     updatedAt: ts,
@@ -1174,6 +1292,7 @@ export async function updateManual(slug, patch) {
   if (patch.name !== undefined) manual.name = patch.name;
   if (patch.code !== undefined) manual.code = patch.code || null;
   if (patch.group !== undefined) manual.group = patch.group || null;
+  if (patch.manual !== undefined) manual.manual = manualTypeOf(patch.manual).id;
   if (patch.modules !== undefined) manual.modules = patch.modules;
   manual.updatedAt = now();
   await mutate(async () => {
@@ -1194,13 +1313,16 @@ export async function deleteManual(slug) {
 }
 
 /**
- * Assemble a manual: one chapter per selected module, using its latest
- * Released doc version, or — flagged — its latest draft when nothing is
- * released yet.
+ * Assemble a manual: one chapter per selected module, using the latest
+ * Released doc version of the manual's type (customer / technician / …),
+ * or — flagged — its latest draft when nothing is released yet. A module
+ * without that manual type is a missing chapter.
  */
 export async function compileManual(slug) {
   const manual = await getManual(slug);
   if (!manual) return null;
+  const type = manualTypeOf(manual.manual).id;
+  manual.manual = type;
   const { modules } = await collectAll();
   const chapters = [];
   for (const mslug of manual.modules) {
@@ -1209,13 +1331,14 @@ export async function compileManual(slug) {
       chapters.push({ slug: mslug, missing: true });
       continue;
     }
-    const doc = entry.docs.find((d) => d.status === 'released') || entry.docs[0] || null;
+    const typed = docsOfType(entry.docs, type);
+    const doc = typed.find((d) => d.status === 'released') || typed[0] || null;
     if (!doc) {
-      chapters.push({ slug: mslug, module: entry.module, missing: true });
+      chapters.push({ slug: mslug, module: entry.module, missing: true, reason: `no ${MANUAL_TYPES[type].label.toLowerCase()}` });
       continue;
     }
-    const content = (await repo.show(doc.ref, contentFile(mslug, doc.version))) || '';
-    const checklist = doc.fat ? await readJson(doc.ref, checklistFile(mslug, doc.version)) : null;
+    const content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
+    const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
     chapters.push({
       slug: mslug,
       module: entry.module,
@@ -1335,14 +1458,16 @@ export const saveManualCover = (slug, name, buffer) =>
 /* Module metadata edits                                               */
 /* ------------------------------------------------------------------ */
 
-/** Update module.json fields. Written on the module's open draft branch when
- *  one exists (it reaches main at release), otherwise directly on main. */
+/** Update module.json fields. Written identically on main (when the module is
+ *  released there) and on every open draft branch — each manual type has its own
+ *  branch, and identical changes on both sides keep every later merge clean. */
 export async function updateModule(slug, patch) {
   const { modules } = await collectAll();
   const entry = modules.find((m) => m.module.slug === slug);
   if (!entry) throw new Error(`Module "${slug}" not found`);
-  const draft = entry.docs.find((d) => d.status === 'draft' || d.status === 'in-review');
-  const ref = draft ? draft.branch : 'main';
+  const onMain = !!(await readJson('main', moduleFile(slug)));
+  const refs = [...(onMain ? ['main'] : []), ...entry.docs.filter((d) => isOpen(d) && d.branch).map((d) => d.branch)];
+  if (!refs.length) throw new Error('Module has no draft branch and is not released — nothing to write to');
   const { hardwareItems, ...module } = entry.module;
   for (const k of ['name', 'code', 'category', 'group', 'softwares']) {
     if (patch[k] !== undefined) module[k] = patch[k];
@@ -1356,9 +1481,11 @@ export async function updateModule(slug, patch) {
   }
   await mutate(async () => {
     await commitNewHardware(catalog, hw.newItems);
-    await repo.checkout(ref);
-    await repo.writeFile(moduleFile(slug), JSON.stringify(module, null, 2) + '\n');
-    await repo.commitAll(`${slug}: update module metadata`);
+    for (const ref of refs) {
+      await repo.checkout(ref);
+      await repo.writeFile(moduleFile(slug), JSON.stringify(module, null, 2) + '\n');
+      await repo.commitAll(`${slug}: update module metadata`);
+    }
     await repo.checkout('main');
   });
   return { ...module, hardwareItems: hw.items };
