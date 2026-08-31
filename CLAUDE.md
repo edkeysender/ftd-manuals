@@ -1,48 +1,47 @@
-# ftd-docs — instructions for AI authoring sessions
+# FTD Documentation Console — instructions for AI sessions
 
-This repository generates FTD.aero simulator manuals from small component chunks.
-Read this file before writing or changing anything. The architecture plan lives in the
-"Dokumentacja FTD" Claude project (claude/modular-manuals-plan.md).
+This repo is the **Documentation Console**: one space for creating, managing and exporting
+FTD.aero flight simulator manuals. Current scope is the Modules section (list, wizard, editor).
+The functional spec lives in this file's history and in the Modules spec provided by Łukasz.
 
-## How the repo works
+## Architecture
 
-- `components/<id>/component.yaml` — identity of one component (id, name, category, location, owner).
-- `components/<id>/vN.md` — one chunk per software version range; front matter `applies_to` is a semver range.
-- `shared/*.md` — pages included in every manual (legal, safety intro).
-- `sims/<slug>.json` — what is installed on one simulator, validated by `sims/schema.json`.
-- `templates/<id>.yaml` — chapter order of a manual type.
-- `tools/resolve.js` — builds `docs/` for every sim. `docs/` and `build/` are generated; never edit them.
-- `inbox/` — raw material from Łukasz (notes, photos, screenshots, voice transcripts). Empty it as you process it.
+- `server/` — Express API (`index.js`), git-backed document store (`store.js` + `git.js`),
+  doc templates and auto-generated sections 1–3 (`docgen.js`), OpenAI-backed assistant (`ai.js`).
+- `web/` — React + Vite SPA (hash routing): `pages/ModulesList`, `pages/ModuleDetail`,
+  `pages/Editor` (3 panes: outline / editor / AI chat), `components/Wizard`.
+- `data/repo/` — runtime git repository holding the documents (gitignored; created by the server).
+  One module = one folder. Drafts on `draft/<slug>-a<maj>.<min>` branches; release = merge to `main`.
+  Never edit `data/` by hand — go through the API so every change is a commit.
+- `.env` — `OPENAI_API_KEY` (never commit, never print).
 
-Build check: `node tools/resolve.js --all && npm run build`. Both must pass before a PR.
+## Domain rules (from the Modules spec)
 
-## Authoring rules
+- A module doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…`
+  while draft, own revision record. Only **Released** versions compile into simulator manuals.
+- Sections 1–3 (revision record, introduction, general info) are **generated** from module data —
+  they are never hand-edited; the editor stores only sections 4–7 as semantic HTML.
+- Manual groups: `SIM` / `IOS` / `RACK`. Hardware: a shared catalog (`hardware.json` on `main`, items
+  `{id, name, type: ftd|cots, version | manufacturer+model, notes}`); a module links **N** items via
+  `hardwareIds` — pick existing or create new (wizard step 3, module → Hardware tab, MCP `list_hardware` /
+  `create_hardware` / `update_hardware`, `hardware: [{id}|{name,type,…}]` on create/update). One manual may
+  cover several unit types (three camera models): each gets its own `<h3>` in Installation/Operation, a row
+  in section 3 and in the FAT header. Old modules with an inline `hardware` object still resolve on read. Software links: N rows of name + from-version; one doc version
+  may cover a range of software releases; a **manual-affecting** release stays unlinked until a new
+  doc version is released for it (orange dot on the modules list).
+- Manual tone: operating-manual English, present tense, numbered procedures with expected indication,
+  warnings/notes as admonitions, no invented facts — use `TODO(author): …` markers.
+- Illustrations: one house style, **Technical Aviation Manual Line-Art** (`server/illustrate.js`, editable in
+  Settings → `settings/illustration-style.md`, plus **style exemplar images** in `settings/illustration-style/`
+  that are sent to the image model with every photo — they, not the text, define the look). Default output is
+  ONE view of the photo's subject; photos are reference only — the manual gets the redrawn `<stem>-lineart.png`,
+  and "Edit drawing" edits that file in place (`editOf`) instead of redrawing. Every conversion path (AI-pane
+  drop target, chat `generate_images` with `style: "line-art"`, Assets tab button, MCP `convert_to_line_art`)
+  goes through `convertToLineArt()`.
 
-1. **IDs** are English kebab-case, match the software component name, and are never renamed.
-   A new ID needs a `component.yaml`; only the Support lead approves new IDs.
-2. **One chunk = one component.** Never describe a second component inside a chunk; link to it with `[[other-id]]`.
-3. **Version ranges, not exact versions.** New chunk only when user-visible behaviour changes.
-   Keep old chunks — older simulators still run the old software.
-4. **Links** between components are always `[[component-id]]`. Never write a URL or a file path to another chunk.
-5. **Tone**: operating-manual English, present tense, second person avoided ("The knob is turned…" or imperative in
-   numbered procedures). No marketing words. Match the existing FCOM vocabulary (FNPT, IOS, FSTD, LE devices).
-6. **Procedures** are numbered lists, one action per step, expected indication after the action.
-   Warnings use `:::caution`, notes use `:::note`.
-7. **Images**: put files in `components/<id>/assets/`, reference relatively; prefer SVG for panel diagrams.
-   Interactive or animated parts are React components in `src/components/`, used from a `.mdx` chunk.
-8. **Never edit generated pages** (revision register, list of effective sections, index) — they come from Git history
-   and the sim config.
-9. **Sim configs**: Production creates the initial file at delivery; Support updates it on every upgrade.
-   Changing a version in a sim config is what triggers a new manual revision — bump `manual.revision` in the same PR.
+## Working here
 
-## Turning inbox material into chunks
-
-When Łukasz drops material in `inbox/` (or pastes it in chat):
-
-1. Identify which component(s) it describes. Check `components/` for an existing ID first.
-2. Decide if it is a new version range (behaviour changed) or a correction to an existing chunk.
-3. Write or update the chunk following the rules above. Keep everything he stated; do not invent behaviour,
-   ranges, timings or part numbers — leave `TODO(łukasz): …` markers for anything missing.
-4. Run the build check. Fix broken `[[links]]`.
-5. Commit on a branch named `doc/<component-id>-<short-topic>` and open a PR; do not push to `main`.
-6. Move the processed inbox files to `inbox/done/` in the same commit.
+- Dev: `npm run dev` (API :5179, web :5173). Check: `npm run build && npm run smoke`.
+- Branch names: `console/<topic>`. Do not push to `main`.
+- The store's git operations are serialized through `GitRepo.lock()` — any new store mutation must
+  run inside it and leave the working tree checked out on `main`.

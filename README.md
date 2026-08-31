@@ -1,41 +1,54 @@
-# ftd-docs
+# FTD Documentation Console
 
-Generated simulator manuals for FTD.aero devices. One manual per serial number, built from
-versioned component chunks and the device's configuration file.
+One space for creating, managing and exporting FTD.aero flight simulator manuals.
+Current scope: the **Modules** section — modules list, new-module-doc wizard, and the manual editor
+(rich text ↔ HTML source, AI assistant, git-backed drafts and releases).
 
-## Quick start (Windows)
+## Run
 
-1. Install [Node.js 22 LTS](https://nodejs.org) and [GitHub Desktop](https://desktop.github.com).
-2. Clone this repository with GitHub Desktop.
-3. In a terminal inside the repo folder:
+```bash
+npm install
+npm run dev        # API on :5179 + Vite dev server on :5173
+```
 
-   ```
-   npm install
-   node tools/resolve.js --all
-   npm start
-   ```
+Production style:
 
-   `npm start` opens http://localhost:3000 with live reload. Re-run `node tools/resolve.js --all`
-   after changing chunks, configs or templates (the dev server does not run the resolver).
+```bash
+npm run build      # builds web/dist
+npm start          # serves UI + API on :5179
+```
 
-4. `npm run build` produces the static site in `build/` and fails on any broken link.
+`.env` (kept out of git):
+
+```
+OPENAI_API_KEY=…   # enables the AI assistant + AI first drafts
+OPENAI_MODEL=gpt-5 # optional override
+```
+
+## How documents are stored
+
+`data/repo/` is a real git repository managed by the server (created on first start) and mirrors the
+target layout of `github.com/ftd-aero/docs` — one module = one folder:
+
+```
+modules/<slug>/module.json               # identity + hardware/software relations
+modules/<slug>/docs/A1.0/doc.json        # doc version metadata, revision record, covered sw releases
+modules/<slug>/docs/A1.0/content.html    # sections 4–7 (semantic HTML)
+softwares.json                           # software release feed (manual-affecting flags)
+```
+
+- Drafts live on `draft/<slug>-a1.0` branches; every save is a commit; accepted changes bump `r1 → r2 …`.
+- **Submit for review** flags the doc In review; **Approve & release** merges the branch into `main`,
+  freezes the revision counter, supersedes older released versions and deletes the branch.
+- Only Released doc versions are compiled into simulator manuals (compilation/export comes later).
+- Sections 1–3 (revision record, introduction, general information) are generated from module data —
+  never hand-edited.
 
 ## Layout
 
 ```
-components/<id>/component.yaml   identity of a component
-components/<id>/vN.md            chunk per software version range (applies_to)
-shared/                          pages in every manual
-sims/<slug>.json                 installed components + versions for one device
-templates/<id>.yaml              chapter structure per manual type
-tools/resolve.js                 config x template x chunks -> docs/ (generated)
-inbox/                           raw material to be turned into chunks
+server/   Express API: store (git), docgen (templates + auto sections), ai (OpenAI)
+web/      React + Vite frontend (modules list, wizard, 3-pane editor)
+data/     runtime document store (gitignored)
+tools/    smoke.mjs — end-to-end API exercise
 ```
-
-## Releasing a manual revision
-
-1. Bump `manual.revision` (or `issue`) and `effective_date` in `sims/<slug>.json`, merge to `main`.
-2. Tag: `git tag manual/<slug>/<issue>.<revision>` and push the tag.
-3. CI builds the site; the revision register and list of effective sections are generated from Git history.
-
-See `CLAUDE.md` for authoring rules.

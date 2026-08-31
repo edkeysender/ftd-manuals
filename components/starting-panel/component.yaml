@@ -1,7 +1,0 @@
-id: starting-panel
-name: Starting Panel
-category: ios-hardware
-location: IOS wall, above the IOS Lights panel
-owner: support
-jira_component: DOK-StartingPanel
-software_component: ftd-startup-controller

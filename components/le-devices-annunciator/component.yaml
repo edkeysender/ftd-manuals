@@ -1,7 +1,0 @@
-id: le-devices-annunciator
-name: LE Devices Annunciator Panel
-category: cockpit-panel
-location: Aft overhead panel
-owner: support
-jira_component: DOK-Cockpit
-software_component: prosim-overhead-aft
