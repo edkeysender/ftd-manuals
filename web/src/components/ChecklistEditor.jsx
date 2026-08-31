@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { useToast } from '../App.jsx';
+import { t, plural } from '../i18n.jsx';
 
 const TYPES = [
   ['check', 'Check'],
@@ -9,7 +10,7 @@ const TYPES = [
 ];
 
 const blankItem = () => ({ check: '', expected: '', type: 'check', unit: '', ref: '', mandatory: true });
-const blankPhase = () => ({ title: 'New phase', items: [blankItem()] });
+const blankPhase = () => ({ title: t('New phase'), items: [blankItem()] });
 
 /**
  * FAT checklist tab of the editor. Edits the whole checklist locally and
@@ -43,12 +44,12 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
   }
 
   async function save(remove = false) {
-    const summary = window.prompt('Revision summary (goes into the revision record):', remove ? 'FAT checklist removed' : 'FAT checklist update');
+    const summary = window.prompt(t('Revision summary (goes into the revision record):'), remove ? 'FAT checklist removed' : 'FAT checklist update');
     if (summary === null) return;
     setBusy(true);
     try {
       const r = await api.saveChecklist(slug, version, remove ? null : draft, summary);
-      toast(remove ? 'FAT checklist removed' : `FAT checklist saved — r${r.doc.revision}`);
+      toast(remove ? t('FAT checklist removed') : t('FAT checklist saved — r{revision}', { revision: r.doc.revision }));
       setDirty(false);
       onSaved(r);
     } catch (e) {
@@ -61,18 +62,17 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
   if (!draft) {
     return (
       <div className="fat-empty">
-        <h3>No FAT checklist for {version}</h3>
+        <h3>{t('No FAT checklist for {version}', { version })}</h3>
         <p className="muted">
-          A factory acceptance test checklist is a separate document generated next to the manual: identification, checks per phase
-          with expected results, non-conformances and sign-off.
+          {t('A factory acceptance test checklist is a separate document generated next to the manual: identification, checks per phase with expected results, non-conformances and sign-off.')}
         </p>
         {editable && (
           <div className="btn-row">
             <button className="btn btn-primary" disabled={!template} onClick={() => { setDraft(template); setDirty(true); }}>
-              Start from category template
+              {t('Start from category template')}
             </button>
             <button className="btn" onClick={() => { setDraft({ enabled: true, phases: [blankPhase()] }); setDirty(true); }}>
-              Start blank
+              {t('Start blank')}
             </button>
           </div>
         )}
@@ -84,26 +84,26 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
     <div className="fat-editor">
       <div className="toolbar">
         <span className="muted">
-          {draft.phases.length} phase{draft.phases.length === 1 ? '' : 's'} · {count} checks
-          {dirty && <strong> · unsaved</strong>}
+          {plural(draft.phases.length, 'phase')} · {plural(count, 'check')}
+          {dirty && <strong> · {t('unsaved')}</strong>}
         </span>
         <div className="toolbar-spacer" />
         {checklist && (
-          <a className="btn btn-sm" href={`/api/modules/${slug}/docs/${version}/checklist.html`} target="_blank" rel="noreferrer" title="Opens the blank FAT protocol — use the browser's Print for PDF">
-            Open / print
+          <a className="btn btn-sm" href={`/api/modules/${slug}/docs/${version}/checklist.html`} target="_blank" rel="noreferrer" title={t("Opens the blank FAT protocol — use the browser's Print for PDF")}>
+            {t('Open / print')}
           </a>
         )}
         {editable && (
           <>
-            <button className="btn btn-sm" disabled={!template} onClick={() => { if (confirm('Replace the checklist with the category template?')) { setDraft(template); setDirty(true); } }}>
-              Reset to template
+            <button className="btn btn-sm" disabled={!template} onClick={() => { if (confirm(t('Replace the checklist with the category template?'))) { setDraft(template); setDirty(true); } }}>
+              {t('Reset to template')}
             </button>
             <button className="btn btn-sm btn-primary" disabled={busy || !dirty} onClick={() => save(false)}>
-              Save checklist (commit revision)
+              {t('Save checklist (commit revision)')}
             </button>
             {checklist && (
-              <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => confirm('Remove the FAT checklist from this doc version?') && save(true)}>
-                Remove
+              <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => confirm(t('Remove the FAT checklist from this doc version?')) && save(true)}>
+                {t('Remove')}
               </button>
             )}
           </>
@@ -122,9 +122,9 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
                 )}
                 {editable && (
                   <span className="btn-row">
-                    <button className="btn-icon" title="Move up" disabled={pi === 0} onClick={() => update((d) => { const [p] = d.phases.splice(pi, 1); d.phases.splice(pi - 1, 0, p); })}>↑</button>
-                    <button className="btn-icon" title="Move down" disabled={pi === draft.phases.length - 1} onClick={() => update((d) => { const [p] = d.phases.splice(pi, 1); d.phases.splice(pi + 1, 0, p); })}>↓</button>
-                    <button className="btn-icon" title="Remove phase" onClick={() => confirm(`Remove phase “${phase.title}”?`) && update((d) => { d.phases.splice(pi, 1); })}>✕</button>
+                    <button className="btn-icon" title={t('Move up')} disabled={pi === 0} onClick={() => update((d) => { const [p] = d.phases.splice(pi, 1); d.phases.splice(pi - 1, 0, p); })}>↑</button>
+                    <button className="btn-icon" title={t('Move down')} disabled={pi === draft.phases.length - 1} onClick={() => update((d) => { const [p] = d.phases.splice(pi, 1); d.phases.splice(pi + 1, 0, p); })}>↓</button>
+                    <button className="btn-icon" title={t('Remove phase')} onClick={() => confirm(t('Remove phase “{title}”?', { title: phase.title })) && update((d) => { d.phases.splice(pi, 1); })}>✕</button>
                   </span>
                 )}
               </div>
@@ -132,11 +132,11 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
                 <thead>
                   <tr>
                     <th style={{ width: 56 }}>#</th>
-                    <th>Check</th>
-                    <th style={{ width: '24%' }}>Expected</th>
-                    <th style={{ width: 96 }}>Type</th>
-                    <th style={{ width: 90 }}>Ref</th>
-                    <th style={{ width: 40 }} title="Mandatory">Mand.</th>
+                    <th>{t('Check')}</th>
+                    <th style={{ width: '24%' }}>{t('Expected')}</th>
+                    <th style={{ width: 96 }}>{t('Type')}</th>
+                    <th style={{ width: 90 }}>{t('Ref')}</th>
+                    <th style={{ width: 40 }} title={t('Mandatory')}>{t('Mand.')}</th>
                     {editable && <th style={{ width: 34 }} />}
                   </tr>
                 </thead>
@@ -146,15 +146,15 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
                       <td className="muted mono">{it.id || '—'}</td>
                       <td>
                         {editable ? (
-                          <textarea rows={1} value={it.check} placeholder="What is checked" onChange={(e) => update((d) => { d.phases[pi].items[ii].check = e.target.value; })} />
+                          <textarea rows={1} value={it.check} placeholder={t('What is checked')} onChange={(e) => update((d) => { d.phases[pi].items[ii].check = e.target.value; })} />
                         ) : it.check}
                       </td>
                       <td>
                         {editable ? (
                           <div className="fat-expected">
-                            <textarea rows={1} value={it.expected} placeholder={it.type === 'record' ? '(value recorded)' : it.type === 'measure' ? 'limits' : 'expected result'} onChange={(e) => update((d) => { d.phases[pi].items[ii].expected = e.target.value; })} />
+                            <textarea rows={1} value={it.expected} placeholder={it.type === 'record' ? t('(value recorded)') : it.type === 'measure' ? t('limits') : t('expected result')} onChange={(e) => update((d) => { d.phases[pi].items[ii].expected = e.target.value; })} />
                             {it.type === 'measure' && (
-                              <input className="fat-unit" value={it.unit || ''} placeholder="unit" onChange={(e) => update((d) => { d.phases[pi].items[ii].unit = e.target.value; })} />
+                              <input className="fat-unit" value={it.unit || ''} placeholder={t('unit')} onChange={(e) => update((d) => { d.phases[pi].items[ii].unit = e.target.value; })} />
                             )}
                           </div>
                         ) : (
@@ -164,13 +164,13 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
                       <td>
                         {editable ? (
                           <select value={it.type} onChange={(e) => update((d) => { d.phases[pi].items[ii].type = e.target.value; })}>
-                            {TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                            {TYPES.map(([k, l]) => <option key={k} value={k}>{t(l)}</option>)}
                           </select>
-                        ) : TYPES.find(([k]) => k === it.type)?.[1]}
+                        ) : t(TYPES.find(([k]) => k === it.type)?.[1] || '')}
                       </td>
                       <td>
                         {editable ? (
-                          <input value={it.ref || ''} placeholder="Operation" onChange={(e) => update((d) => { d.phases[pi].items[ii].ref = e.target.value; })} />
+                          <input value={it.ref || ''} placeholder={t('Operation')} onChange={(e) => update((d) => { d.phases[pi].items[ii].ref = e.target.value; })} />
                         ) : it.ref}
                       </td>
                       <td style={{ textAlign: 'center' }}>
@@ -178,7 +178,7 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
                       </td>
                       {editable && (
                         <td>
-                          <button className="btn-icon" title="Remove item" onClick={() => update((d) => { d.phases[pi].items.splice(ii, 1); })}>✕</button>
+                          <button className="btn-icon" title={t('Remove item')} onClick={() => update((d) => { d.phases[pi].items.splice(ii, 1); })}>✕</button>
                         </td>
                       )}
                     </tr>
@@ -186,12 +186,12 @@ export default function ChecklistEditor({ slug, version, editable, checklist, on
                 </tbody>
               </table>
               {editable && (
-                <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.phases[pi].items.push(blankItem()); })}>+ Add check</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => update((d) => { d.phases[pi].items.push(blankItem()); })}>{t('+ Add check')}</button>
               )}
             </section>
           ))}
           {editable && (
-            <button className="btn btn-ghost" onClick={() => update((d) => { d.phases.push(blankPhase()); })}>+ Add phase</button>
+            <button className="btn btn-ghost" onClick={() => update((d) => { d.phases.push(blankPhase()); })}>{t('+ Add phase')}</button>
           )}
         </div>
       </div>

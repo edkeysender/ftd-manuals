@@ -4,6 +4,7 @@ import { api, readFileAsBase64, timeAgo, manualType, LANGUAGES, language } from 
 import StatusBadge from '../components/StatusBadge.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { useToast } from '../App.jsx';
+import { t, plural, locale } from '../i18n.jsx';
 
 const AUTO_OUTLINE = {
   en: [
@@ -115,7 +116,7 @@ export default function Editor() {
 
   const [data, setData] = useState(null); // {module, doc, content, generated, lang, languages}
   const [docMeta, setDocMeta] = useState(null);
-  const [lang, setLang] = useState('en'); // body language shown: en (source) or a translation
+  const [lang, setLang] = useState(() => (LANGUAGES.some((L) => L.code === locale()) ? locale() : 'en')); // body language shown: follows the console language; en is the source
   const [languages, setLanguages] = useState(null); // {en: {...}, pl: {exists, stale, ...}}
   const [translating, setTranslating] = useState(false);
   const [html, setHtml] = useState('');
@@ -165,12 +166,23 @@ export default function Editor() {
         setSavedAt(d.doc.updatedAt);
         setPending(null);
         const L = language(lang);
+        const mt = manualType(d.doc.manual);
         const greeting = {
           role: 'assistant',
-          content: `Editing the ${manualType(d.doc.manual).label.toLowerCase()} of ${d.module.name} · ${d.doc.version} r${d.doc.revision}${
-            L.source ? '' : ` · ${L.label} translation`
-          } (${manualType(d.doc.manual).audience} audience; sections ${manualType(d.doc.manual).sections.join(', ')}). Tell me what to change — e.g. "add a check to ${manualType(d.doc.manual).sections[1]}" — and I will apply it as a pending edit for you to accept.${
-            L.source ? ' Paste a wiki/web page and I take only what belongs in this manual type.' : ` I answer and edit in ${L.label}.`
+          content: `${t(
+            'Editing the {manual} of {module} · {version} r{rev}{translation} ({audience} audience; sections {sections}). Tell me what to change — e.g. "add a check to {section}" — and I will apply it as a pending edit for you to accept.',
+            {
+              manual: t(mt.label).toLowerCase(),
+              module: d.module.name,
+              version: d.doc.version,
+              rev: d.doc.revision,
+              translation: L.source ? '' : ` · ${t('{language} translation', { language: t(L.label) })}`,
+              audience: t(mt.audience),
+              sections: mt.sections.map((s) => t(s)).join(', '),
+              section: t(mt.sections[1]),
+            }
+          )} ${
+            L.source ? t('Paste a wiki/web page and I take only what belongs in this manual type.') : t('I answer and edit in {language}.', { language: t(L.label) })
           }`,
         };
         // Recover a pending AI edit that was interrupted (e.g. page refresh).
@@ -178,15 +190,16 @@ export default function Editor() {
           const snap = loadSnapshot(slug, lang === 'en' ? version : `${version}@${lang}`);
           setPending({
             original: snap?.original ?? null,
-            instruction: snap?.instruction ?? 'recovered AI edit',
+            instruction: snap?.instruction ?? t('recovered AI edit'),
             recovered: true,
           });
           setMessages([
             greeting,
             {
               role: 'assistant',
-              content:
-                'This draft contains a pending AI edit (recovered after the page was reloaded). Review the highlighted blocks and Accept or Discard them above the document.',
+              content: t(
+                'This draft contains a pending AI edit (recovered after the page was reloaded). Review the highlighted blocks and Accept or Discard them above the document.'
+              ),
             },
           ]);
         } else {
@@ -205,7 +218,7 @@ export default function Editor() {
 
   async function switchLang(next) {
     if (next === lang) return;
-    if (pending) return toast('Accept or discard the pending AI edit first', 'err');
+    if (pending) return toast(t('Accept or discard the pending AI edit first'), 'err');
     try {
       if (dirty && editable) {
         await api.saveContent(slug, version, htmlRef.current, false, '', lang);
@@ -213,13 +226,13 @@ export default function Editor() {
       }
       setLang(next);
     } catch (e) {
-      toast(`Could not save before switching: ${e.message}`, 'err');
+      toast(t('Could not save before switching: {error}', { error: e.message }), 'err');
     }
   }
 
   /** AI translation of the English body into the current language (replaces the existing one). */
   async function translate() {
-    if (langInfo?.exists && !confirm(`Replace the current ${language(lang).label} text with a fresh AI translation of the English body?`)) return;
+    if (langInfo?.exists && !confirm(t('Replace the current {language} text with a fresh AI translation of the English body?', { language: t(language(lang).label) }))) return;
     setTranslating(true);
     try {
       const d = await api.translate(slug, version, lang);
@@ -229,7 +242,7 @@ export default function Editor() {
       setHtml(d.content);
       setDirty(false);
       setSavedAt(d.doc.updatedAt);
-      toast(`${language(lang).label} translation saved as r${d.doc.revision} — review it, it is machine-made`);
+      toast(t('{language} translation saved as r{rev} — review it, it is machine-made', { language: t(language(lang).label), rev: d.doc.revision }));
     } catch (e) {
       toast(e.message, 'err');
     } finally {
@@ -248,7 +261,7 @@ export default function Editor() {
       setLanguages(d.languages || null);
       setHtml(d.content);
       setDirty(false);
-      toast(`English copied — translate it in place`);
+      toast(t('English copied — translate it in place'));
     } catch (e) {
       toast(e.message, 'err');
     } finally {
@@ -284,7 +297,7 @@ export default function Editor() {
         setSavedAt(new Date().toISOString());
         setDirty(false);
       } catch (e) {
-        toast(`Autosave failed: ${e.message}`, 'err');
+        toast(t('Autosave failed: {error}', { error: e.message }), 'err');
       } finally {
         setSaving(false);
       }
@@ -373,41 +386,41 @@ export default function Editor() {
   };
 
   const TOOLBAR = [
-    ['H2', () => exec('formatBlock', '<h2>'), 'Section heading'],
-    ['H3', () => exec('formatBlock', '<h3>'), 'Subsection heading'],
-    ['B', () => exec('bold'), 'Bold'],
-    ['I', () => exec('italic'), 'Italic'],
+    ['H2', () => exec('formatBlock', '<h2>'), t('Section heading')],
+    ['H3', () => exec('formatBlock', '<h3>'), t('Subsection heading')],
+    ['B', () => exec('bold'), t('Bold')],
+    ['I', () => exec('italic'), t('Italic')],
     [
-      'Table',
+      t('Table'),
       () =>
         insertHtml(
           '<table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table><p></p>'
         ),
-      'Insert table',
+      t('Insert table'),
     ],
     [
-      'Figure',
+      t('Figure'),
       () =>
         insertHtml(
           '<figure><img src="assets/TODO.svg" alt="TODO"><figcaption>TODO(author): figure caption</figcaption></figure><p></p>'
         ),
-      'Insert figure',
+      t('Insert figure'),
     ],
     [
-      '⚠ Warning',
+      t('⚠ Warning'),
       () =>
         insertHtml(
           '<div class="admonition warning"><p class="admonition-title">Warning</p><p>TODO(author): warning text.</p></div><p></p>'
         ),
-      'Insert warning',
+      t('Insert warning'),
     ],
     [
-      'ⓘ Note',
+      t('ⓘ Note'),
       () =>
         insertHtml(
           '<div class="admonition note"><p class="admonition-title">Note</p><p>TODO(author): note text.</p></div><p></p>'
         ),
-      'Insert note',
+      t('Insert note'),
     ],
   ];
 
@@ -420,7 +433,7 @@ export default function Editor() {
       noteLanguageSaved(meta);
       setSavedAt(new Date().toISOString());
       setDirty(false);
-      toast(`Committed r${meta.revision}`);
+      toast(t('Committed r{rev}', { rev: meta.revision }));
     } catch (e) {
       toast(e.message, 'err');
     } finally {
@@ -430,14 +443,14 @@ export default function Editor() {
 
   async function submitReview() {
     if (pending) {
-      toast('Accept or discard the pending AI edit first', 'err');
+      toast(t('Accept or discard the pending AI edit first'), 'err');
       return;
     }
     try {
       if (dirty) await api.saveContent(slug, version, htmlRef.current, false, "", lang);
       const meta = await api.submitReview(slug, version);
       setDocMeta(meta);
-      toast(`${version} submitted for review — PR open on ${meta.branch}`);
+      toast(t('{version} submitted for review — PR open on {branch}', { version, branch: meta.branch }));
     } catch (e) {
       toast(e.message, 'err');
     }
@@ -447,7 +460,7 @@ export default function Editor() {
     try {
       const meta = await api.release(slug, version);
       setDocMeta(meta);
-      toast(`${version} released — merged to main`);
+      toast(t('{version} released — merged to main', { version }));
       navigate(`/modules/${slug}`);
     } catch (e) {
       toast(e.message, 'err');
@@ -482,8 +495,8 @@ export default function Editor() {
    */
   async function illustrateFiles(fileList) {
     const files = [...fileList].filter(isImageFile);
-    if (!files.length) return toast('Drop an image file (PNG, JPG, WEBP) to convert it to line-art', 'err');
-    if (!editable) return toast('Read-only doc — illustrations can only be added to a draft', 'err');
+    if (!files.length) return toast(t('Drop an image file (PNG, JPG, WEBP) to convert it to line-art'), 'err');
+    if (!editable) return toast(t('Read-only doc — illustrations can only be added to a draft'), 'err');
     if (aiBusy) return;
     const instructions = chatInput.trim();
     setChatInput('');
@@ -492,13 +505,13 @@ export default function Editor() {
     setAiStart(Date.now());
     try {
       for (const f of files) {
-        pushMsg({ role: 'user', content: `🖼 ${f.name} → FTD line-art${instructions ? `\n${instructions}` : ''}` });
+        pushMsg({ role: 'user', content: `${t('🖼 {file} → FTD line-art', { file: f.name })}${instructions ? `\n${instructions}` : ''}` });
         try {
           const payload = await readFileAsBase64(f);
           const r = await api.illustrate(slug, version, { name: payload.name, dataBase64: payload.dataBase64, instructions });
           pushMsg(illustrationMsg(r, instructions));
         } catch (e) {
-          pushMsg({ role: 'assistant', content: `Line-art failed for ${f.name}: ${e.message}` });
+          pushMsg({ role: 'assistant', content: t('Line-art failed for {file}: {error}', { file: f.name, error: e.message }) });
         }
       }
     } finally {
@@ -511,7 +524,10 @@ export default function Editor() {
   function illustrationMsg(r, instructions) {
     return {
       role: 'assistant',
-      content: `Line-art ready: ${r.illustration.url}${r.source ? ` (drawn from ${r.source.name})` : ''}. Insert it into the manual at the cursor, or tell me where it belongs — e.g. "put it in Installation step 2 with a caption".`,
+      content: t('Line-art ready: {url}{source}. Insert it into the manual at the cursor, or tell me where it belongs — e.g. "put it in Installation step 2 with a caption".', {
+        url: r.illustration.url,
+        source: r.source ? ` (${t('drawn from {file}', { file: r.source.name })})` : '',
+      }),
       illustration: { ...r.illustration, v: Date.now() },
       source: r.source,
       instructions,
@@ -525,17 +541,17 @@ export default function Editor() {
    */
   async function regenerate(m) {
     if (aiBusy) return;
-    const instructions = window.prompt('What should change in this drawing? (e.g. "number the two latches, add an arrow showing the pull direction, remove the hand")', '');
+    const instructions = window.prompt(t('What should change in this drawing? (e.g. "number the two latches, add an arrow showing the pull direction, remove the hand")'), '');
     if (instructions === null) return;
     setAiBusy(true);
     setBusyKind('illustrate');
     setAiStart(Date.now());
-    pushMsg({ role: 'user', content: `🖼 edit ${m.illustration.name}${instructions ? `\n${instructions}` : ''}` });
+    pushMsg({ role: 'user', content: `${t('🖼 edit {file}', { file: m.illustration.name })}${instructions ? `\n${instructions}` : ''}` });
     try {
       const r = await api.illustrate(slug, version, { editOf: m.illustration.name, assetName: m.source?.name, instructions });
       pushMsg(illustrationMsg(r, instructions));
     } catch (e) {
-      pushMsg({ role: 'assistant', content: `Line-art failed: ${e.message}` });
+      pushMsg({ role: 'assistant', content: t('Line-art failed: {error}', { error: e.message }) });
     } finally {
       setAiBusy(false);
       setBusyKind('chat');
@@ -544,11 +560,11 @@ export default function Editor() {
   }
 
   function insertIllustration(m) {
-    if (!editable || pending) return toast('Accept or discard the pending AI edit first', 'err');
+    if (!editable || pending) return toast(t('Accept or discard the pending AI edit first'), 'err');
     if (tab !== 'manual') setTab('manual');
     const alt = m.illustration.name.replace(/\.[a-z0-9]+$/i, '').replace(/-lineart$/, '').replace(/-/g, ' ');
     insertAtCaret(figureHtml(m.illustration.url, alt));
-    pushMsg({ role: 'assistant', content: `Inserted ${m.illustration.name} as a figure — edit the caption in the document.` });
+    pushMsg({ role: 'assistant', content: t('Inserted {file} as a figure — edit the caption in the document.', { file: m.illustration.name }) });
   }
 
   const onPaneDrop = (e) => {
@@ -566,18 +582,20 @@ export default function Editor() {
   async function insertImageFiles(fileList) {
     const files = [...fileList].filter(isImageFile);
     if (!files.length) return;
-    if (!editable) return toast('Read-only doc — images can only be added to a draft', 'err');
-    if (pending) return toast('Accept or discard the pending AI edit first', 'err');
+    if (!editable) return toast(t('Read-only doc — images can only be added to a draft'), 'err');
+    if (pending) return toast(t('Accept or discard the pending AI edit first'), 'err');
     try {
       setSaving(true);
       const payload = await Promise.all(files.map(async (f, i) => ({ ...(await readFileAsBase64(f)), name: pastedName(f, i) })));
       const saved = await api.uploadAssets(slug, version, payload);
       for (const s of saved) insertAtCaret(figureHtml(s.url, s.name.replace(/\.[a-z0-9]+$/i, '').replace(/-/g, ' ')));
       toast(
-        `${saved.length > 1 ? `${saved.length} images` : 'Image'} added as a figure — edit the caption. To redraw it as FTD line-art, paste it into the AI pane instead.`
+        t('{what} added as a figure — edit the caption. To redraw it as FTD line-art, paste it into the AI pane instead.', {
+          what: saved.length > 1 ? plural(saved.length, 'image') : t('Image'),
+        })
       );
     } catch (e) {
-      toast(`Image paste failed: ${e.message}`, 'err');
+      toast(t('Image paste failed: {error}', { error: e.message }), 'err');
     } finally {
       setSaving(false);
     }
@@ -595,7 +613,7 @@ export default function Editor() {
     } else if (/<img[^>]+src="data:image\//i.test(htmlData)) {
       e.preventDefault();
       rememberSelection();
-      imagesFromHtml(htmlData).then((imgs) => (imgs.length ? insertImageFiles(imgs) : toast('Could not read the pasted image', 'err')));
+      imagesFromHtml(htmlData).then((imgs) => (imgs.length ? insertImageFiles(imgs) : toast(t('Could not read the pasted image'), 'err')));
     } else if (/<img/i.test(htmlData)) {
       // Remote <img> pasted from a web page: let the browser insert it, then drop the
       // intrinsic width/height/style it carries so the page CSS keeps it inside the column.
@@ -648,14 +666,14 @@ export default function Editor() {
       });
       setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
       if (res.html) {
-        const instruction = text || `use ${sent.map((a) => a.name).join(', ')}`;
+        const instruction = text || t('use {files}', { files: sent.map((a) => a.name).join(', ') });
         saveSnapshot(slug, snapId, { original: htmlRef.current, instruction });
         setPending({ original: htmlRef.current, instruction });
         setEditorHtml(res.html);
         setDirty(true); // autosave the marked content so a refresh can recover it
       }
     } catch (e) {
-      setMessages((m) => [...m, { role: 'assistant', content: `Error: ${e.message}` }]);
+      setMessages((m) => [...m, { role: 'assistant', content: t('Error: {error}', { error: e.message }) }]);
     } finally {
       setAiBusy(false);
       setAiStart(null);
@@ -679,7 +697,7 @@ export default function Editor() {
       // highlighted blocks (they were inserted or modified by the AI).
       if (
         !confirm(
-          'No pre-edit snapshot is available for this recovered edit. Discard will DELETE all highlighted blocks from the draft. Continue?'
+          t('No pre-edit snapshot is available for this recovered edit. Discard will DELETE all highlighted blocks from the draft. Continue?')
         )
       )
         return;
@@ -688,7 +706,7 @@ export default function Editor() {
     setPending(null);
     clearSnapshot(slug, snapId);
     setDirty(true);
-    setMessages((m) => [...m, { role: 'assistant', content: 'Edit discarded.' }]);
+    setMessages((m) => [...m, { role: 'assistant', content: t('Edit discarded.') }]);
   }
 
   /* ---------- outline ---------- */
@@ -718,9 +736,9 @@ export default function Editor() {
     }
   };
 
-  if (!data || !docMeta) return <div className="page"><div className="empty">Loading…</div></div>;
+  if (!data || !docMeta) return <div className="page"><div className="empty">{t('Loading…')}</div></div>;
 
-  const savedLabel = saving ? 'saving…' : dirty ? 'unsaved changes' : `saved ${timeAgo(savedAt)}`;
+  const savedLabel = saving ? t('saving…') : dirty ? t('unsaved changes') : t('saved {when}', { when: timeAgo(savedAt) });
 
   return (
     <div className="editor-layout">
@@ -728,8 +746,8 @@ export default function Editor() {
         <div className="editor-title">
           <Link to={`/modules/${slug}`} className="back">←</Link>
           <strong>{data.module.name}</strong>
-          <span className={`manual-tag ${docMeta.manual || 'customer'}`} title={manualType(docMeta.manual).desc}>
-            {manualType(docMeta.manual).label}
+          <span className={`manual-tag ${docMeta.manual || 'customer'}`} title={t(manualType(docMeta.manual).desc)}>
+            {t(manualType(docMeta.manual).label)}
           </span>
           <span className="muted">
             {docMeta.version} r{docMeta.revision}
@@ -738,13 +756,13 @@ export default function Editor() {
         </div>
         <div className="editor-actions">
           <div className="mode-toggle doc-tabs">
-            <button className={tab === 'manual' ? 'active' : ''} onClick={() => setTab('manual')}>Manual</button>
+            <button className={tab === 'manual' ? 'active' : ''} onClick={() => setTab('manual')}>{t('Manual')}</button>
             <button className={tab === 'fat' ? 'active' : ''} onClick={() => setTab('fat')}>
-              FAT checklist{data.checklist ? '' : ' (none)'}
+              {data.checklist ? t('FAT checklist') : t('FAT checklist (none)')}
             </button>
           </div>
           {tab === 'manual' && (
-            <div className="mode-toggle doc-tabs lang-toggle" title="Body language — English is the source, other languages are translations">
+            <div className="mode-toggle doc-tabs lang-toggle" title={t('Body language — English is the source, other languages are translations')}>
               {LANGUAGES.map((L) => {
                 const info = languages?.[L.code];
                 const flag = L.source ? null : !info?.exists ? 'missing' : info.stale ? 'stale' : null;
@@ -753,7 +771,7 @@ export default function Editor() {
                     key={L.code}
                     className={lang === L.code ? 'active' : ''}
                     onClick={() => switchLang(L.code)}
-                    title={L.source ? 'English — source text' : flag === 'missing' ? `${L.label} — not translated yet` : flag === 'stale' ? `${L.label} — English changed since this translation` : `${L.label} translation`}
+                    title={L.source ? t('English — source text') : flag === 'missing' ? t('{language} — not translated yet', { language: t(L.label) }) : flag === 'stale' ? t('{language} — English changed since this translation', { language: t(L.label) }) : t('{language} translation', { language: t(L.label) })}
                   >
                     {L.short}
                     {flag && <span className={`lang-dot ${flag}`} />}
@@ -765,28 +783,28 @@ export default function Editor() {
           {editable && tab === 'manual' && (
             <span className="save-indicator">
               {savedLabel}
-              {docMeta.branch && <> · branch <code>{docMeta.branch}</code></>}
+              {docMeta.branch && <> · {t('branch')} <code>{docMeta.branch}</code></>}
             </span>
           )}
           {editable && tab === 'manual' && (
             <button
               className="btn btn-sm"
               onClick={() => {
-                const s = window.prompt('Revision summary (goes into the revision record):', '');
+                const s = window.prompt(t('Revision summary (goes into the revision record):'), '');
                 if (s !== null) commitRevision(s || 'Content update');
               }}
             >
-              Commit revision
+              {t('Commit revision')}
             </button>
           )}
           {docMeta.status === 'draft' && (
             <button className="btn btn-primary btn-sm" onClick={submitReview}>
-              Submit for review
+              {t('Submit for review')}
             </button>
           )}
           {docMeta.status === 'in-review' && (
             <button className="btn btn-primary btn-sm" onClick={release}>
-              Approve &amp; release
+              {t('Approve & release')}
             </button>
           )}
         </div>
@@ -795,7 +813,7 @@ export default function Editor() {
       <div className="editor-panes">
         {/* left: outline */}
         <aside className="pane outline">
-          <div className="pane-title">Document outline</div>
+          <div className="pane-title">{t('Document outline')}</div>
           <ul>
             {outline.map((item, i) => (
               <li
@@ -804,7 +822,7 @@ export default function Editor() {
                 onClick={() => scrollTo(item)}
               >
                 <span className="num">{item.num}</span> {item.title}
-                {item.auto && !item.sub && <span className="auto-tag">auto</span>}
+                {item.auto && !item.sub && <span className="auto-tag">{t('auto')}</span>}
               </li>
             ))}
           </ul>
@@ -834,13 +852,13 @@ export default function Editor() {
                 ))}
               <div className="toolbar-spacer" />
               {mode === 'rich' && todoCount > 0 && (
-                <button className="todo-chip" title="Jump to the next open TODO(author) marker" onMouseDown={(e) => { e.preventDefault(); jumpToTodo(); }}>
-                  {todoCount} TODO{todoCount > 1 ? 's' : ''} ↓
+                <button className="todo-chip" title={t('Jump to the next open TODO(author) marker')} onMouseDown={(e) => { e.preventDefault(); jumpToTodo(); }}>
+                  {plural(todoCount, 'TODO')} ↓
                 </button>
               )}
               <div className="mode-toggle">
                 <button className={mode === 'rich' ? 'active' : ''} onClick={() => setMode('rich')}>
-                  Rich text
+                  {t('Rich text')}
                 </button>
                 <button
                   className={mode === 'source' ? 'active' : ''}
@@ -849,7 +867,7 @@ export default function Editor() {
                     setMode('source');
                   }}
                 >
-                  HTML source
+                  {t('HTML source')}
                 </button>
               </div>
             </div>
@@ -858,12 +876,12 @@ export default function Editor() {
           {tab === 'manual' && pending && (
             <div className="ai-pending-bar">
               <span>
-                <strong>AI EDIT · pending</strong> — “{pending.instruction}”
-                {pending.recovered && <em> (recovered after reload)</em>}
+                <strong>{t('AI EDIT · pending')}</strong> — “{pending.instruction}”
+                {pending.recovered && <em> ({t('recovered after reload')})</em>}
               </span>
               <span className="btn-row">
-                <button className="btn btn-sm btn-primary" onClick={acceptAI}>✓ Accept</button>
-                <button className="btn btn-sm" onClick={discardAI}>Discard</button>
+                <button className="btn btn-sm btn-primary" onClick={acceptAI}>✓ {t('Accept')}</button>
+                <button className="btn btn-sm" onClick={discardAI}>{t('Discard')}</button>
               </span>
             </div>
           )}
@@ -871,15 +889,18 @@ export default function Editor() {
           {tab === 'manual' && translationMissing && (
             <div className="lang-banner">
               <span>
-                <strong>{language(lang).label}</strong> — no translation yet. Translate the English body with the AI, copy it as a starting point, or simply start writing here — the text is saved as the {language(lang).label} version.
+                <strong>{t(language(lang).label)}</strong>{' — '}
+                {t('no translation yet. Translate the English body with the AI, copy it as a starting point, or simply start writing here — the text is saved as the {language} version.', {
+                  language: t(language(lang).label),
+                })}
               </span>
               {editable && (
                 <span className="btn-row">
                   <button className="btn btn-primary btn-sm" disabled={translating} onClick={translate}>
-                    {translating ? 'Translating…' : 'Translate with AI'}
+                    {translating ? t('Translating…') : t('Translate with AI')}
                   </button>
                   <button className="btn btn-sm" disabled={translating} onClick={copyEnglish}>
-                    Copy English
+                    {t('Copy English')}
                   </button>
                 </span>
               )}
@@ -888,14 +909,21 @@ export default function Editor() {
           {tab === 'manual' && lang !== 'en' && langInfo?.exists && (
             <div className={`lang-banner ${langInfo.stale ? 'stale' : ''}`}>
               <span>
-                <strong>{language(lang).label}</strong>
+                <strong>{t(language(lang).label)}</strong>
                 {langInfo.stale
-                  ? ` — the English body changed since this translation (made from r${langInfo.basedOnRevision}, now r${docMeta.revision}). Re-translate, or bring the changes over by hand.`
-                  : ` — translation ${langInfo.source === 'ai' ? 'by AI' : 'by hand'}${langInfo.edited ? ', edited' : ''}, based on English r${langInfo.basedOnRevision}.`}
+                  ? ` — ${t('the English body changed since this translation (made from r{from}, now r{now}). Re-translate, or bring the changes over by hand.', {
+                      from: langInfo.basedOnRevision,
+                      now: docMeta.revision,
+                    })}`
+                  : ` — ${
+                      langInfo.edited
+                        ? t('translation {by}, edited, based on English r{rev}.', { by: langInfo.source === 'ai' ? t('by AI') : t('by hand'), rev: langInfo.basedOnRevision })
+                        : t('translation {by}, based on English r{rev}.', { by: langInfo.source === 'ai' ? t('by AI') : t('by hand'), rev: langInfo.basedOnRevision })
+                    }`}
               </span>
               {editable && (
-                <button className="btn btn-sm" disabled={translating} onClick={translate} title="Translate the English body again with the AI (replaces this text)">
-                  {translating ? 'Translating…' : langInfo.stale ? 'Re-translate with AI' : 'Translate again'}
+                <button className="btn btn-sm" disabled={translating} onClick={translate} title={t('Translate the English body again with the AI (replaces this text)')}>
+                  {translating ? t('Translating…') : langInfo.stale ? t('Re-translate with AI') : t('Translate again')}
                 </button>
               )}
             </div>
@@ -904,7 +932,7 @@ export default function Editor() {
             <div className="doc-page" ref={pageRef}>
               <div
                 className="generated"
-                title="Sections 1–3 are generated from module data and the revision record"
+                title={t('Sections 1–3 are generated from module data and the revision record')}
                 dangerouslySetInnerHTML={{ __html: data.generated }}
               />
               {mode === 'rich' ? (
@@ -948,36 +976,36 @@ export default function Editor() {
           onDrop={onPaneDrop}
         >
           <div className="pane-title">
-            AI assistant <span className="ai-tag">API · MCP enabled</span>
+            {t('AI assistant')} <span className="ai-tag">{t('API · MCP enabled')}</span>
           </div>
           {dropOver && (
             <div className="drop-veil">
-              <strong>Drop photo → FTD line-art</strong>
-              <span>Technical Aviation Manual Line-Art · result appears here, ready to insert</span>
+              <strong>{t('Drop photo → FTD line-art')}</strong>
+              <span>{t('Technical Aviation Manual Line-Art · result appears here, ready to insert')}</span>
             </div>
           )}
           <div className="chat" ref={chatRef}>
             {messages.map((m, i) =>
               m.illustration ? (
                 <div key={i} className="msg msg-assistant msg-figure">
-                  <a href={m.illustration.url} target="_blank" rel="noreferrer" title="Open full size">
+                  <a href={m.illustration.url} target="_blank" rel="noreferrer" title={t('Open full size')}>
                     <img src={`${m.illustration.url}?v=${m.illustration.v}`} alt={m.illustration.name} />
                   </a>
                   <div className="fig-meta">
                     <code>{m.illustration.name}</code>
-                    {m.source && <span className="muted"> · from {m.source.name}</span>}
+                    {m.source && <span className="muted"> · {t('from {file}', { file: m.source.name })}</span>}
                   </div>
                   <div className="btn-row">
                     <button
                       className="btn btn-sm btn-primary"
                       disabled={!editable || !!pending || aiBusy}
-                      title="Insert as a figure at the cursor position in the document"
+                      title={t('Insert as a figure at the cursor position in the document')}
                       onClick={() => insertIllustration(m)}
                     >
-                      Insert into manual
+                      {t('Insert into manual')}
                     </button>
-                    <button className="btn btn-sm" disabled={aiBusy || !editable} onClick={() => regenerate(m)} title="Ask for changes — the model edits this drawing rather than starting over">
-                      Edit drawing…
+                    <button className="btn btn-sm" disabled={aiBusy || !editable} onClick={() => regenerate(m)} title={t('Ask for changes — the model edits this drawing rather than starting over')}>
+                      {t('Edit drawing…')}
                     </button>
                   </div>
                 </div>
@@ -993,11 +1021,11 @@ export default function Editor() {
                   <span /><span /><span />
                 </span>
                 <span className="thinking-label">
-                  {busyKind === 'illustrate' ? 'drawing…' : 'working…'} {aiStart ? Math.round((Date.now() - aiStart) / 1000) : 0}s
+                  {busyKind === 'illustrate' ? t('drawing…') : t('working…')} {aiStart ? Math.round((Date.now() - aiStart) / 1000) : 0}s
                   <span className="thinking-stage">
                     {busyKind === 'illustrate'
-                      ? ' · redrawing the photo in Technical Aviation Manual Line-Art (30–90 s)'
-                      : ' · fetching sources, drafting, marking pending edits'}
+                      ? ` · ${t('redrawing the photo in Technical Aviation Manual Line-Art (30–90 s)')}`
+                      : ` · ${t('fetching sources, drafting, marking pending edits')}`}
                   </span>
                 </span>
               </div>
@@ -1009,16 +1037,16 @@ export default function Editor() {
                 className="lineart-strip"
                 type="button"
                 disabled={aiBusy}
-                title="Pick a photo — it is redrawn in the FTD house style and appears here ready to insert"
+                title={t('Pick a photo — it is redrawn in the FTD house style and appears here ready to insert')}
                 onClick={() => photoRef.current?.click()}
               >
                 <span className="lineart-icon">✎</span>
                 <span>
-                  <strong>Photo → FTD line-art</strong>
+                  <strong>{t('Photo → FTD line-art')}</strong>
                   <span className="muted">
-                    {' '}— drop, paste or click; type instructions below first to steer the drawing
+                    {' — '}{t('drop, paste or click; type instructions below first to steer the drawing')}
                     {styleInfo && styleInfo.exemplars.length === 0 && (
-                      <> · <Link to="/settings">add style examples in Settings</Link> to match your look</>
+                      <> · <Link to="/settings">{t('add style examples in Settings')}</Link> {t('to match your look')}</>
                     )}
                   </span>
                 </span>
@@ -1047,7 +1075,7 @@ export default function Editor() {
               <div className="chat-input">
                 <button
                   className="btn btn-sm attach-btn"
-                  title="Attach images or text files — images are stored in the module's assets"
+                  title={t("Attach images or text files — images are stored in the module's assets")}
                   disabled={aiBusy || !!pending}
                   onClick={() => fileRef.current?.click()}
                 >
@@ -1068,8 +1096,8 @@ export default function Editor() {
                   value={chatInput}
                   placeholder={
                     pending
-                      ? 'Accept or discard the pending edit first'
-                      : 'e.g. add a grounding check to 4.1 — paste a URL to source a website, attach photos to embed them'
+                      ? t('Accept or discard the pending edit first')
+                      : t('e.g. add a grounding check to 4.1 — paste a URL to source a website, attach photos to embed them')
                   }
                   disabled={aiBusy || !!pending}
                   onChange={(e) => setChatInput(e.target.value)}
@@ -1092,12 +1120,12 @@ export default function Editor() {
                   disabled={aiBusy || !!pending || (!chatInput.trim() && !attachments.length)}
                   onClick={sendChat}
                 >
-                  Send
+                  {t('Send')}
                 </button>
               </div>
             </div>
           ) : (
-            <div className="chat-input muted">Read-only — {docMeta.status} docs cannot be edited.</div>
+            <div className="chat-input muted">{t('Read-only — {status} docs cannot be edited.', { status: t(docMeta.status) })}</div>
           )}
         </aside>
       </div>

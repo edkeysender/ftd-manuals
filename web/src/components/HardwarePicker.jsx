@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { t } from '../i18n.jsx';
 
 /**
  * Pick the hardware units a module manual describes: any number of items from the
@@ -25,36 +26,36 @@ export function HardwareForm({ initial, onSubmit, onCancel, submitLabel = 'Add' 
   return (
     <div className="hw-form">
       <label className="inline">
-        Unit name <span className="req">*</span>
-        <input autoFocus value={f.name} onChange={set('name')} placeholder="Cockpit camera — PTZ dome" />
+        {t('Unit name')} <span className="req">*</span>
+        <input autoFocus value={f.name} onChange={set('name')} placeholder={t('Cockpit camera — PTZ dome')} />
       </label>
       <div className="choice-row">
         {HW_TYPES.map(([k, l]) => (
           <button key={k} type="button" className={`choice ${f.type === k ? 'selected' : ''}`} onClick={() => setF({ ...f, type: k })}>
-            {l}
+            {t(l)}
           </button>
         ))}
       </div>
       {f.type === 'ftd' ? (
         <label className="inline">
-          Hardware version
+          {t('Hardware version')}
           <input value={f.version} onChange={set('version')} placeholder="v2" />
         </label>
       ) : (
         <div className="pair">
           <label className="inline">
-            Manufacturer
+            {t('Manufacturer')}
             <input value={f.manufacturer} onChange={set('manufacturer')} placeholder="Axis" />
           </label>
           <label className="inline">
-            Model / part no
+            {t('Model / part no')}
             <input value={f.model} onChange={set('model')} placeholder="M5075-G" />
           </label>
         </div>
       )}
       <label className="inline">
-        Notes (shown in the manual's General information)
-        <input value={f.notes} onChange={set('notes')} placeholder="Mounted above the instructor station; PoE" />
+        {t("Notes (shown in the manual's General information)")}
+        <input value={f.notes} onChange={set('notes')} placeholder={t('Mounted above the instructor station; PoE')} />
       </label>
       <div className="btn-row">
         <button
@@ -71,11 +72,11 @@ export function HardwareForm({ initial, onSubmit, onCancel, submitLabel = 'Add' 
             onSubmit(out);
           }}
         >
-          {submitLabel}
+          {t(submitLabel)}
         </button>
         {onCancel && (
           <button type="button" className="btn btn-sm" onClick={onCancel}>
-            Cancel
+            {t('Cancel')}
           </button>
         )}
       </div>
@@ -102,22 +103,22 @@ export default function HardwarePicker({ catalog, value, onChange, disabled = fa
   return (
     <div className="hw-picker">
       {resolved.length === 0 ? (
-        <div className="muted small">No hardware assigned — this manual is not tied to a physical unit.</div>
+        <div className="muted small">{t('No hardware assigned — this manual is not tied to a physical unit.')}</div>
       ) : (
         <ul className="hw-list">
           {resolved.map((h, i) => (
             <li key={h.id || `new-${i}`} className="hw-item">
               <div>
                 <strong>{h.name}</strong>
-                {!h.id && <span className="chip chip-new">new</span>}
-                {h.missing && <span className="chip chip-warn">not in catalog</span>}
+                {!h.id && <span className="chip chip-new">{t('new')}</span>}
+                {h.missing && <span className="chip chip-warn">{t('not in catalog')}</span>}
                 <div className="muted small">
                   {hwDetail(h)}
                   {h.notes ? ` — ${h.notes}` : ''}
                 </div>
               </div>
               {!disabled && (
-                <button type="button" className="btn-icon" title="Unassign" onClick={() => remove(i)}>
+                <button type="button" className="btn-icon" title={t('Unassign')} onClick={() => remove(i)}>
                   ✕
                 </button>
               )}
@@ -129,9 +130,9 @@ export default function HardwarePicker({ catalog, value, onChange, disabled = fa
       {!disabled && (
         <div className="hw-add">
           <div className="pair">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Assign from catalog — search by name, maker, model…" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Assign from catalog — search by name, maker, model…')} />
             <button type="button" className="btn btn-sm" onClick={() => setCreating(!creating)}>
-              {creating ? 'Close' : '+ New hardware'}
+              {creating ? t('Close') : t('+ New hardware')}
             </button>
           </div>
           {creating && (
@@ -141,14 +142,14 @@ export default function HardwarePicker({ catalog, value, onChange, disabled = fa
                 setCreating(false);
               }}
               onCancel={() => setCreating(false)}
-              submitLabel="Add to this module"
+              submitLabel={t('Add to this module')}
             />
           )}
           {!creating && (
             <div className="hw-catalog">
               {available.length === 0 ? (
                 <span className="muted small">
-                  {(catalog || []).length === 0 ? 'Catalog is empty — create the first unit with + New hardware.' : q ? 'No match.' : 'All catalog items assigned.'}
+                  {(catalog || []).length === 0 ? t('Catalog is empty — create the first unit with + New hardware.') : q ? t('No match.') : t('All catalog items assigned.')}
                 </span>
               ) : (
                 available.slice(0, 12).map((i) => (
@@ -158,13 +159,13 @@ export default function HardwarePicker({ catalog, value, onChange, disabled = fa
                     </span>
                     {i.usedBy?.length > 0 && (
                       <span className="muted small" title={i.usedBy.map((m) => m.name).join(', ')}>
-                        used by {i.usedBy.length}
+                        {t('used by {n}', { n: i.usedBy.length })}
                       </span>
                     )}
                   </button>
                 ))
               )}
-              {available.length > 12 && <span className="muted small">{available.length - 12} more — narrow the search.</span>}
+              {available.length > 12 && <span className="muted small">{t('{n} more — narrow the search.', { n: available.length - 12 })}</span>}
             </div>
           )}
         </div>

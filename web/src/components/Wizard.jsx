@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api, CATEGORIES, GROUPS, MANUAL_TYPES, manualType } from '../api.js';
 import { useToast } from '../App.jsx';
 import HardwarePicker, { hwDetail } from './HardwarePicker.jsx';
+import { t, plural } from '../i18n.jsx';
 
 const START_MODES = [
   {
@@ -80,24 +81,30 @@ export default function Wizard({ onClose, onCreated }) {
   const summary = useMemo(() => {
     const parts = [
       `${name || '—'}${code ? ` (${code})` : ''}`,
-      `${(GROUPS.find(([k]) => k === group) || [])[1]} manual`,
+      t('{group} manual', { group: t((GROUPS.find(([k]) => k === group) || [])[1]) }),
       hwItems.length === 0
-        ? 'no hardware'
+        ? t('no hardware')
         : hwItems.length === 1
           ? `${hwItems[0].name} (${hwDetail(hwItems[0])})`
-          : `${hwItems.length} hardware units: ${hwItems.map((h) => h.name).join(', ')}`,
+          : t('{n} hardware units: {names}', { n: hwItems.length, names: hwItems.map((h) => h.name).join(', ') }),
       cleanSoftwares.length
-        ? `linked to ${cleanSoftwares.map((s) => `${s.name}${s.fromVersion ? ` from ${s.fromVersion}` : ''}`).join(', ')}`
-        : 'not software-related',
-      selectedManuals.length ? `manuals: ${selectedManuals.map((id) => manualType(id).short).join(', ')}` : 'no manual selected',
+        ? t('linked to {list}', {
+            list: cleanSoftwares.map((s) => (s.fromVersion ? t('{name} from {version}', { name: s.name, version: s.fromVersion }) : s.name)).join(', '),
+          })
+        : t('not software-related'),
+      selectedManuals.length
+        ? t('manuals: {list}', { list: selectedManuals.map((id) => t(manualType(id).short)).join(', ') })
+        : t('no manual selected'),
       startMode === 'copy'
         ? sourceRow
-          ? `copied from ${sourceRow.name}`
-          : 'copy of — (pick a source)'
-        : START_MODES.find((m) => m.key === startMode)?.title,
+          ? t('copied from {name}', { name: sourceRow.name })
+          : t('copy of — (pick a source)')
+        : t(START_MODES.find((m) => m.key === startMode)?.title),
       fatMode === 'none'
-        ? 'no FAT checklist'
-        : `FAT checklist ${fatMode === 'copy' ? 'copied' : 'from template'} on the ${manualType(fatManual).label.toLowerCase()}`,
+        ? t('no FAT checklist')
+        : fatMode === 'copy'
+          ? t('FAT checklist copied on the {manual}', { manual: t(manualType(fatManual).label).toLowerCase() })
+          : t('FAT checklist from template on the {manual}', { manual: t(manualType(fatManual).label).toLowerCase() }),
     ];
     return parts.join(' · ');
   }, [name, code, group, startMode, sourceRow, hardware, catalog, cleanSoftwares, selectedManuals, fatMode, fatManual]);
@@ -134,11 +141,11 @@ export default function Wizard({ onClose, onCreated }) {
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wizard">
         <div className="modal-head">
-          <h2>New module doc</h2>
+          <h2>{t('New module doc')}</h2>
           <div className="steps">
             {STEPS.map((label, i) => (
               <span key={label} className={`step ${step === i + 1 ? 'active' : ''} ${step > i + 1 ? 'done' : ''}`}>
-                {i + 1} · {label}
+                {i + 1} · {t(label)}
               </span>
             ))}
           </div>
@@ -149,23 +156,23 @@ export default function Wizard({ onClose, onCreated }) {
           {step === 1 && (
             <div className="form-grid">
               <label>
-                Module name <span className="req">*</span>
-                <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Instructor intercom panel" />
+                {t('Module name')} <span className="req">*</span>
+                <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Instructor intercom panel')} />
               </label>
               <label>
-                Code
+                {t('Code')}
                 <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="IOS-ICP" />
               </label>
               <label>
-                Category
+                {t('Category')}
                 <select value={category} onChange={(e) => setCategory(e.target.value)}>
                   {CATEGORIES.map(([k, l]) => (
-                    <option key={k} value={k}>{l}</option>
+                    <option key={k} value={k}>{t(l)}</option>
                   ))}
                 </select>
               </label>
               <div className="field">
-                <span className="field-label">Manual group — which assembled manual this module's mini-manuals join</span>
+                <span className="field-label">{t("Manual group — which assembled manual this module's mini-manuals join")}</span>
                 <div className="choice-row">
                   {GROUPS.map(([k, l]) => (
                     <button
@@ -174,7 +181,7 @@ export default function Wizard({ onClose, onCreated }) {
                       className={`choice ${group === k ? 'selected' : ''}`}
                       onClick={() => setGroup(k)}
                     >
-                      {l}
+                      {t(l)}
                     </button>
                   ))}
                 </div>
@@ -185,23 +192,21 @@ export default function Wizard({ onClose, onCreated }) {
           {step === 2 && (
             <div className="form-grid">
               <div className="field">
-                <span className="field-label">Hardware — the unit types this module's manuals describe</span>
+                <span className="field-label">{t("Hardware — the unit types this module's manuals describe")}</span>
                 <p className="muted small">
-                  Assign existing units from the shared catalog or create new ones. One module can cover several unit
-                  types (e.g. a central unit and two handsets): each gets its own subsection in the per-unit sections, its
-                  own row in General information and in the FAT protocol.
+                  {t('Assign existing units from the shared catalog or create new ones. One module can cover several unit types (e.g. a central unit and two handsets): each gets its own subsection in the per-unit sections, its own row in General information and in the FAT protocol.')}
                 </p>
                 <HardwarePicker catalog={catalog} value={hardware} onChange={setHardware} />
               </div>
 
               <div className="field">
-                <span className="field-label">Software relation — enables the software manuals (customer / technician)</span>
+                <span className="field-label">{t('Software relation — enables the software manuals (customer / technician)')}</span>
                 <div className="choice-row">
                   <button type="button" className={`choice ${!swLinked ? 'selected' : ''}`} onClick={() => setSwLinked(false)}>
-                    Not software-related
+                    {t('Not software-related')}
                   </button>
                   <button type="button" className={`choice ${swLinked ? 'selected' : ''}`} onClick={() => setSwLinked(true)}>
-                    Linked to software
+                    {t('Linked to software')}
                   </button>
                 </div>
                 {swLinked && (
@@ -210,12 +215,12 @@ export default function Wizard({ onClose, onCreated }) {
                       <div className="pair" key={i}>
                         <input
                           value={s.name}
-                          placeholder="Software name (2N Access Unit)"
+                          placeholder={t('Software name (2N Access Unit)')}
                           onChange={(e) => setSoftwares(softwares.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
                         />
                         <input
                           value={s.fromVersion}
-                          placeholder="From version (v2.0.0)"
+                          placeholder={t('From version (v2.0.0)')}
                           onChange={(e) =>
                             setSoftwares(softwares.map((x, j) => (j === i ? { ...x, fromVersion: e.target.value } : x)))
                           }
@@ -228,7 +233,7 @@ export default function Wizard({ onClose, onCreated }) {
                       </div>
                     ))}
                     <button className="btn btn-ghost" onClick={() => setSoftwares([...softwares, { name: '', fromVersion: '' }])}>
-                      + Add another software
+                      {t('+ Add another software')}
                     </button>
                   </div>
                 )}
@@ -241,35 +246,35 @@ export default function Wizard({ onClose, onCreated }) {
           {step === 3 && (
             <div className="form-grid">
               <div className="field">
-                <span className="field-label">Manuals — one mini-manual per audience, each with its own versions and draft branch</span>
+                <span className="field-label">{t('Manuals — one mini-manual per audience, each with its own versions and draft branch')}</span>
                 <div className="manual-choices">
-                  {MANUAL_TYPES.map((t) => {
-                    const disabled = t.kind === 'software' && !hasSoftware;
-                    const on = selectedManuals.includes(t.id);
+                  {MANUAL_TYPES.map((mt) => {
+                    const disabled = mt.kind === 'software' && !hasSoftware;
+                    const on = selectedManuals.includes(mt.id);
                     return (
                       <button
-                        key={t.id}
+                        key={mt.id}
                         type="button"
                         className={`manual-choice ${on ? 'selected' : ''}`}
                         disabled={disabled}
-                        title={disabled ? 'Link the module to a software (step 2) to document it' : ''}
-                        onClick={() => toggleManual(t.id)}
+                        title={disabled ? t('Link the module to a software (step 2) to document it') : ''}
+                        onClick={() => toggleManual(mt.id)}
                       >
                         <strong>
-                          <input type="checkbox" checked={on} readOnly tabIndex={-1} /> {t.label}{' '}
-                          <span className={`manual-kind ${t.kind}`}>{t.kind}</span>
+                          <input type="checkbox" checked={on} readOnly tabIndex={-1} /> {t(mt.label)}{' '}
+                          <span className={`manual-kind ${mt.kind}`}>{t(mt.kind)}</span>
                         </strong>
-                        <span>{t.desc}</span>
-                        <span className="sections">{t.sections.join(' · ')}</span>
+                        <span>{t(mt.desc)}</span>
+                        <span className="sections">{mt.sections.map((s) => t(s)).join(' · ')}</span>
                       </button>
                     );
                   })}
                 </div>
-                {!hasSoftware && <span className="hint">Software manuals become available once the module is linked to a software (step 2).</span>}
+                {!hasSoftware && <span className="hint">{t('Software manuals become available once the module is linked to a software (step 2).')}</span>}
               </div>
 
               <div className="field">
-                <span className="field-label">Starting content</span>
+                <span className="field-label">{t('Starting content')}</span>
                 <div className="choice-cards">
                   {START_MODES.map((m) => (
                     <button
@@ -278,32 +283,33 @@ export default function Wizard({ onClose, onCreated }) {
                       className={`choice-card ${startMode === m.key ? 'selected' : ''}`}
                       onClick={() => setStartMode(m.key)}
                     >
-                      <strong>{m.title}</strong>
-                      <span>{m.desc}</span>
+                      <strong>{t(m.title)}</strong>
+                      <span>{t(m.desc)}</span>
                     </button>
                   ))}
                   {startMode === 'copy' && (
                     <label className="full">
-                      Source module (Released manuals only)
+                      {t('Source module (Released manuals only)')}
                       <select value={source} onChange={(e) => setSource(e.target.value)}>
-                        <option value="">— pick a module —</option>
+                        <option value="">{t('— pick a module —')}</option>
                         {sources.map((m) => (
                           <option key={m.slug} value={m.slug}>
                             {m.name} ·{' '}
                             {selectedManuals
                               .filter((id) => m.manuals?.[id]?.released)
-                              .map((id) => `${manualType(id).short} ${m.manuals[id].released}`)
+                              .map((id) => `${t(manualType(id).short)} ${m.manuals[id].released}`)
                               .join(', ')}
                           </option>
                         ))}
                       </select>
                       {sources.length === 0 ? (
-                        <span className="hint">No module has a released manual of the selected types yet — release one first, or pick another mode.</span>
+                        <span className="hint">{t('No module has a released manual of the selected types yet — release one first, or pick another mode.')}</span>
                       ) : (
                         sourceRow && (
                           <span className="hint">
-                            Manuals the source has not released start from the blank template:{' '}
-                            {selectedManuals.filter((id) => !sourceRow.manuals?.[id]?.released).map((id) => manualType(id).short).join(', ') || 'none'}.
+                            {t('Manuals the source has not released start from the blank template: {list}.', {
+                              list: selectedManuals.filter((id) => !sourceRow.manuals?.[id]?.released).map((id) => t(manualType(id).short)).join(', ') || t('none'),
+                            })}
                           </span>
                         )
                       )}
@@ -319,17 +325,32 @@ export default function Wizard({ onClose, onCreated }) {
           {step === 4 && (
             <div className="form-grid">
               <div className="field">
-                <span className="field-label">Factory acceptance test checklist</span>
+                <span className="field-label">{t('Factory acceptance test checklist')}</span>
                 <p className="muted small">
-                  A separate document generated next to the <strong>{manualType(fatManual).label.toLowerCase()}</strong> for
-                  its doc version: identification, checks per phase with expected results, non-conformances and sign-off.
-                  Items are edited in the editor's FAT tab; the assistant can derive them from the manual's procedures.
+                  {t("A separate document generated next to the {manual} for its doc version: identification, checks per phase with expected results, non-conformances and sign-off. Items are edited in the editor's FAT tab; the assistant can derive them from the manual's procedures.")
+                    .split('{manual}')
+                    .map((part, i, arr) => (
+                      <React.Fragment key={i}>
+                        {part}
+                        {i < arr.length - 1 && <strong>{t(manualType(fatManual).label).toLowerCase()}</strong>}
+                      </React.Fragment>
+                    ))}
                 </p>
                 <div className="choice-cards">
                   {[
-                    ['template', 'Start from the category template', `Phases and checks typical for ${(CATEGORIES.find(([k]) => k === category) || [])[1] || category} modules${hasFtdHw ? ', incl. calibration' : ''}${cleanSoftwares.length ? ', incl. software version checks' : ''}. Review the TODO(author) items.`],
-                    ...(startMode === 'copy' ? [['copy', 'Copy from the source module', 'Takes the checklist of the copied doc version (falls back to the template when it has none).']] : []),
-                    ['none', 'No FAT checklist', 'This module is not acceptance-tested on its own. One can be added later in the editor.'],
+                    [
+                      'template',
+                      t('Start from the category template'),
+                      t('Phases and checks typical for {category} modules{calibration}{software}. Review the TODO(author) items.', {
+                        category: t((CATEGORIES.find(([k]) => k === category) || [])[1] || category),
+                        calibration: hasFtdHw ? t(', incl. calibration') : '',
+                        software: cleanSoftwares.length ? t(', incl. software version checks') : '',
+                      }),
+                    ],
+                    ...(startMode === 'copy'
+                      ? [['copy', t('Copy from the source module'), t('Takes the checklist of the copied doc version (falls back to the template when it has none).')]]
+                      : []),
+                    ['none', t('No FAT checklist'), t('This module is not acceptance-tested on its own. One can be added later in the editor.')],
                   ].map(([k, title, desc]) => (
                     <button key={k} type="button" className={`choice-card ${fatMode === k ? 'selected' : ''}`} onClick={() => setFatMode(k)}>
                       {title}
@@ -345,21 +366,21 @@ export default function Wizard({ onClose, onCreated }) {
 
         <div className="modal-foot">
           {step > 1 ? (
-            <button className="btn" onClick={() => setStep(step - 1)}>← Back</button>
+            <button className="btn" onClick={() => setStep(step - 1)}>{t('← Back')}</button>
           ) : (
             <span />
           )}
           {step < STEPS.length ? (
             <button className="btn btn-primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
-              Next →
+              {t('Next →')}
             </button>
           ) : (
             <button className="btn btn-primary" disabled={busy || !selectedManuals.length} onClick={create}>
               {busy
                 ? startMode === 'ai'
-                  ? 'Drafting with AI…'
-                  : 'Creating…'
-                : `Create ${selectedManuals.length} draft${selectedManuals.length === 1 ? '' : 's'}`}
+                  ? t('Drafting with AI…')
+                  : t('Creating…')
+                : t('Create {drafts}', { drafts: plural(selectedManuals.length, 'draft') })}
             </button>
           )}
         </div>

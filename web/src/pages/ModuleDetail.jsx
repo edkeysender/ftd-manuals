@@ -5,11 +5,12 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast } from '../App.jsx';
 import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
 import { ManualPills } from './ModulesList.jsx';
+import { t, plural } from '../i18n.jsx';
 
 const catLabel = (c) => (CATEGORIES.find(([k]) => k === c) || [null, c])[1];
 const isOpenDoc = (d) => d.status === 'draft' || d.status === 'in-review';
 /** "Technician A1.0" — how a doc of one manual type is named in buttons and hints. */
-const docLabel = (d) => `${manualType(d.manual).short} ${d.version}`;
+const docLabel = (d) => `${t(manualType(d.manual).short)} ${d.version}`;
 
 export default function ModuleDetail() {
   const { slug } = useParams();
@@ -30,7 +31,7 @@ export default function ModuleDetail() {
     load();
   }, [load]);
 
-  if (!data) return <div className="page"><div className="empty">Loading…</div></div>;
+  if (!data) return <div className="page"><div className="empty">{t('Loading…')}</div></div>;
 
   const { module, docs, history } = data;
   const hasSoftware = (module.softwares || []).length > 0;
@@ -48,20 +49,20 @@ export default function ModuleDetail() {
   return (
     <div className="page">
       <div className="crumbs">
-        <Link to="/">Modules</Link> / {module.name}
+        <Link to="/">{t('Modules')}</Link> / {module.name}
       </div>
       <div className="page-head">
         <div>
           <h1>
             {module.name}{' '}
             {data.needsDoc && (
-              <span className="orange-dot" title="Manual-affecting software release with no doc linked yet" />
+              <span className="orange-dot" title={t('Manual-affecting software release with no doc linked yet')} />
             )}
           </h1>
           <div className="meta-chips">
             {module.code && <code>{module.code}</code>}
-            <span className="chip">{catLabel(module.category)}</span>
-            <span className="chip">{module.group}</span>
+            <span className="chip">{t(catLabel(module.category))}</span>
+            <span className="chip">{t(module.group)}</span>
             {(module.hardwareItems || []).map((h) => (
               <span key={h.id || h.name} className="chip chip-hw" title={hwDetail(h)}>
                 {h.name}
@@ -77,26 +78,26 @@ export default function ModuleDetail() {
 
       <div className="tabs">
         <button className={tab === 'docs' ? 'active' : ''} onClick={() => setTab('docs')}>
-          Manuals{docs.length ? ` (${Object.keys(data.manuals || {}).length})` : ''}
+          {t('Manuals')}{docs.length ? ` (${Object.keys(data.manuals || {}).length})` : ''}
         </button>
         <button className={tab === 'hardware' ? 'active' : ''} onClick={() => setTab('hardware')}>
-          Hardware{module.hardwareItems?.length ? ` (${module.hardwareItems.length})` : ''}
+          {t('Hardware')}{module.hardwareItems?.length ? ` (${module.hardwareItems.length})` : ''}
         </button>
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
-          Assets
+          {t('Assets')}
           {data.staleAssets > 0 && (
             <>
               {' '}
-              <span className="orange-dot" title={`${data.staleAssets} image${data.staleAssets === 1 ? '' : 's'} may show an older software/hardware version`} />
+              <span className="orange-dot" title={t('{images} may show an older software/hardware version', { images: plural(data.staleAssets, 'image') })} />
             </>
           )}
         </button>
         <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
-          History
+          {t('History')}
         </button>
         {hasSoftware && (
           <button className={tab === 'software' ? 'active' : ''} onClick={() => setTab('software')}>
-            Software versions
+            {t('Software versions')}
           </button>
         )}
       </div>
@@ -107,10 +108,10 @@ export default function ModuleDetail() {
         <table className="table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Change</th>
-              <th>Ref</th>
-              <th>Commit</th>
+              <th>{t('Date')}</th>
+              <th>{t('Change')}</th>
+              <th>{t('Ref')}</th>
+              <th>{t('Commit')}</th>
             </tr>
           </thead>
           <tbody>
@@ -149,7 +150,7 @@ function ManualsTab({ data, slug, act, reload }) {
   const toast = useToast();
   const hasSoftware = (module.softwares || []).length > 0;
 
-  const versionRows = (typed, t) =>
+  const versionRows = (typed, mt) =>
     typed.map((d) => (
       <tr key={d.key}>
         <td><strong>{d.version}</strong></td>
@@ -161,46 +162,46 @@ function ManualsTab({ data, slug, act, reload }) {
           {isOpenDoc(d) && (
             <>
               <button className="btn btn-primary btn-sm" onClick={() => navigate(`/modules/${slug}/docs/${d.key}/edit`)}>
-                Edit
+                {t('Edit')}
               </button>
               {d.status === 'draft' && (
-                <button className="btn btn-sm" onClick={() => act(() => api.submitReview(slug, d.key), `${docLabel(d)} submitted for review`)}>
-                  Submit for review
+                <button className="btn btn-sm" onClick={() => act(() => api.submitReview(slug, d.key), t('{doc} submitted for review', { doc: docLabel(d) }))}>
+                  {t('Submit for review')}
                 </button>
               )}
               {d.status === 'in-review' && (
                 <>
-                  <button className="btn btn-sm" onClick={() => act(() => api.release(slug, d.key), `${docLabel(d)} released — merged to main`)}>
-                    Approve &amp; release
+                  <button className="btn btn-sm" onClick={() => act(() => api.release(slug, d.key), t('{doc} released — merged to main', { doc: docLabel(d) }))}>
+                    {t('Approve & release')}
                   </button>
-                  <button className="btn btn-sm" onClick={() => act(() => api.backToDraft(slug, d.key), `${docLabel(d)} back to draft`)}>
-                    Back to draft
+                  <button className="btn btn-sm" onClick={() => act(() => api.backToDraft(slug, d.key), t('{doc} back to draft', { doc: docLabel(d) }))}>
+                    {t('Back to draft')}
                   </button>
                 </>
               )}
               <button
                 className="btn btn-sm btn-danger"
                 onClick={() => {
-                  if (confirm(`Discard ${t.label.toLowerCase()} draft ${d.version}? The branch ${d.branch} will be deleted.`)) {
-                    act(() => api.discard(slug, d.key), `${docLabel(d)} discarded`).then(() => {
+                  if (confirm(t('Discard {manual} draft {version}? The branch {branch} will be deleted.', { manual: t(mt.label).toLowerCase(), version: d.version, branch: d.branch }))) {
+                    act(() => api.discard(slug, d.key), t('{doc} discarded', { doc: docLabel(d) })).then(() => {
                       // module may be gone entirely if nothing of it was ever released
                       api.module(slug).catch(() => navigate('/'));
                     });
                   }
                 }}
               >
-                Discard
+                {t('Discard')}
               </button>
             </>
           )}
           {(d.status === 'released' || d.status === 'superseded') && (
             <button className="btn btn-sm" onClick={() => navigate(`/modules/${slug}/docs/${d.key}/edit`)}>
-              View
+              {t('View')}
             </button>
           )}
           {d.fat && (
-            <a className="btn btn-sm" href={`/api/modules/${slug}/docs/${d.key}/checklist.html`} target="_blank" rel="noreferrer" title="Blank FAT protocol for this doc version">
-              FAT
+            <a className="btn btn-sm" href={`/api/modules/${slug}/docs/${d.key}/checklist.html`} target="_blank" rel="noreferrer" title={t('Blank FAT protocol for this doc version')}>
+              {t('FAT')}
             </a>
           )}
         </td>
@@ -210,43 +211,43 @@ function ManualsTab({ data, slug, act, reload }) {
   return (
     <>
       <div className="manual-grid">
-        {MANUAL_TYPES.map((t) => {
-          const typed = docs.filter((d) => d.manual === t.id);
+        {MANUAL_TYPES.map((mt) => {
+          const typed = docs.filter((d) => d.manual === mt.id);
           const open = typed.find(isOpenDoc);
-          const unc = (uncovered || []).filter((u) => u.manual === t.id);
-          const canHave = t.kind !== 'software' || hasSoftware;
+          const unc = (uncovered || []).filter((u) => u.manual === mt.id);
+          const canHave = mt.kind !== 'software' || hasSoftware;
           if (!typed.length) {
             return (
-              <div className="manual-card missing" key={t.id}>
+              <div className="manual-card missing" key={mt.id}>
                 <div className="manual-card-head">
                   <div>
                     <h3>
-                      {t.label} <span className={`manual-kind ${t.kind}`}>{t.kind}</span>
+                      {t(mt.label)} <span className={`manual-kind ${mt.kind}`}>{t(mt.kind)}</span>
                     </h3>
-                    <p className="muted small">{t.desc}</p>
+                    <p className="muted small">{t(mt.desc)}</p>
                   </div>
                   <button
                     className="btn btn-sm"
                     disabled={!canHave}
-                    title={canHave ? `Start ${t.label.toLowerCase()} A1.0` : 'Link the module to a software first (Software versions tab)'}
-                    onClick={() => setAdding(t.id)}
+                    title={canHave ? t('Start {manual} A1.0', { manual: t(mt.label).toLowerCase() }) : t('Link the module to a software first (Software versions tab)')}
+                    onClick={() => setAdding(mt.id)}
                   >
-                    + Create
+                    {t('+ Create')}
                   </button>
                 </div>
-                {!canHave && <span className="hint">Software manuals need a software relation — add one in the Software versions tab.</span>}
+                {!canHave && <span className="hint">{t('Software manuals need a software relation — add one in the Software versions tab.')}</span>}
               </div>
             );
           }
           return (
-            <div className="manual-card" key={t.id}>
+            <div className="manual-card" key={mt.id}>
               <div className="manual-card-head">
                 <div>
                   <h3>
-                    {t.label} <span className={`manual-kind ${t.kind}`}>{t.kind}</span> <StatusBadge status={typed[0].status} />
+                    {t(mt.label)} <span className={`manual-kind ${mt.kind}`}>{t(mt.kind)}</span> <StatusBadge status={typed[0].status} />
                   </h3>
                   <p className="muted small">
-                    {t.desc} Sections: {t.sections.join(' · ')}.
+                    {t(mt.desc)} {t('Sections: {sections}.', { sections: mt.sections.map((s) => t(s)).join(' · ') })}
                   </p>
                 </div>
                 {!open && (
@@ -254,22 +255,22 @@ function ManualsTab({ data, slug, act, reload }) {
                     <div className="btn-row">
                       <button
                         className="btn btn-sm"
-                        title={`Next minor version of the ${t.label.toLowerCase()}, based on ${typed[0].version}`}
-                        onClick={() => act(() => api.nextDocVersion(slug, { manual: t.id, bump: 'minor' }), `New ${t.label.toLowerCase()} draft (minor) created`)}
+                        title={t('Next minor version of the {manual}, based on {version}', { manual: t(mt.label).toLowerCase(), version: typed[0].version })}
+                        onClick={() => act(() => api.nextDocVersion(slug, { manual: mt.id, bump: 'minor' }), t('New {manual} draft (minor) created', { manual: t(mt.label).toLowerCase() }))}
                       >
-                        New version (minor)
+                        {t('New version (minor)')}
                       </button>
                       <button
                         className="btn btn-sm"
-                        title={`Next major version of the ${t.label.toLowerCase()}`}
-                        onClick={() => act(() => api.nextDocVersion(slug, { manual: t.id, bump: 'major' }), `New ${t.label.toLowerCase()} draft (major) created`)}
+                        title={t('Next major version of the {manual}', { manual: t(mt.label).toLowerCase() })}
+                        onClick={() => act(() => api.nextDocVersion(slug, { manual: mt.id, bump: 'major' }), t('New {manual} draft (major) created', { manual: t(mt.label).toLowerCase() }))}
                       >
-                        major
+                        {t('major')}
                       </button>
                     </div>
                     {unc.length > 0 && (
                       <span className="hint">
-                        The new version becomes the manual for {unc.map((u) => `${u.name} ${u.version}`).join(', ')}
+                        {t('The new version becomes the manual for {releases}', { releases: unc.map((u) => `${u.name} ${u.version}`).join(', ') })}
                       </span>
                     )}
                   </div>
@@ -278,15 +279,15 @@ function ManualsTab({ data, slug, act, reload }) {
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Version</th>
-                    <th>Rev</th>
-                    <th>Status</th>
-                    <th>Branch</th>
-                    <th>Updated</th>
+                    <th>{t('Version')}</th>
+                    <th>{t('Rev')}</th>
+                    <th>{t('Status')}</th>
+                    <th>{t('Branch')}</th>
+                    <th>{t('Updated')}</th>
                     <th></th>
                   </tr>
                 </thead>
-                <tbody>{versionRows(typed, t)}</tbody>
+                <tbody>{versionRows(typed, mt)}</tbody>
               </table>
             </div>
           );
@@ -300,7 +301,7 @@ function ManualsTab({ data, slug, act, reload }) {
           onClose={() => setAdding(null)}
           onCreated={(r) => {
             setAdding(null);
-            toast(`${manualType(r.manual).label} ${r.version} r1 created on ${r.branch}`);
+            toast(t('{manual} {version} r1 created on {branch}', { manual: t(manualType(r.manual).label), version: r.version, branch: r.branch }));
             if (r.aiNote) toast(r.aiNote, 'err');
             reload();
             navigate(`/modules/${slug}/docs/${r.key}/edit`);
@@ -315,12 +316,13 @@ function ManualsTab({ data, slug, act, reload }) {
  *  released manual of the same type, or an AI first draft — plus the FAT checklist choice. */
 function AddManualModal({ slug, module, manual, onClose, onCreated }) {
   const toast = useToast();
-  const t = manualType(manual);
+  const mt = manualType(manual);
   const [mode, setMode] = useState('blank');
   const [sources, setSources] = useState([]);
   const [source, setSource] = useState('');
-  const [fat, setFat] = useState(t.kind === 'software' ? 'none' : 'template');
+  const [fat, setFat] = useState(mt.kind === 'software' ? 'none' : 'template');
   const [busy, setBusy] = useState(false);
+  const manualName = t(mt.label).toLowerCase();
 
   useEffect(() => {
     api
@@ -349,20 +351,20 @@ function AddManualModal({ slug, module, manual, onClose, onCreated }) {
       <div className="modal">
         <div className="modal-head">
           <h2>
-            {t.label} — {module.name}
+            {t(mt.label)} — {module.name}
           </h2>
           <span className="steps" />
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
           <p className="muted small">
-            {t.desc} Sections 4–7: {t.sections.join(', ')}. Starts as A1.0 r1 on its own draft branch; sections 1–3 are generated.
+            {t(mt.desc)} {t('Sections 4–7: {sections}. Starts as A1.0 r1 on its own draft branch; sections 1–3 are generated.', { sections: mt.sections.map((s) => t(s)).join(', ') })}
           </p>
           <div className="choice-cards">
             {[
-              ['blank', 'Blank — FTD standard template', `The ${t.label.toLowerCase()} template with TODO(author) markers${(module.hardwareItems || []).length > 1 && t.kind !== 'software' ? ', one subsection per hardware unit' : ''}.`],
-              ['copy', 'Copy another module’s released manual', `Content and revision record of a released ${t.label.toLowerCase()} of another module.`],
-              ['ai', 'AI first draft', 'The assistant drafts the structure from the module metadata; you review it in the editor.'],
+              ['blank', t('Blank — FTD standard template'), (module.hardwareItems || []).length > 1 && mt.kind !== 'software' ? t('The {manual} template with TODO(author) markers, one subsection per hardware unit.', { manual: manualName }) : t('The {manual} template with TODO(author) markers.', { manual: manualName })],
+              ['copy', t('Copy another module’s released manual'), t('Content and revision record of a released {manual} of another module.', { manual: manualName })],
+              ['ai', t('AI first draft'), t('The assistant drafts the structure from the module metadata; you review it in the editor.')],
             ].map(([k, title, desc]) => (
               <button key={k} type="button" className={`choice-card ${mode === k ? 'selected' : ''}`} onClick={() => setMode(k)}>
                 <strong>{title}</strong>
@@ -371,35 +373,35 @@ function AddManualModal({ slug, module, manual, onClose, onCreated }) {
             ))}
             {mode === 'copy' && (
               <label className="full">
-                Source module (released {t.label.toLowerCase()} only)
+                {t('Source module (released {manual} only)', { manual: manualName })}
                 <select value={source} onChange={(e) => setSource(e.target.value)}>
-                  <option value="">— pick a module —</option>
+                  <option value="">{t('— pick a module —')}</option>
                   {sources.map((m) => (
                     <option key={m.slug} value={m.slug}>
                       {m.name} · {m.manuals[manual].released}
                     </option>
                   ))}
                 </select>
-                {sources.length === 0 && <span className="hint">No module has a released {t.label.toLowerCase()} yet.</span>}
+                {sources.length === 0 && <span className="hint">{t('No module has a released {manual} yet.', { manual: manualName })}</span>}
               </label>
             )}
           </div>
           <div className="field" style={{ marginTop: 14 }}>
-            <span className="field-label">FAT checklist</span>
+            <span className="field-label">{t('FAT checklist')}</span>
             <div className="choice-row">
               <button type="button" className={`choice ${fat === 'template' ? 'selected' : ''}`} onClick={() => setFat('template')}>
-                From the category template
+                {t('From the category template')}
               </button>
               <button type="button" className={`choice ${fat === 'none' ? 'selected' : ''}`} onClick={() => setFat('none')}>
-                None
+                {t('None')}
               </button>
             </div>
           </div>
         </div>
         <div className="modal-foot">
-          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn" onClick={onClose}>{t('Cancel')}</button>
           <button className="btn btn-primary" disabled={busy || (mode === 'copy' && !source)} onClick={create}>
-            {busy ? (mode === 'ai' ? 'Drafting with AI…' : 'Creating…') : `Create ${t.label.toLowerCase()} A1.0`}
+            {busy ? (mode === 'ai' ? t('Drafting with AI…') : t('Creating…')) : t('Create {manual} A1.0', { manual: manualName })}
           </button>
         </div>
       </div>
@@ -430,7 +432,7 @@ function InboxPanel({ slug, draft, onImported }) {
     setBusy(true);
     try {
       const saved = await api.uploadInbox(await Promise.all(files.map(readFileAsBase64)));
-      toast(`${saved.length} file${saved.length === 1 ? '' : 's'} in the inbox`);
+      toast(t('{files} in the inbox', { files: plural(saved.length, 'file') }));
       load();
     } catch (e) {
       toast(e.message, 'err');
@@ -440,11 +442,11 @@ function InboxPanel({ slug, draft, onImported }) {
   }
 
   async function importFiles(names) {
-    if (!draft) return toast('Create a doc draft first', 'err');
+    if (!draft) return toast(t('Create a doc draft first'), 'err');
     setBusy(true);
     try {
       const saved = await api.importInbox(slug, draft.key, names);
-      toast(`${saved.length} file${saved.length === 1 ? '' : 's'} attached to ${draft.key}`);
+      toast(t('{files} attached to {draft}', { files: plural(saved.length, 'file'), draft: draft.key }));
       load();
       onImported();
     } catch (e) {
@@ -460,10 +462,10 @@ function InboxPanel({ slug, draft, onImported }) {
     <div className="inbox">
       <div className="inbox-head">
         <button className="inbox-toggle" onClick={() => setOpen(!open)}>
-          {open ? '▾' : '▸'} Inbox <span className="muted">— {files.length} file{files.length === 1 ? '' : 's'} waiting</span>
+          {open ? '▾' : '▸'} {t('Inbox')} <span className="muted">— {t('{files} waiting', { files: plural(files.length, 'file') })}</span>
         </button>
         <span className="muted small" title={info?.dir}>
-          Drop artwork here, then attach it yourself or tell the assistant which figure goes where (it imports by name — no image bytes through the chat).
+          {t('Drop artwork here, then attach it yourself or tell the assistant which figure goes where (it imports by name — no image bytes through the chat).')}
         </span>
       </div>
       {open && (
@@ -481,14 +483,14 @@ function InboxPanel({ slug, draft, onImported }) {
               drop(e.dataTransfer.files);
             }}
           >
-            <strong>{busy ? 'Working…' : 'Drop files for the inbox'}</strong>
+            <strong>{busy ? t('Working…') : t('Drop files for the inbox')}</strong>
             <span className="muted">
-              {' — or '}
+              {t(' — or ')}
               <label className="link">
-                choose files
+                {t('choose files')}
                 <input type="file" multiple accept="image/*,.pdf,.svg" hidden onChange={(e) => { drop(e.target.files); e.target.value = ''; }} />
               </label>
-              . Stored in <code>{info?.dir || '…'}</code> on the console machine; not committed until attached.
+              {t('. Stored in')} <code>{info?.dir || '…'}</code> {t('on the console machine; not committed until attached.')}
             </span>
           </div>
           {files.length > 0 && (
@@ -502,15 +504,15 @@ function InboxPanel({ slug, draft, onImported }) {
                   )}
                   <div className="asset-name" title={f.name}>{f.name}</div>
                   <div className="muted small">
-                    {fmt(f.size)}{f.width ? ` · ${f.width}×${f.height}` : ''}{f.complete === false ? ' · truncated!' : ''}
+                    {fmt(f.size)}{f.width ? ` · ${f.width}×${f.height}` : ''}{f.complete === false ? ` · ${t('truncated!')}` : ''}
                   </div>
                   <div className="btn-row">
                     <button className="btn btn-sm btn-primary" disabled={!draft || busy || f.complete === false} onClick={() => importFiles([f.name])}>
-                      Attach to {draft ? draft.key : 'draft'}
+                      {t('Attach to {draft}', { draft: draft ? draft.key : t('draft') })}
                     </button>
                     <button
                       className="btn-icon"
-                      title="Delete from inbox"
+                      title={t('Delete from inbox')}
                       onClick={async () => {
                         try {
                           await api.deleteInbox(f.name);
@@ -527,7 +529,7 @@ function InboxPanel({ slug, draft, onImported }) {
               ))}
               {draft && files.filter((f) => f.complete !== false).length > 1 && (
                 <button className="btn attach-all" disabled={busy} onClick={() => importFiles(files.filter((f) => f.complete !== false).map((f) => f.name))}>
-                  Attach all to {draft.key}
+                  {t('Attach all to {draft}', { draft: draft.key })}
                 </button>
               )}
             </div>
@@ -563,7 +565,7 @@ function HardwareTab({ module, slug, reload }) {
     setBusy(true);
     try {
       const updated = await api.updateModule(slug, { hardware: value });
-      toast(`Hardware saved — ${updated.hardwareItems.length ? updated.hardwareItems.map((h) => h.name).join(', ') : 'none'}`);
+      toast(t('Hardware saved — {units}', { units: updated.hardwareItems.length ? updated.hardwareItems.map((h) => h.name).join(', ') : t('none') }));
       await reload();
       await loadCatalog();
     } catch (e) {
@@ -576,7 +578,7 @@ function HardwareTab({ module, slug, reload }) {
   async function saveItem(id, patch) {
     try {
       await api.updateHardware(id, patch);
-      toast('Catalog item updated');
+      toast(t('Catalog item updated'));
       setEditing(null);
       await loadCatalog();
       await reload();
@@ -585,29 +587,27 @@ function HardwareTab({ module, slug, reload }) {
     }
   }
 
-  if (catalog === null) return <div className="muted">Loading…</div>;
+  if (catalog === null) return <div className="muted">{t('Loading…')}</div>;
   const assigned = (module.hardwareItems || []).filter((h) => h.id && !h.missing);
 
   return (
     <div className="hw-tab">
       <div className="sw-register">
-        <h3>Units described by this manual</h3>
+        <h3>{t('Units described by this manual')}</h3>
         <p className="muted small">
-          Each unit gets its own row in <em>3 General information</em> and in the FAT protocol header. When a manual
-          covers several unit types (e.g. three camera models), describe each one in its own subsection of
-          Installation and Operation.
+          {t('Each unit gets its own row in')} <em>{t('3 General information')}</em> {t('and in the FAT protocol header. When a manual covers several unit types (e.g. three camera models), describe each one in its own subsection of Installation and Operation.')}
         </p>
         <HardwarePicker catalog={catalog} value={value} onChange={setValue} />
         <div className="btn-row" style={{ marginTop: 12 }}>
           <button className="btn btn-primary btn-sm" disabled={!dirty || busy} onClick={save}>
-            {busy ? 'Saving…' : 'Save hardware assignment'}
+            {busy ? t('Saving…') : t('Save hardware assignment')}
           </button>
           {dirty && (
             <button
               className="btn btn-sm"
               onClick={() => setValue((module.hardwareItems || []).map((h) => (h.id && !h.missing ? { id: h.id } : { ...h })))}
             >
-              Reset
+              {t('Reset')}
             </button>
           )}
         </div>
@@ -615,15 +615,15 @@ function HardwareTab({ module, slug, reload }) {
 
       {assigned.length > 0 && (
         <div className="sw-block" style={{ marginTop: 20 }}>
-          <h3>Catalog records</h3>
-          <p className="muted small">Editing a record changes it for every module that uses it.</p>
+          <h3>{t('Catalog records')}</h3>
+          <p className="muted small">{t('Editing a record changes it for every module that uses it.')}</p>
           <table className="table">
             <thead>
               <tr>
-                <th>Unit</th>
-                <th>Relation</th>
-                <th>Notes</th>
-                <th>Also used by</th>
+                <th>{t('Unit')}</th>
+                <th>{t('Relation')}</th>
+                <th>{t('Notes')}</th>
+                <th>{t('Also used by')}</th>
                 <th></th>
               </tr>
             </thead>
@@ -634,7 +634,7 @@ function HardwareTab({ module, slug, reload }) {
                 return editing === h.id ? (
                   <tr key={h.id}>
                     <td colSpan="5">
-                      <HardwareForm initial={rec} submitLabel="Save record" onSubmit={(p) => saveItem(h.id, p)} onCancel={() => setEditing(null)} />
+                      <HardwareForm initial={rec} submitLabel={t('Save record')} onSubmit={(p) => saveItem(h.id, p)} onCancel={() => setEditing(null)} />
                     </td>
                   </tr>
                 ) : (
@@ -644,7 +644,7 @@ function HardwareTab({ module, slug, reload }) {
                     <td className="muted">{rec.notes || '—'}</td>
                     <td className="muted">{others.length ? others.map((m) => <Link key={m.slug} to={`/modules/${m.slug}`}>{m.name}</Link>).reduce((acc, x) => (acc.length ? [...acc, ', ', x] : [x]), []) : '—'}</td>
                     <td className="btn-row">
-                      <button className="btn btn-sm" onClick={() => setEditing(h.id)}>Edit record</button>
+                      <button className="btn btn-sm" onClick={() => setEditing(h.id)}>{t('Edit record')}</button>
                     </td>
                   </tr>
                 );
@@ -687,7 +687,7 @@ function AssetsTab({ slug, docs, module, onChanged }) {
 
   /** Save "applies to" / "verified" on the draft branch. */
   async function stamp(asset, body, okMsg) {
-    if (!draft) return toast('Version stamps are edited on a draft — create a doc draft first', 'err');
+    if (!draft) return toast(t('Version stamps are edited on a draft — create a doc draft first'), 'err');
     setStamping(asset.name);
     try {
       await api.setAssetMeta(slug, draft.key, asset.name, body);
@@ -703,14 +703,13 @@ function AssetsTab({ slug, docs, module, onChanged }) {
 
   /** Redraw an existing photo in the FTD house style (same engine as the editor's drop target). */
   async function toLineArt(asset) {
-    if (!draft) return toast('Create a doc draft first', 'err');
-    const instructions = window.prompt(`Redraw ${asset.name} as Technical Aviation Manual Line-Art.
-Optional instructions (what to number, arrows, emphasis):`, '');
+    if (!draft) return toast(t('Create a doc draft first'), 'err');
+    const instructions = window.prompt(t('Redraw {name} as Technical Aviation Manual Line-Art.\nOptional instructions (what to number, arrows, emphasis):', { name: asset.name }), '');
     if (instructions === null) return;
     setDrawing(asset.name);
     try {
       const r = await api.illustrate(slug, draft.key, { assetName: asset.name, instructions });
-      toast(`${r.illustration.name} added to ${draft.key} — insert it from the editor's AI pane or with Copy <figure>`);
+      toast(t("{name} added to {draft} — insert it from the editor's AI pane or with Copy <figure>", { name: r.illustration.name, draft: draft.key }));
       load();
     } catch (e) {
       toast(e.message, 'err');
@@ -725,14 +724,14 @@ Optional instructions (what to number, arrows, emphasis):`, '');
   }, [slug]);
 
   async function upload(fileList) {
-    if (!draft) return toast('Assets are added to a draft — create a doc draft first', 'err');
+    if (!draft) return toast(t('Assets are added to a draft — create a doc draft first'), 'err');
     const files = [...fileList];
     if (!files.length) return;
     setBusy(true);
     try {
       const payload = await Promise.all(files.map(readFileAsBase64));
       const saved = await api.uploadAssets(slug, draft.key, payload);
-      toast(`${saved.length} file${saved.length === 1 ? '' : 's'} added to ${draft.key}`);
+      toast(t('{files} added to {draft}', { files: plural(saved.length, 'file'), draft: draft.key }));
       load();
     } catch (e) {
       toast(e.message, 'err');
@@ -745,15 +744,15 @@ Optional instructions (what to number, arrows, emphasis):`, '');
     <div>
       {openDrafts.length > 1 && (
         <div className="pair" style={{ marginBottom: 10, alignItems: 'center' }}>
-          <span className="hint">Commit uploads to draft</span>
+          <span className="hint">{t('Commit uploads to draft')}</span>
           <select value={draft?.key || ''} onChange={(e) => setDraftKey(e.target.value)}>
             {openDrafts.map((d) => (
               <option key={d.key} value={d.key}>
-                {docLabel(d)} ({d.status})
+                {docLabel(d)} ({t(d.status)})
               </option>
             ))}
           </select>
-          <span className="hint">— the assets folder itself is shared by all manuals of the module.</span>
+          <span className="hint">{t('— the assets folder itself is shared by all manuals of the module.')}</span>
         </div>
       )}
       <InboxPanel slug={slug} draft={draft} onImported={load} />
@@ -770,23 +769,23 @@ Optional instructions (what to number, arrows, emphasis):`, '');
           upload(e.dataTransfer.files);
         }}
       >
-        <strong>{busy ? 'Uploading…' : 'Drop images here'}</strong>
+        <strong>{busy ? t('Uploading…') : t('Drop images here')}</strong>
         <span className="muted">
-          {draft ? ` — or ` : ' — no open draft; '}
+          {draft ? t(' — or ') : t(' — no open draft; ')}
           {draft && (
             <label className="link">
-              choose files
+              {t('choose files')}
               <input type="file" multiple accept="image/*,.pdf,.svg" hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
             </label>
           )}
-          {draft ? `. Files are committed to ${draft.branch}.` : 'create a doc draft to add assets.'}
+          {draft ? t('. Files are committed to {branch}.', { branch: draft.branch }) : t('create a doc draft to add assets.')}
         </span>
       </div>
 
       {assets === null ? (
-        <div className="muted">Loading…</div>
+        <div className="muted">{t('Loading…')}</div>
       ) : assets.length === 0 ? (
-        <div className="empty">No assets yet.</div>
+        <div className="empty">{t('No assets yet.')}</div>
       ) : (
         <div className="asset-grid">
           {assets.map((a) => (
@@ -801,37 +800,37 @@ Optional instructions (what to number, arrows, emphasis):`, '');
               </div>
               <div className="asset-meta">
                 {a.stale?.length > 0 && (
-                  <span className="orange-dot" title={`Newer than this picture: ${a.stale.join(', ')}`} />
+                  <span className="orange-dot" title={t('Newer than this picture: {list}', { list: a.stale.join(', ') })} />
                 )}
                 {a.meta ? (
                   <span
                     className="chip"
-                    title={`${a.meta.verifiedIn ? `Verified in ${a.meta.verifiedIn}` : `Added in ${a.meta.addedIn}`} — software/hardware versions current at that time`}
+                    title={t('{stamp} — software/hardware versions current at that time', { stamp: a.meta.verifiedIn ? t('Verified in {version}', { version: a.meta.verifiedIn }) : t('Added in {version}', { version: a.meta.addedIn }) })}
                   >
                     {stampLabel(a.meta, hwItems)}
                   </span>
                 ) : (
-                  <span className="hint" title="Added before version stamps existed — Verify to stamp it with the current versions">
-                    no version stamp
+                  <span className="hint" title={t('Added before version stamps existed — Verify to stamp it with the current versions')}>
+                    {t('no version stamp')}
                   </span>
                 )}
               </div>
               {hwItems.length > 1 && (
                 <label className="asset-applies">
-                  <span className="hint">Shows</span>
+                  <span className="hint">{t('Shows')}</span>
                   <select
                     value={a.meta?.appliesTo?.length === 1 ? a.meta.appliesTo[0] : ''}
                     disabled={!draft || stamping === a.name}
-                    title="Which of the module's units this picture shows"
+                    title={t("Which of the module's units this picture shows")}
                     onChange={(e) =>
                       stamp(
                         a,
                         { appliesTo: e.target.value ? [e.target.value] : [] },
-                        e.target.value ? `${a.name} applies to ${hwItems.find((h) => h.id === e.target.value)?.name}` : `${a.name} applies to all units`
+                        e.target.value ? t('{name} applies to {unit}', { name: a.name, unit: hwItems.find((h) => h.id === e.target.value)?.name }) : t('{name} applies to all units', { name: a.name })
                       )
                     }
                   >
-                    <option value="">All units</option>
+                    <option value="">{t('All units')}</option>
                     {hwItems.map((h) => (
                       <option key={h.id} value={h.id}>
                         {h.name}
@@ -846,12 +845,12 @@ Optional instructions (what to number, arrows, emphasis):`, '');
                   disabled={stamping === a.name}
                   title={
                     a.stale?.length
-                      ? `Confirm this picture is still correct for ${a.stale.join(', ')} (or upload a replacement) — re-stamps it as current`
-                      : 'Stamp this file with the current software/hardware versions'
+                      ? t('Confirm this picture is still correct for {list} (or upload a replacement) — re-stamps it as current', { list: a.stale.join(', ') })
+                      : t('Stamp this file with the current software/hardware versions')
                   }
-                  onClick={() => stamp(a, { verify: true }, `${a.name} verified for current versions`)}
+                  onClick={() => stamp(a, { verify: true }, t('{name} verified for current versions', { name: a.name }))}
                 >
-                  {stamping === a.name ? 'Saving…' : a.stale?.length ? `Verified for ${a.stale[0]}` : 'Stamp version'}
+                  {stamping === a.name ? t('Saving…') : a.stale?.length ? t('Verified for {version}', { version: a.stale[0] }) : t('Stamp version')}
                 </button>
               )}
               <div className="btn-row">
@@ -859,30 +858,30 @@ Optional instructions (what to number, arrows, emphasis):`, '');
                   className="btn btn-sm"
                   onClick={() => {
                     navigator.clipboard?.writeText(`<figure><img src="${a.url}" alt="${a.name}"><figcaption>TODO(author): caption</figcaption></figure>`);
-                    toast('Figure HTML copied — paste it in the HTML source view');
+                    toast(t('Figure HTML copied — paste it in the HTML source view'));
                   }}
                 >
-                  Copy &lt;figure&gt;
+                  {t('Copy <figure>')}
                 </button>
                 {/.(png|jpe?g|webp|gif)$/i.test(a.name) && !/-lineart.png$/i.test(a.name) && (
                   <button
                     className="btn btn-sm"
                     disabled={!draft || drawing === a.name}
-                    title="Redraw this photo in the FTD Technical Aviation Manual Line-Art style"
+                    title={t('Redraw this photo in the FTD Technical Aviation Manual Line-Art style')}
                     onClick={() => toLineArt(a)}
                   >
-                    {drawing === a.name ? 'Drawing…' : '✎ Line-art'}
+                    {drawing === a.name ? t('Drawing…') : t('✎ Line-art')}
                   </button>
                 )}
                 {draft && (
                   <button
                     className="btn-icon"
-                    title={`Remove from ${draft.key} (git rm on ${draft.branch})`}
+                    title={t('Remove from {draft} (git rm on {branch})', { draft: draft.key, branch: draft.branch })}
                     onClick={async () => {
-                      if (!confirm(`Remove ${a.name} from ${draft.key}? Figures referencing it will break.`)) return;
+                      if (!confirm(t('Remove {name} from {draft}? Figures referencing it will break.', { name: a.name, draft: draft.key }))) return;
                       try {
                         await api.deleteAsset(slug, draft.key, a.name);
-                        toast(`${a.name} removed`);
+                        toast(t('{name} removed', { name: a.name }));
                         load();
                       } catch (e) {
                         toast(e.message, 'err');
@@ -906,9 +905,9 @@ function SoftwareTab({ data, slug, reload }) {
   const { module, docs, softwareFeed } = data;
   const [form, setForm] = useState({ name: module.softwares[0]?.name || '', version: '', manualAffecting: false, note: '' });
   // Every manual type the module maintains must cover a release on its own.
-  const types = MANUAL_TYPES.filter((t) => docs.some((d) => d.manual === t.id));
-  const releasedOf = (t) => docs.find((d) => d.manual === t.id && d.status === 'released');
-  const openOf = (t) => docs.find((d) => d.manual === t.id && isOpenDoc(d));
+  const types = MANUAL_TYPES.filter((mt) => docs.some((d) => d.manual === mt.id));
+  const releasedOf = (mt) => docs.find((d) => d.manual === mt.id && d.status === 'released');
+  const openOf = (mt) => docs.find((d) => d.manual === mt.id && isOpenDoc(d));
 
   const coveredBy = (swName, version) =>
     docs.filter((d) => (d.covers || []).some((c) => c.name === swName && covered(version, c)));
@@ -929,14 +928,14 @@ function SoftwareTab({ data, slug, reload }) {
   function link(doc, swName, swVersion) {
     api
       .coverRelease(slug, doc.key, swName, swVersion)
-      .then(() => { toast(`${docLabel(doc)} now covers ${swName} ${swVersion}`); reload(); })
+      .then(() => { toast(t('{doc} now covers {software} {version}', { doc: docLabel(doc), software: swName, version: swVersion })); reload(); })
       .catch((e) => toast(e.message, 'err'));
   }
 
   async function register() {
     try {
       await api.registerRelease(form);
-      toast(`${form.name} ${form.version} registered`);
+      toast(t('{name} {version} registered', { name: form.name, version: form.version }));
       setForm({ ...form, version: '', note: '', manualAffecting: false });
       reload();
     } catch (e) {
@@ -949,67 +948,67 @@ function SoftwareTab({ data, slug, reload }) {
       {module.softwares.map((sw) => (
         <div className="sw-block" key={sw.name}>
           <h3>
-            {sw.name} <span className="muted">linked from {sw.fromVersion || '—'}</span>
+            {sw.name} <span className="muted">{t('linked from {version}', { version: sw.fromVersion || '—' })}</span>
           </h3>
           <table className="table">
             <thead>
               <tr>
-                <th>Release</th>
-                <th>Date</th>
-                <th>Manual-affecting</th>
-                <th>Covered by doc</th>
+                <th>{t('Release')}</th>
+                <th>{t('Date')}</th>
+                <th>{t('Manual-affecting')}</th>
+                <th>{t('Covered by doc')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {(softwareFeed[sw.name] || []).map((rel) => {
                 const covering = coveredBy(sw.name, rel.version);
-                const missingTypes = types.filter((t) => !covering.some((d) => d.manual === t.id));
+                const missingTypes = types.filter((mt) => !covering.some((d) => d.manual === mt.id));
                 return (
                   <tr key={rel.version}>
                     <td><strong>{rel.version}</strong> {rel.note && <span className="muted">— {rel.note}</span>}</td>
                     <td className="muted">{timeAgo(rel.date)}</td>
-                    <td>{rel.manualAffecting ? <span className="badge badge-in-review">Yes</span> : 'No'}</td>
+                    <td>{rel.manualAffecting ? <span className="badge badge-in-review">{t('Yes')}</span> : t('No')}</td>
                     <td>
                       {covering.length ? (
                         <span className="manual-pills">
                           {covering.map((d) => (
                             <span key={d.key} className={`manual-pill mp-${d.status}`}>
-                              <span className="mp-type">{manualType(d.manual).short}</span>
+                              <span className="mp-type">{t(manualType(d.manual).short)}</span>
                               <span className="mp-ver">{d.version}</span>
                             </span>
                           ))}
                         </span>
                       ) : (
-                        <span className="muted">not linked</span>
+                        <span className="muted">{t('not linked')}</span>
                       )}
                     </td>
                     <td>
                       <div className="btn-col" style={{ alignItems: 'flex-start' }}>
-                        {missingTypes.map((t) => {
-                          const rel0 = releasedOf(t);
-                          const open = openOf(t);
+                        {missingTypes.map((mt) => {
+                          const rel0 = releasedOf(mt);
+                          const open = openOf(mt);
                           return (
-                            <span key={t.id} className="btn-row">
+                            <span key={mt.id} className="btn-row">
                               {!rel.manualAffecting && rel0 && (
                                 <button
                                   className="btn btn-sm"
-                                  title={`Extend the released ${t.label.toLowerCase()}'s covered range to this release`}
+                                  title={t("Extend the released {manual}'s covered range to this release", { manual: t(mt.label).toLowerCase() })}
                                   onClick={() => link(rel0, sw.name, rel.version)}
                                 >
-                                  Link to {docLabel(rel0)}
+                                  {t('Link to {doc}', { doc: docLabel(rel0) })}
                                 </button>
                               )}
                               {open && (
                                 <button
                                   className="btn btn-sm"
-                                  title={`Make ${docLabel(open)} the ${t.label.toLowerCase()} for ${sw.name} ${rel.version}`}
+                                  title={t('Make {doc} the {manual} for {software} {version}', { doc: docLabel(open), manual: t(mt.label).toLowerCase(), software: sw.name, version: rel.version })}
                                   onClick={() => link(open, sw.name, rel.version)}
                                 >
-                                  Assign to {docLabel(open)} ({open.status})
+                                  {t('Assign to {doc} ({status})', { doc: docLabel(open), status: t(open.status) })}
                                 </button>
                               )}
-                              {rel.manualAffecting && !open && <span className="hint">needs a new {t.short} version</span>}
+                              {rel.manualAffecting && !open && <span className="hint">{t('needs a new {manual} version', { manual: t(mt.short) })}</span>}
                             </span>
                           );
                         })}
@@ -1019,7 +1018,7 @@ function SoftwareTab({ data, slug, reload }) {
                 );
               })}
               {(softwareFeed[sw.name] || []).length === 0 && (
-                <tr><td colSpan="5" className="muted">No releases registered.</td></tr>
+                <tr><td colSpan="5" className="muted">{t('No releases registered.')}</td></tr>
               )}
             </tbody>
           </table>
@@ -1027,25 +1026,25 @@ function SoftwareTab({ data, slug, reload }) {
       ))}
 
       <div className="sw-register">
-        <h3>Register software release</h3>
+        <h3>{t('Register software release')}</h3>
         <div className="pair wrap">
           <select value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}>
             {module.softwares.map((s) => (
               <option key={s.name}>{s.name}</option>
             ))}
           </select>
-          <input placeholder="Version (v2.0.2)" value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} />
-          <input placeholder="Note (optional)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+          <input placeholder={t('Version (v2.0.2)')} value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} />
+          <input placeholder={t('Note (optional)')} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
           <label className="check">
             <input
               type="checkbox"
               checked={form.manualAffecting}
               onChange={(e) => setForm({ ...form, manualAffecting: e.target.checked })}
             />
-            manual-affecting
+            {t('manual-affecting')}
           </label>
           <button className="btn btn-primary btn-sm" disabled={!form.version} onClick={register}>
-            Register
+            {t('Register')}
           </button>
         </div>
       </div>
