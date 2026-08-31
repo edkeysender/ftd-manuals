@@ -80,8 +80,9 @@ export async function chatEdit({ module, doc, content, messages, context = {}, g
 
   const assetBlock = assets.length
     ? `IMAGES available in the module's asset store — these files exist and are served by the console. Embed images ONLY from this list, using the src exactly as given, as <figure><img src="URL" alt="…"><figcaption>…</figcaption></figure>:
-${assets.map((a) => `- ${a.url}${a.alt ? ` — alt: ${a.alt}` : ''}${a.from ? ` — origin: ${a.from}` : ''}`).join('\n')}
-Never invent an image path. If no listed asset fits, write TODO(author): figure needed — no <img> tag.`
+${assets.map((a) => `- ${a.url}${a.alt ? ` — alt: ${a.alt}` : ''}${a.from ? ` — origin: ${a.from}` : ''}${a.version ? ` — version: ${a.version}` : ''}`).join('\n')}
+Never invent an image path. If no listed asset fits, write TODO(author): figure needed — no <img> tag.
+Each asset's "version" is what the picture showed when it was added (doc version, software release, hardware version). An asset marked OUT OF DATE shows an older release than the one this doc must describe: do not embed it for new content unless the user explicitly asks; instead write TODO(author): figure <name> shows <old version>, retake for <new version>. When you must keep such a figure, say so in its <figcaption>.`
     : 'No images are available in the asset store — never insert <img> tags; write TODO(author): figure needed instead.';
 
   const pageBlock = pages.length

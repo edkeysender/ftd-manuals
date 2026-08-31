@@ -55,7 +55,8 @@ export const TOOLS = [
   },
   {
     name: 'list_assets',
-    description: "List the files in a module's assets folder with their served URLs (use these URLs in <img src>).",
+    description:
+      "List the files in a module's assets folder with their served URLs (use these URLs in <img src>). Each entry carries `meta` — the version stamp taken when the file was added (doc version, newest software release per linked software, hardware unit versions, appliesTo hardware ids; null for files added before stamping) — and `stale`: reasons the picture may be out of date (a newer manual-affecting software release or a changed hardware version). Do not embed stale assets for new content without telling the user; fix stamps with update_asset.",
     inputSchema: { type: 'object', properties: { slug: SLUG_VER.slug }, required: ['slug'] },
     annotations: { title: 'List assets', ...RO },
   },
@@ -258,6 +259,22 @@ export const TOOLS = [
     annotations: { title: 'Delete asset', ...RW, destructiveHint: true },
   },
   {
+    name: 'update_asset',
+    description:
+      "Edit an asset's version stamp on the draft branch. `applies_to`: which of the module's hardware units (catalog ids, see get_module) the picture shows — [] means every unit; give it when a manual covers several unit types. `verify: true` re-stamps the asset with today's newest software releases and hardware versions, i.e. the author confirmed the picture is still correct (or replaced it) after a manual-affecting change — use it to clear `stale`.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...SLUG_VER,
+        name: { type: 'string', description: 'Asset file name as in list_assets' },
+        applies_to: { type: 'array', items: { type: 'string' }, description: 'Hardware ids this picture shows; [] = all' },
+        verify: { type: 'boolean', description: 'Re-stamp as current (clears stale)' },
+      },
+      required: ['slug', 'version', 'name'],
+    },
+    annotations: { title: 'Update asset stamp', ...RW },
+  },
+  {
     name: 'upload_photo',
     description:
       "Upload a SMALL image (a few KB) from base64 data into the module draft's assets folder. Do not use it for real photos — tens of thousands of base64 characters cannot be emitted reliably in one call, and the server now REJECTS truncated or mislabelled files. Use the inbox + import_local_files (no bytes through the model), upload_photo_from_url (public URL) or generate_illustration instead. Returns the served URL.",
@@ -419,6 +436,8 @@ async function callTool(name, args) {
     }
     case 'list_assets':
       return await store.listAssets(args.slug);
+    case 'update_asset':
+      return await store.setAssetMeta(args.slug, args.version, args.name, { appliesTo: args.applies_to, verify: !!args.verify });
     case 'list_hardware':
       return await store.listHardware();
     case 'create_hardware':

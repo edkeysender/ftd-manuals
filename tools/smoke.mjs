@@ -129,6 +129,14 @@ try {
   ok(assetRes.ok && assetRes.headers.get('content-type') === 'image/png', 'asset served as image/png');
   const assetList = await req('GET', '/api/modules/starting-panel/assets');
   ok(assetList.some((a) => a.name === 'panel-photo.png'), 'asset listed');
+  const stamped = assetList.find((a) => a.name === 'panel-photo.png');
+  ok(stamped.meta?.addedIn === 'A1.0' && stamped.stale.length === 0, 'upload stamps the asset with the doc version');
+  ok(stamped.meta.software[0]?.name === 'STP Core' && stamped.meta.software[0].version === 'v2.0.0', `stamp records software as of upload: ${stamped.meta.software[0]?.version}`);
+  ok(stamped.meta.hardware[0]?.id === 'starting-panel' && stamped.meta.hardware[0].version === 'v2', `stamp records hardware version: ${stamped.meta.hardware[0]?.version}`);
+  const badApplies = await req('PUT', '/api/modules/starting-panel/docs/A1.0/assets/panel-photo.png/meta', { appliesTo: ['nope'] }).catch((e) => e);
+  ok(badApplies instanceof Error && /not linked/.test(badApplies.message), 'appliesTo must name linked hardware');
+  const applied = await req('PUT', '/api/modules/starting-panel/docs/A1.0/assets/panel-photo.png/meta', { appliesTo: ['starting-panel'] });
+  ok(applied.meta.appliesTo[0] === 'starting-panel', 'appliesTo saved on the draft');
 
   // illustration house style: default served, editable, resettable
   const style0 = await req('GET', '/api/settings/illustration-style');
@@ -334,6 +342,12 @@ try {
   ok((await req('GET', '/api/modules/starting-panel/assets')).some((a) => a.name === 'cbw-operation.png'), 'imported inbox file is a module asset');
   const del = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'delete_asset', arguments: { slug: 'starting-panel', version: 'A1.0', name: 'cbw-operation.png' } } });
   ok(!del.isError && JSON.parse(del.content[0].text).removed === true, 'MCP delete_asset');
+  const mcpStamp = await mcpCall({
+    jsonrpc: '2.0', id: 96, method: 'tools/call',
+    params: { name: 'update_asset', arguments: { slug: 'starting-panel', version: 'A1.0', name: 'panel-photo.png', applies_to: [] } },
+  });
+  ok(!mcpStamp.isError && JSON.parse(mcpStamp.content[0].text).meta.appliesTo.length === 0, 'MCP update_asset resets appliesTo to all units');
+  await req('PUT', '/api/modules/starting-panel/docs/A1.0/assets/panel-photo.png/meta', { appliesTo: ['starting-panel'] });
   ok(!(await req('GET', '/api/modules/starting-panel/assets')).some((a) => a.name === 'cbw-operation.png'), 'deleted asset is gone from the list');
   await req('DELETE', '/api/modules/starting-panel/docs/A1.0/assets/cbw-operation-2.png');
   const delMissing = await req('DELETE', '/api/modules/starting-panel/docs/A1.0/assets/cbw-operation-2.png').catch((e) => e);
@@ -354,7 +368,7 @@ try {
   ok(afterAuto.doc.revision === 7, 'autosave keeps revision (r7)');
 
   await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
-    html: afterAuto.content + '<p>Grounding check added.</p>',
+    html: afterAuto.content + `<p>Grounding check added.</p><figure><img src="${uploaded[0].url}" alt="Panel"><figcaption>Panel</figcaption></figure>`,
     bump: true,
     summary: 'Add grounding check',
   });
@@ -391,6 +405,30 @@ try {
   list = await req('GET', '/api/modules');
   ok(list[0].needsDoc === false, 'dot clears once a draft exists');
   ok(list[0].latestDoc === 'A1.1 draft r1', 'A1.1 draft listed');
+
+  // asset version stamps: the manual-affecting release makes the A1.0 picture stale; verifying re-stamps it
+  let photo = (await req('GET', '/api/modules/starting-panel/assets')).find((a) => a.name === 'panel-photo.png');
+  ok(photo.stale.includes('STP Core v2.1.0'), `asset stale after manual-affecting release: ${photo.stale.join(', ')}`);
+  const staleCount = (await req('GET', '/api/modules/starting-panel')).staleAssets;
+  ok(staleCount >= 1, `module detail counts stale assets (got ${staleCount}: ${(await req('GET', '/api/modules/starting-panel/assets')).filter((a) => a.stale.length).map((a) => `${a.name} [${a.stale.join(', ')}]`).join('; ')})`);
+  await req('PUT', '/api/hardware/starting-panel', { version: 'v3' });
+  photo = (await req('GET', '/api/modules/starting-panel/assets')).find((a) => a.name === 'panel-photo.png');
+  ok(photo.stale.includes('Starting Panel v3'), `hardware version change also flags the picture: ${photo.stale.join(', ')}`);
+  const verified = await req('PUT', '/api/modules/starting-panel/docs/A1.1/assets/panel-photo.png/meta', { verify: true });
+  ok(verified.stale.length === 0 && verified.meta.verifiedIn === 'A1.1' && verified.meta.software[0].version === 'v2.1.0' && verified.meta.hardware[0].version === 'v3',
+    'verify re-stamps the asset with current versions');
+  ok(verified.meta.appliesTo[0] === 'starting-panel', 'verify keeps appliesTo');
+  const guarded = await req('DELETE', '/api/modules/starting-panel/docs/A1.1/assets/panel-photo.png').catch((e) => e);
+  ok(guarded instanceof Error && /embedded in released A1.0/.test(guarded.message), 'cannot delete an asset a released doc still embeds');
+
+  // a second manual-affecting release while A1.1 is still a draft: assign it to the draft
+  await req('POST', '/api/softwares', { name: 'STP Core', version: 'v2.1.1', manualAffecting: true });
+  ok((await req('GET', '/api/modules/starting-panel')).uncovered.some((u) => u.version === 'v2.1.1'), 'v2.1.1 is uncovered');
+  const assigned = await req('POST', '/api/modules/starting-panel/docs/A1.1/cover', { name: 'STP Core', version: 'v2.1.1' });
+  ok(assigned.covers[0].from === 'v2.1.0' && assigned.covers[0].to === 'v2.1.1', 'draft A1.1 now covers STP Core v2.1.0 – v2.1.1');
+  ok((await req('GET', '/api/modules/starting-panel')).uncovered.length === 0, 'assigning to the draft clears the uncovered list');
+  const badSw = await req('POST', '/api/modules/starting-panel/docs/A1.1/cover', { name: 'Other Soft', version: 'v1' }).catch((e) => e);
+  ok(badSw instanceof Error && /not linked to this module/.test(badSw.message), 'cannot cover a software the module is not linked to');
 
   await req('POST', '/api/modules/starting-panel/docs/A1.1/submit-review');
   await req('POST', '/api/modules/starting-panel/docs/A1.1/release');
