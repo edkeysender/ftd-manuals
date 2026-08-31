@@ -4,7 +4,7 @@
  * edits to the draft, marking every touched block as a pending AI edit.
  */
 
-import { manualTypeOf, DEFAULT_MANUAL } from './docgen.js';
+import { manualTypeOf, DEFAULT_MANUAL, LANGUAGES, DEFAULT_LANG, langOf } from './docgen.js';
 
 const API_URL = 'https://api.openai.com/v1/chat/completions';
 const MODEL = process.env.OPENAI_MODEL || 'gpt-5';
@@ -96,8 +96,39 @@ Return ONLY the raw HTML, no markdown fences, no commentary.`;
  * the user pasted, images already downloaded into the module's asset store,
  * and text attachments from the chat.
  */
-export async function chatEdit({ module, doc, content, messages, context = {}, guidelines = '', illustrationStyle = '' }) {
+/**
+ * Translate a manual body (sections 4–7 HTML) into `lang`, keeping the HTML structure,
+ * attributes, image paths and TODO(author) markers untouched. Returns the translated HTML.
+ */
+export async function translateHtml({ html, lang, module, doc, guidelines = '' }) {
+  const target = LANGUAGES[langOf(lang)];
+  if (!target || target.source) throw new Error(`Cannot translate into "${lang}"`);
+  const sys = `You translate FTD.aero flight simulator manuals from English into ${target.label} (${target.code}).
+You receive the body HTML (sections 4–7) of the ${manualTypeOf(doc.manual).label.toLowerCase()} of module "${module.name}" and return the SAME HTML with all human-readable text translated.
+Rules:
+- Keep every tag, attribute, class, id, <img src>, href and the document structure exactly as they are; translate only text nodes, alt texts and figcaptions.
+- Keep the "TODO(author):" prefix of author markers as is and translate the note after it.
+- Do not translate software/product names, part numbers, menu paths shown in <strong> when they are UI labels of an English interface, code, URLs, IP addresses, units or version numbers.
+- Aviation / simulator operating-manual register: imperative procedures, present tense, consistent terminology (${target.code === 'pl' ? 'e.g. "symulator", "moduł", "instruktor", "stanowisko instruktora (IOS)", "zasilanie", "okablowanie", "konfiguracja"' : 'standard technical terms'}).
+- Admonition titles: ${target.code === 'pl' ? '"Warning" → "Ostrzeżenie", "Note" → "Uwaga"' : 'translate the title words'}.
+- Section headings (<h2>) must be translated consistently: ${target.code === 'pl' ? 'Description → Opis, Installation → Instalacja, Configuration → Konfiguracja, Operation → Obsługa, Maintenance → Konserwacja, Administration → Administracja, Troubleshooting → Rozwiązywanie problemów, Overview → Przegląd, Appendixes → Załączniki' : 'use the standard manual section names'}.
+${guidelinesBlock(guidelines)}
+Return ONLY the raw translated HTML — no markdown fences, no commentary.`;
+  const out = await callOpenAI([
+    { role: 'system', content: sys },
+    { role: 'user', content: html },
+  ]);
+  const clean = out.replace(/^```html?\s*/i, '').replace(/```\s*$/, '').trim();
+  if (!clean || !/<h2/i.test(clean)) throw new Error('Translation returned no document body');
+  return clean + '\n';
+}
+
+export async function chatEdit({ module, doc, content, messages, context = {}, guidelines = '', illustrationStyle = '', lang = DEFAULT_LANG }) {
   const { pages = [], assets = [], attachmentsText = [] } = context;
+  const language = LANGUAGES[langOf(lang)];
+  const langBlock = language.source
+    ? ''
+    : `\nLANGUAGE: this is the ${language.label} (${language.code}) translation of the document. Write every reply and every edit in ${language.label}; keep the section headings in ${language.label} as they are in the body. The English source is a separate document — do not switch to English.`;
 
   const assetBlock = assets.length
     ? `IMAGES available in the module's asset store — these files exist and are served by the console. Embed images ONLY from this list, using the src exactly as given, as <figure><img src="URL" alt="…"><figcaption>…</figcaption></figure>:
@@ -121,7 +152,7 @@ ${pages.map((p) => `=== ${p.url}${p.title ? ` — ${p.title}` : ''} ===\n${p.tex
   const sys = `You are the AI assistant of the FTD.aero Documentation Console, working inside the manual editor for module "${module.name}" (${manualTypeOf(doc.manual).label.toLowerCase()}, doc ${doc.version} r${doc.revision}, status ${doc.status}).${hwLine}
 You receive the CURRENT DOCUMENT BODY (sections 4–7 HTML) and the user's instruction.
 ${HTML_RULES}
-${manualBlock(doc.manual)}
+${manualBlock(doc.manual)}${langBlock}
 When source material mixes audiences (e.g. a wiki page with both wiring/configuration and everyday use), take only what belongs in THIS manual type and tell the user in the reply what belongs in the other manual instead.
 ${guidelinesBlock(guidelines)}
 ${assetBlock}

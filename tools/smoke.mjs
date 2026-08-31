@@ -597,6 +597,39 @@ try {
   ok(!(unlinkOk instanceof Error) && unlinkOk.softwares.length === 2, 'link_software unlink removes the link');
   const unlinkMissing = await call(127, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });
   ok(unlinkMissing instanceof Error && /not linked/.test(unlinkMissing.message), 'unlinking a software that is not linked is an error');
+  // languages: English is the source; Polish is a translation stored next to it
+  const enDoc = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0');
+  ok(enDoc.lang === 'en' && enDoc.languages.en.source === true && enDoc.languages.pl.exists === false, 'doc reports its languages (pl missing)');
+  const plEmpty = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0?lang=pl');
+  ok(plEmpty.lang === 'pl' && plEmpty.content === '' && plEmpty.generated.includes('Rejestr zmian') && plEmpty.generated.includes('Instrukcja techniczna'), 'pl view: empty body, generated sections in Polish');
+  const noAi = await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/translate', { lang: 'pl' }).catch((e) => e);
+  ok(noAi instanceof Error && /OPENAI_API_KEY/.test(noAi.message), 'AI translation reports the missing API key');
+  const badLang = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0?lang=de').catch((e) => e);
+  ok(badLang instanceof Error && /Unknown language/.test(badLang.message), 'unknown language rejected');
+  const plHtml = enDoc.content.replace('<h2>Installation</h2>', '<h2>Instalacja</h2>').replace('Set the static IP.', 'Ustaw statyczny adres IP.');
+  const revBeforePl = enDoc.doc.revision;
+  const plDoc = await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/translate', { lang: 'pl', html: plHtml });
+  ok(plDoc.lang === 'pl' && plDoc.content.includes('Instalacja') && plDoc.languages.pl.exists && plDoc.languages.pl.source === 'manual' && !plDoc.languages.pl.stale, 'a supplied translation is stored as the pl body');
+  ok(plDoc.doc.revision === revBeforePl + 1 && /Polski translation/.test(plDoc.doc.revisionRecord.at(-1).summary), 'translation is a revision');
+  ok((await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).content.includes('<h2>Installation</h2>'), 'English body untouched by the translation');
+  const plSaved = await req('PUT', '/api/modules/starting-panel/docs/technician:A1.0/content', { html: plDoc.content + '<p>Dodano po polsku.</p>', bump: true, summary: 'Polish fix', lang: 'pl' });
+  ok(plSaved.revisionRecord.at(-1).summary === 'Polish fix (PL)' && plSaved.languages.pl.edited === true, 'pl edit commits with a (PL) tag and marks the translation edited');
+  const plRead = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0?lang=pl');
+  ok(plRead.content.includes('Dodano po polsku.') && !(await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).content.includes('Dodano po polsku.'), 'pl edit lands in the pl body only');
+  ok(!plRead.languages.pl.stale, 'pl edits do not make the translation stale');
+  await req('PUT', '/api/modules/starting-panel/docs/technician:A1.0/content', { html: enDoc.content + '<p>English changed.</p>', bump: false });
+  const plStale = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0?lang=pl');
+  ok(plStale.languages.pl.stale === true && plStale.languages.pl.basedOnRevision === revBeforePl, 'English edit marks the pl translation stale');
+  const mcpPl = await call(130, 'get_doc', { slug: 'starting-panel', manual: 'technician', lang: 'pl' });
+  ok(!(mcpPl instanceof Error) && mcpPl.lang === 'pl' && mcpPl.content.includes('Instalacja') && mcpPl.languages.pl.stale === true, 'MCP get_doc lang=pl');
+  const mcpPlIns = await call(131, 'insert_into_section', { slug: 'starting-panel', manual: 'technician', lang: 'pl', section: 'Instalacja', html: '<p>Przez MCP.</p>' });
+  ok(!(mcpPlIns instanceof Error) && (await req('GET', '/api/modules/starting-panel/docs/technician:A1.0?lang=pl')).content.includes('Przez MCP.'), 'MCP insert_into_section edits the Polish body by its Polish headings');
+  const mcpNoPl = await call(132, 'replace_in_doc', { slug: 'starting-panel', manual: 'software-customer', lang: 'pl', find: 'x', replace: 'y' });
+  ok(mcpNoPl instanceof Error && /translate_doc/.test(mcpNoPl.message), 'editing a missing translation points at translate_doc');
+  const mcpTr = await call(133, 'translate_doc', { slug: 'starting-panel', manual: 'software-customer', lang: 'pl', html: '<h2>Przegląd</h2><p>PL.</p><h2>Obsługa</h2><p>x</p>' });
+  ok(!(mcpTr instanceof Error) && mcpTr.languages.pl.exists && mcpTr.lang === 'pl', 'MCP translate_doc stores a supplied translation');
+  const mcpTrAi = await call(134, 'translate_doc', { slug: 'starting-panel', manual: 'software-customer', lang: 'pl' });
+  ok(mcpTrAi instanceof Error && /OPENAI_API_KEY/.test(mcpTrAi.message), 'MCP translate_doc without html needs the AI');
   // cleanup: drop the 2N link so the checks below see STP Core only
   await call(128, 'link_software', { slug: 'starting-panel', name: '2N Access Unit', unlink: true });
   ok((await req('GET', '/api/modules/starting-panel')).module.softwares.length === 1, '2N link removed (cleanup)');
@@ -624,6 +657,15 @@ try {
   const techManual = await req('POST', '/api/manuals', { name: 'B737 Technician Manual', group: 'SIM', manual: 'technician', modules: ['starting-panel'] });
   ok(techManual.manual === 'technician', 'assembled manual stores its type');
   const techCompiled = await req('GET', '/api/manuals/b737-technician-manual');
+  const techPl = await req('GET', '/api/manuals/b737-technician-manual?lang=pl');
+  ok(techPl.lang === 'pl' && techPl.chapters[0].langFallback === false && techPl.html.includes('Spis treści') && techPl.html.includes('Instalacja') && techPl.html.includes('Przez MCP.'), 'manual compiles in Polish from the released translation');
+  const techPlExport = await (await fetch(BASE + '/api/manuals/b737-technician-manual/export.html?lang=pl')).text();
+  ok(techPlExport.includes('<html lang="pl">') && techPlExport.includes('Rejestr zmian'), 'Polish export');
+  const techNext = await req('POST', '/api/modules/starting-panel/docs', { manual: 'technician', bump: 'minor' });
+  const techNextPl = await req('GET', `/api/modules/starting-panel/docs/${techNext.key}?lang=pl`);
+  // the A1.0 translation was already stale (English edited after it) — the copy keeps that status
+  ok(techNextPl.languages.pl.exists && techNextPl.languages.pl.stale === true && techNextPl.content.includes('Przez MCP.'), 'next doc version carries the translation over, staleness included');
+  await req('POST', `/api/modules/starting-panel/docs/${techNext.key}/discard`);
   ok(techCompiled.chapters[0].doc.key === 'technician:A1.0' && !techCompiled.chapters[0].isDraft && techCompiled.html.includes('Set the static IP.') && techCompiled.html.includes('Technician manual'),
     'technician manual compiles the released technician docs');
   ok((await req('GET', '/api/manuals')).find((m) => m.slug === 'b737-technician-manual').unreleased === 0, 'readiness counts the manual type being assembled');

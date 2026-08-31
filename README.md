@@ -60,6 +60,16 @@ A bare `A1.0` means the customer manual; docs created before the split (`modules
 are read as customer manuals and never moved. Over MCP every doc tool (edit, assets, illustrations,
 checklist, review/release) takes `manual` + `version` (or just `manual` for its latest open draft).
 
+### Languages
+
+English is the source language of every doc. A Polish translation is optional and lives next to it
+(`content.pl.html`): in the editor switch **EN | PL**, then **Translate to Polski with AI** (OpenAI, keeps the
+HTML structure) or copy the English text and translate by hand; PL is edited like any body (autosave, revisions
+tagged `(PL)`, AI chat answers in Polish). When the English body changes the translation is flagged **stale**
+until re-translated. Sections 1–3 and the assembled-manual frame render in the chosen language; a manual can
+be viewed/exported in PL (`?lang=pl`) with untranslated chapters falling back to English and flagged. MCP:
+`lang` on `get_doc` and the edit tools, `translate_doc`.
+
 The **Software** page lists every linked software with its modules, their software customer / technician
 manuals (create, edit, new version) and the release feed with coverage; `list_software`,
 `register_software_release` and `cover_release` expose the same over MCP.

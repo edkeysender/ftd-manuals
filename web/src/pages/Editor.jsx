@@ -1,16 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, readFileAsBase64, timeAgo, manualType } from '../api.js';
+import { api, readFileAsBase64, timeAgo, manualType, LANGUAGES, language } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { useToast } from '../App.jsx';
 
-const AUTO_OUTLINE = [
-  { num: '1', title: 'Revision record', auto: true },
-  { num: '1.1', title: 'Document revisions', auto: true, sub: true },
-  { num: '2', title: 'Introduction', auto: true },
-  { num: '3', title: 'General information', auto: true },
-];
+const AUTO_OUTLINE = {
+  en: [
+    { num: '1', title: 'Revision record', auto: true },
+    { num: '1.1', title: 'Document revisions', auto: true, sub: true },
+    { num: '2', title: 'Introduction', auto: true },
+    { num: '3', title: 'General information', auto: true },
+  ],
+  pl: [
+    { num: '1', title: 'Rejestr zmian', auto: true },
+    { num: '1.1', title: 'Wersje dokumentu', auto: true, sub: true },
+    { num: '2', title: 'Wprowadzenie', auto: true },
+    { num: '3', title: 'Informacje ogólne', auto: true },
+  ],
+};
 
 function stripPending(html) {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
@@ -105,8 +113,11 @@ export default function Editor() {
   const toast = useToast();
   const navigate = useNavigate();
 
-  const [data, setData] = useState(null); // {module, doc, content, generated}
+  const [data, setData] = useState(null); // {module, doc, content, generated, lang, languages}
   const [docMeta, setDocMeta] = useState(null);
+  const [lang, setLang] = useState('en'); // body language shown: en (source) or a translation
+  const [languages, setLanguages] = useState(null); // {en: {...}, pl: {exists, stale, ...}}
+  const [translating, setTranslating] = useState(false);
   const [html, setHtml] = useState('');
   const [mode, setMode] = useState('rich');
   const [tab, setTab] = useState('manual'); // 'manual' | 'fat'
@@ -137,23 +148,34 @@ export default function Editor() {
   htmlRef.current = html;
 
   const editable = docMeta && (docMeta.status === 'draft' || docMeta.status === 'in-review');
+  // Pending-AI snapshots are per language; English keeps the old key so earlier snapshots still recover.
+  const snapId = lang === 'en' ? version : `${version}@${lang}`;
+  const langInfo = languages ? languages[lang] : null;
+  const translationMissing = lang !== 'en' && langInfo && !langInfo.exists;
 
   /* ---------- load ---------- */
   useEffect(() => {
     api
-      .doc(slug, version)
+      .doc(slug, version, lang)
       .then((d) => {
         setData(d);
         setDocMeta(d.doc);
+        setLanguages(d.languages || null);
         setHtml(d.content);
         setSavedAt(d.doc.updatedAt);
+        setPending(null);
+        const L = language(lang);
         const greeting = {
           role: 'assistant',
-          content: `Editing the ${manualType(d.doc.manual).label.toLowerCase()} of ${d.module.name} · ${d.doc.version} r${d.doc.revision} (${manualType(d.doc.manual).audience} audience; sections ${manualType(d.doc.manual).sections.join(', ')}). Tell me what to change — e.g. "add a check to ${manualType(d.doc.manual).sections[1]}" — and I will apply it as a pending edit for you to accept. Paste a wiki/web page and I take only what belongs in this manual type.`,
+          content: `Editing the ${manualType(d.doc.manual).label.toLowerCase()} of ${d.module.name} · ${d.doc.version} r${d.doc.revision}${
+            L.source ? '' : ` · ${L.label} translation`
+          } (${manualType(d.doc.manual).audience} audience; sections ${manualType(d.doc.manual).sections.join(', ')}). Tell me what to change — e.g. "add a check to ${manualType(d.doc.manual).sections[1]}" — and I will apply it as a pending edit for you to accept.${
+            L.source ? ' Paste a wiki/web page and I take only what belongs in this manual type.' : ` I answer and edit in ${L.label}.`
+          }`,
         };
         // Recover a pending AI edit that was interrupted (e.g. page refresh).
         if (hasPendingMarkers(d.content)) {
-          const snap = loadSnapshot(slug, version);
+          const snap = loadSnapshot(slug, lang === 'en' ? version : `${version}@${lang}`);
           setPending({
             original: snap?.original ?? null,
             instruction: snap?.instruction ?? 'recovered AI edit',
@@ -172,7 +194,61 @@ export default function Editor() {
         }
       })
       .catch((e) => toast(e.message, 'err'));
-  }, [slug, version]);
+  }, [slug, version, lang]);
+
+  /* ---------- language switch / translation ---------- */
+  async function switchLang(next) {
+    if (next === lang) return;
+    if (pending) return toast('Accept or discard the pending AI edit first', 'err');
+    try {
+      if (dirty && editable) {
+        await api.saveContent(slug, version, htmlRef.current, false, '', lang);
+        setDirty(false);
+      }
+      setLang(next);
+    } catch (e) {
+      toast(`Could not save before switching: ${e.message}`, 'err');
+    }
+  }
+
+  /** AI translation of the English body into the current language (replaces the existing one). */
+  async function translate() {
+    if (langInfo?.exists && !confirm(`Replace the current ${language(lang).label} text with a fresh AI translation of the English body?`)) return;
+    setTranslating(true);
+    try {
+      const d = await api.translate(slug, version, lang);
+      setData(d);
+      setDocMeta(d.doc);
+      setLanguages(d.languages || null);
+      setHtml(d.content);
+      setDirty(false);
+      setSavedAt(d.doc.updatedAt);
+      toast(`${language(lang).label} translation saved as r${d.doc.revision} — review it, it is machine-made`);
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setTranslating(false);
+    }
+  }
+
+  /** Start the translation by hand: copy the English body into this language. */
+  async function copyEnglish() {
+    setTranslating(true);
+    try {
+      const en = await api.doc(slug, version, 'en');
+      const d = await api.translate(slug, version, lang, en.content);
+      setData(d);
+      setDocMeta(d.doc);
+      setLanguages(d.languages || null);
+      setHtml(d.content);
+      setDirty(false);
+      toast(`English copied — translate it in place`);
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setTranslating(false);
+    }
+  }
 
   useEffect(() => {
     api.illustrationStyle().then(setStyleInfo).catch(() => {});
@@ -196,7 +272,7 @@ export default function Editor() {
     const t = setTimeout(async () => {
       try {
         setSaving(true);
-        const meta = await api.saveContent(slug, version, htmlRef.current, false);
+        const meta = await api.saveContent(slug, version, htmlRef.current, false, "", lang);
         setDocMeta(meta);
         setSavedAt(new Date().toISOString());
         setDirty(false);
@@ -332,7 +408,7 @@ export default function Editor() {
   async function commitRevision(summary) {
     try {
       setSaving(true);
-      const meta = await api.saveContent(slug, version, htmlRef.current, true, summary);
+      const meta = await api.saveContent(slug, version, htmlRef.current, true, summary, lang);
       setDocMeta(meta);
       setSavedAt(new Date().toISOString());
       setDirty(false);
@@ -350,7 +426,7 @@ export default function Editor() {
       return;
     }
     try {
-      if (dirty) await api.saveContent(slug, version, htmlRef.current, false);
+      if (dirty) await api.saveContent(slug, version, htmlRef.current, false, "", lang);
       const meta = await api.submitReview(slug, version);
       setDocMeta(meta);
       toast(`${version} submitted for review — PR open on ${meta.branch}`);
@@ -557,6 +633,7 @@ export default function Editor() {
       const res = await api.aiChat({
         slug,
         version,
+        lang,
         messages: [...messages, { role: 'user', content: text || 'See the attached files.' }],
         html: htmlRef.current,
         attachments: sent,
@@ -564,7 +641,7 @@ export default function Editor() {
       setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
       if (res.html) {
         const instruction = text || `use ${sent.map((a) => a.name).join(', ')}`;
-        saveSnapshot(slug, version, { original: htmlRef.current, instruction });
+        saveSnapshot(slug, snapId, { original: htmlRef.current, instruction });
         setPending({ original: htmlRef.current, instruction });
         setEditorHtml(res.html);
         setDirty(true); // autosave the marked content so a refresh can recover it
@@ -582,7 +659,7 @@ export default function Editor() {
     setEditorHtml(clean);
     const instruction = pending.instruction;
     setPending(null);
-    clearSnapshot(slug, version);
+    clearSnapshot(slug, snapId);
     await commitRevision(`AI edit: ${instruction}`);
   }
 
@@ -601,14 +678,14 @@ export default function Editor() {
       setEditorHtml(removePendingBlocks(htmlRef.current));
     }
     setPending(null);
-    clearSnapshot(slug, version);
+    clearSnapshot(slug, snapId);
     setDirty(true);
     setMessages((m) => [...m, { role: 'assistant', content: 'Edit discarded.' }]);
   }
 
   /* ---------- outline ---------- */
   const outline = useMemo(() => {
-    const items = [...AUTO_OUTLINE];
+    const items = [...(AUTO_OUTLINE[lang] || AUTO_OUTLINE.en)];
     const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
     let h2 = 0;
     let h3 = 0;
@@ -658,6 +735,25 @@ export default function Editor() {
               FAT checklist{data.checklist ? '' : ' (none)'}
             </button>
           </div>
+          {tab === 'manual' && (
+            <div className="mode-toggle doc-tabs lang-toggle" title="Body language — English is the source, other languages are translations">
+              {LANGUAGES.map((L) => {
+                const info = languages?.[L.code];
+                const flag = L.source ? null : !info?.exists ? 'missing' : info.stale ? 'stale' : null;
+                return (
+                  <button
+                    key={L.code}
+                    className={lang === L.code ? 'active' : ''}
+                    onClick={() => switchLang(L.code)}
+                    title={L.source ? 'English — source text' : flag === 'missing' ? `${L.label} — not translated yet` : flag === 'stale' ? `${L.label} — English changed since this translation` : `${L.label} translation`}
+                  >
+                    {L.short}
+                    {flag && <span className={`lang-dot ${flag}`} />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {editable && tab === 'manual' && (
             <span className="save-indicator">
               {savedLabel}
@@ -764,6 +860,21 @@ export default function Editor() {
             </div>
           )}
 
+          {tab === 'manual' && lang !== 'en' && langInfo?.exists && (
+            <div className={`lang-banner ${langInfo.stale ? 'stale' : ''}`}>
+              <span>
+                <strong>{language(lang).label}</strong>
+                {langInfo.stale
+                  ? ` — the English body changed since this translation (made from r${langInfo.basedOnRevision}, now r${docMeta.revision}). Re-translate, or bring the changes over by hand.`
+                  : ` — translation ${langInfo.source === 'ai' ? 'by AI' : 'by hand'}${langInfo.edited ? ', edited' : ''}, based on English r${langInfo.basedOnRevision}.`}
+              </span>
+              {editable && (
+                <button className="btn btn-sm" disabled={translating} onClick={translate} title="Translate the English body again with the AI (replaces this text)">
+                  {translating ? 'Translating…' : langInfo.stale ? 'Re-translate with AI' : 'Translate again'}
+                </button>
+              )}
+            </div>
+          )}
           <div className="doc-scroll" style={tab === 'fat' ? { display: 'none' } : undefined}>
             <div className="doc-page" ref={pageRef}>
               <div
@@ -771,7 +882,24 @@ export default function Editor() {
                 title="Sections 1–3 are generated from module data and the revision record"
                 dangerouslySetInnerHTML={{ __html: data.generated }}
               />
-              {mode === 'rich' ? (
+              {translationMissing ? (
+                <div className="lang-empty">
+                  <h3>No {language(lang).label} translation yet</h3>
+                  <p>The English body is the source. Translate it with the AI and review the result, or copy the English text and translate it in place.</p>
+                  {editable ? (
+                    <div className="btn-row">
+                      <button className="btn btn-primary" disabled={translating} onClick={translate}>
+                        {translating ? 'Translating…' : `Translate to ${language(lang).label} with AI`}
+                      </button>
+                      <button className="btn" disabled={translating} onClick={copyEnglish}>
+                        Copy English as starting point
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="hint">Translations are added to a Draft or In-review doc version.</p>
+                  )}
+                </div>
+              ) : mode === 'rich' ? (
                 <div
                   ref={editorRef}
                   className="content-edit"

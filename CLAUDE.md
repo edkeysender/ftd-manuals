@@ -29,6 +29,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   preferring its open draft) or a full key in `version` — `resolveDocKey()` in `server/mcp.js`; new tools must
   spread `SLUG_VER` into their schema to get this. The **Software** page (`/software`, `GET /api/software`,
   MCP `list_software`) is the software-centric view: per software, linked modules, their software manuals, releases + coverage.
+- Languages: English is the **source** body (`content.html`); other languages (`LANGUAGES` in `docgen.js`, now `pl`)
+  are translations in `content.<lang>.html` with `doc.languages[lang] = {translatedAt, source, basedOnRevision,
+  basedOnHash}` — `stale` is computed on read when the English hash moved. `?lang=` / `lang` on doc GET/PUT, the
+  chat and MCP (`get_doc`, edit tools, `translate_doc`); manuals compile with `?lang=` (English fallback flagged).
+  Generated sections and the manual frame have PL strings in `docgen.js` `STRINGS`.
 - Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…` while draft,
   own revision record, own draft branch `draft/<slug>-<manual>-a1.0` (one open draft per manual type).
   Only **Released** versions compile into simulator manuals; an assembled manual (`manuals/<slug>/manual.json`)

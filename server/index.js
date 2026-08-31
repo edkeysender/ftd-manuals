@@ -13,6 +13,9 @@ import {
   MANUAL_ORDER,
   DEFAULT_MANUAL,
   manualTypeOf,
+  LANGUAGES,
+  DEFAULT_LANG,
+  langOf,
 } from './docgen.js';
 import { handleMcpRequest, TOOLS as MCP_TOOLS } from './mcp.js';
 import { GitTransientError } from './git.js';
@@ -180,16 +183,41 @@ app.post('/api/modules/:slug/docs', wrap(async (req, res) => {
 }));
 
 /* ---------- docs ---------- */
+/** ?lang=pl returns the Polish body (content '' when not translated yet) and Polish generated sections. */
 app.get('/api/modules/:slug/docs/:version', wrap(async (req, res) => {
-  const d = await store.getDoc(req.params.slug, req.params.version);
+  const d = await store.getDoc(req.params.slug, req.params.version, { lang: req.query.lang || DEFAULT_LANG });
   if (!d) return res.status(404).json({ error: 'Doc not found' });
   res.json(d);
 }));
 
+/** The languages a doc can have; English is the source, the others are translations. */
+app.get('/api/languages', (req, res) => res.json(Object.values(LANGUAGES)));
+
 app.put('/api/modules/:slug/docs/:version/content', wrap(async (req, res) => {
-  const { html, bump, summary } = req.body;
+  const { html, bump, summary, lang } = req.body;
   if (typeof html !== 'string') throw new Error('html is required');
-  res.json(await store.saveDraftContent(req.params.slug, req.params.version, html, { bump, summary }));
+  res.json(await store.saveDraftContent(req.params.slug, req.params.version, html, { bump, summary, lang: lang || DEFAULT_LANG }));
+}));
+
+/**
+ * Translate the English body into `lang` with the AI (replaces an existing translation) and
+ * return the doc as GET ?lang= would. `html` may be given instead to store a translation made
+ * elsewhere (no AI call).
+ */
+app.post('/api/modules/:slug/docs/:version/translate', wrap(async (req, res) => {
+  const lang = langOf(req.body?.lang || 'pl');
+  const d = await store.getDoc(req.params.slug, req.params.version);
+  if (!d) throw new Error('Doc not found');
+  if (!(d.doc.status === 'draft' || d.doc.status === 'in-review')) throw new Error('Translations are added to a Draft or In-review doc version');
+  let html = req.body?.html;
+  let source = 'manual';
+  if (typeof html !== 'string' || !html.trim()) {
+    if (!d.content.trim()) throw new Error('The English body is empty — nothing to translate');
+    html = await ai.translateHtml({ html: d.content, lang, module: d.module, doc: d.doc, guidelines: await store.getAiGuidelines() });
+    source = 'ai';
+  }
+  await store.saveTranslation(req.params.slug, req.params.version, lang, html, { source, summary: req.body?.summary });
+  res.json(await store.getDoc(req.params.slug, req.params.version, { lang }));
 }));
 
 /* ---------- FAT checklist (per doc version) ---------- */
@@ -398,7 +426,8 @@ app.post('/api/modules/:slug/docs/:version/illustrate', wrap(async (req, res) =>
 /* ---------- AI assistant (same actions available over the API and MCP) ---------- */
 app.post('/api/ai/chat', wrap(async (req, res) => {
   const { slug, version, messages, attachments } = req.body;
-  const d = await store.getDoc(slug, version);
+  const lang = langOf(req.body.lang || DEFAULT_LANG);
+  const d = await store.getDoc(slug, version, { lang });
   if (!d) throw new Error('Doc not found');
   const editable = d.doc.status === 'draft' || d.doc.status === 'in-review';
 
@@ -453,6 +482,7 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
     context: ctx,
     guidelines: await store.getAiGuidelines(),
     illustrationStyle: await illustrate.getStyle(),
+    lang,
   });
 
   // 4. Generate any illustrations the model requested, before returning the
@@ -521,7 +551,7 @@ async function manualRenderOpts(slug, manual) {
 }
 
 app.get('/api/manuals/:slug', wrap(async (req, res) => {
-  const compiled = await store.compileManual(req.params.slug);
+  const compiled = await store.compileManual(req.params.slug, { lang: req.query.lang || DEFAULT_LANG });
   if (!compiled) return res.status(404).json({ error: 'Manual not found' });
   const opts = await manualRenderOpts(req.params.slug, compiled.manual);
   res.json({ ...compiled, hasCover: !!opts.coverUrl, hasLogo: !!opts.logoUrl, css: MANUAL_CSS, html: manualBodyHtml(compiled, opts) });
@@ -562,7 +592,7 @@ app.delete('/api/manuals/:slug', wrap(async (req, res) => {
 
 // Standalone HTML export with images inlined as data URIs.
 app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
-  const compiled = await store.compileManual(req.params.slug);
+  const compiled = await store.compileManual(req.params.slug, { lang: req.query.lang || DEFAULT_LANG });
   if (!compiled) return res.status(404).json({ error: 'Manual not found' });
   const opts = await manualRenderOpts(req.params.slug, compiled.manual);
   let html = manualExportHtml(compiled, opts);
@@ -587,7 +617,7 @@ app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
   }
   res.set('Content-Type', 'text/html; charset=utf-8');
   if (req.query.download !== undefined) {
-    res.set('Content-Disposition', `attachment; filename="${compiled.manual.slug}.html"`);
+    res.set('Content-Disposition', `attachment; filename="${compiled.manual.slug}${compiled.lang && compiled.lang !== DEFAULT_LANG ? `-${compiled.lang}` : ''}.html"`);
   }
   res.send(html);
 }));
