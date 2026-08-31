@@ -12,7 +12,7 @@ import path from 'node:path';
 import * as store from './store.js';
 import * as ai from './ai.js';
 import * as illustrate from './illustrate.js';
-import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf, parseDocKey, docKey } from './docgen.js';
+import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf, parseDocKey, docKey, LANGUAGES, DEFAULT_LANG, langOf } from './docgen.js';
 import { templateChecklist } from './checklist.js';
 import * as inbox from './inbox.js';
 
@@ -26,6 +26,13 @@ const MANUAL_PROP = {
   enum: MANUAL_ORDER,
   description: `Manual type — a module is documented per audience: ${MANUAL_HELP}. Software manuals need the module linked to a software.`,
 };
+/** Body language of a doc: English is the source; other languages are translations stored next to it. */
+const LANG_PROP = {
+  type: 'string',
+  enum: Object.keys(LANGUAGES),
+  description: `Language of the body to read/edit (default en). ${Object.values(LANGUAGES).map((l) => `${l.code} = ${l.label}${l.source ? ' (source)' : ''}`).join(', ')}. A translation exists only after translate_doc (or a save with lang); get_doc.languages tells which exist and whether they are stale (English edited since).`,
+};
+
 /** Every doc-scoped tool addresses one manual of a module: `manual` + `version`, or a full key in `version`. */
 const SLUG_VER = {
   slug: { type: 'string', description: 'Module slug, e.g. starting-panel' },
@@ -77,11 +84,28 @@ export const TOOLS = [
       type: 'object',
       properties: {
         ...SLUG_VER,
+        lang: LANG_PROP,
         include_assets: { type: 'boolean', description: 'Also return the module assets list (saves a list_assets call)' },
       },
       required: ['slug'],
     },
     annotations: { title: 'Get doc', ...RO },
+  },
+  {
+    name: 'translate_doc',
+    description:
+      'Translate the English body of a Draft/In-review doc into another language with the AI and store it next to the English source (content.<lang>.html); replaces an existing translation. Afterwards the translation can be read/edited with lang on get_doc / save_doc_content / replace_in_doc / insert_into_section / edit_doc. get_doc.languages[lang].stale tells when the English body changed since the translation. Pass html to store a translation you made yourself instead of calling the AI.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...SLUG_VER,
+        lang: { ...LANG_PROP, description: 'Target language (default pl)' },
+        html: { type: 'string', description: 'Optional ready translation of the whole body (skips the AI)' },
+        summary: { type: 'string', description: 'Revision record entry' },
+      },
+      required: ['slug'],
+    },
+    annotations: { title: 'Translate doc', ...RW, openWorldHint: true },
   },
   {
     name: 'list_assets',
@@ -212,7 +236,7 @@ export const TOOLS = [
       'Replace the whole body HTML (sections 4–7 — the four <h2> sections of the manual type, e.g. Installation, Configuration, Maintenance, Appendixes for a technician manual; see get_doc) of a Draft/In-review doc. Allowed HTML: h2, h3, p, ol, ul, li, strong, em, table, figure/img/figcaption, <div class="admonition warning|note"><p class="admonition-title">…</p>…</div>. Commits on the draft branch and bumps the revision (r1 → r2 …) with the summary in the revision record. Prefer replace_in_doc or insert_into_section for small changes.',
     inputSchema: {
       type: 'object',
-      properties: { ...SLUG_VER, html: { type: 'string' }, summary: { type: 'string', description: 'Revision record entry' } },
+      properties: { ...SLUG_VER, lang: LANG_PROP, html: { type: 'string' }, summary: { type: 'string', description: 'Revision record entry' } },
       required: ['slug', 'version', 'html'],
     },
     annotations: { title: 'Save doc content', ...RW },
@@ -228,6 +252,7 @@ export const TOOLS = [
         find: { type: 'string', description: 'Exact substring of the current body HTML' },
         replace: { type: 'string', description: 'Replacement HTML (empty string deletes)' },
         summary: { type: 'string' },
+        lang: LANG_PROP,
       },
       required: ['slug', 'version', 'find', 'replace'],
     },
@@ -245,6 +270,7 @@ export const TOOLS = [
         html: { type: 'string' },
         position: { type: 'string', enum: ['end', 'start'], description: 'Default end' },
         summary: { type: 'string' },
+        lang: LANG_PROP,
       },
       required: ['slug', 'version', 'section', 'html'],
     },
@@ -273,6 +299,7 @@ export const TOOLS = [
           },
         },
         summary: { type: 'string', description: 'Revision record entry for the whole batch' },
+        lang: LANG_PROP,
       },
       required: ['slug', 'version', 'edits'],
     },
@@ -553,9 +580,12 @@ async function resolveDocKey(args) {
   return (typed.find((d) => d.status === 'draft' || d.status === 'in-review') || typed[0]).key;
 }
 
-async function currentBody(slug, version) {
-  const d = await store.getDoc(slug, version);
+async function currentBody(slug, version, lang = DEFAULT_LANG) {
+  const d = await store.getDoc(slug, version, { lang });
   if (!d) throw new Error(`Doc ${slug} ${version} not found`);
+  if (lang !== DEFAULT_LANG && !d.languages[lang]?.exists) {
+    throw new Error(`Doc ${version} has no ${LANGUAGES[lang].label} translation yet — create it with translate_doc`);
+  }
   return d.content;
 }
 
@@ -629,11 +659,25 @@ async function callTool(name, args) {
       if (!m) throw new Error(`Module "${args.slug}" not found`);
       return m;
     }
+    case 'translate_doc': {
+      const lang = langOf(args.lang || 'pl');
+      const d = await store.getDoc(args.slug, args.version);
+      if (!d) throw new Error(`Doc ${args.slug} ${args.version} not found`);
+      let html = args.html;
+      let source = 'manual';
+      if (typeof html !== 'string' || !html.trim()) {
+        html = await ai.translateHtml({ html: d.content, lang, module: d.module, doc: d.doc, guidelines: await store.getAiGuidelines() });
+        source = 'ai';
+      }
+      const meta = await store.saveTranslation(args.slug, args.version, lang, html, { source, summary: args.summary });
+      return { doc: meta, lang, languages: (await store.getDoc(args.slug, args.version, { lang })).languages };
+    }
     case 'get_doc': {
       const version = args.version; // resolved above
-      const d = await store.getDoc(args.slug, version);
+      const lang = langOf(args.lang || DEFAULT_LANG);
+      const d = await store.getDoc(args.slug, version, { lang });
       if (!d) throw new Error(`Doc ${args.slug} ${version} not found`);
-      const out = { module: d.module, doc: d.doc, content: d.content, checklist: d.checklist || null };
+      const out = { module: d.module, doc: d.doc, lang, languages: d.languages, content: d.content, checklist: d.checklist || null };
       if (args.include_assets) out.assets = await store.listAssets(args.slug);
       return out;
     }
@@ -691,26 +735,32 @@ async function callTool(name, args) {
       return await store.saveDraftContent(args.slug, args.version, args.html, {
         bump: true,
         summary: args.summary || 'Edit via MCP',
+        lang: langOf(args.lang || DEFAULT_LANG),
       });
     case 'replace_in_doc': {
-      const body = await currentBody(args.slug, args.version);
+      const lang = langOf(args.lang || DEFAULT_LANG);
+      const body = await currentBody(args.slug, args.version, lang);
       const html = replaceOnce(body, args.find, args.replace);
       return await store.saveDraftContent(args.slug, args.version, html, {
         bump: true,
         summary: args.summary || 'Edit via MCP (replace)',
+        lang,
       });
     }
     case 'insert_into_section': {
-      const body = await currentBody(args.slug, args.version);
+      const lang = langOf(args.lang || DEFAULT_LANG);
+      const body = await currentBody(args.slug, args.version, lang);
       const html = insertIntoSection(body, args.section, args.html, args.position || 'end');
       return await store.saveDraftContent(args.slug, args.version, html, {
         bump: true,
         summary: args.summary || `Add content to ${args.section} via MCP`,
+        lang,
       });
     }
     case 'edit_doc': {
       if (!Array.isArray(args.edits) || !args.edits.length) throw new Error('edits must be a non-empty array');
-      let html = await currentBody(args.slug, args.version);
+      const lang = langOf(args.lang || DEFAULT_LANG);
+      let html = await currentBody(args.slug, args.version, lang);
       args.edits.forEach((e, i) => {
         try {
           if (typeof e.find === 'string') html = replaceOnce(html, e.find, e.replace ?? '');
@@ -723,6 +773,7 @@ async function callTool(name, args) {
       return await store.saveDraftContent(args.slug, args.version, html, {
         bump: true,
         summary: args.summary || `${args.edits.length} edits via MCP`,
+        lang,
       });
     }
     case 'upload_photo': {

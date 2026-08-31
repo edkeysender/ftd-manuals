@@ -232,11 +232,76 @@ function fmtDate(iso) {
 }
 
 /** Sections 1–3 as read-only HTML, generated from module + doc metadata. */
-export function generatedSections(module, doc) {
+/* ------------------------------------------------------------------ */
+/* Languages                                                           */
+/* English is the source language of every doc; other languages are   */
+/* translations stored next to it (content.<lang>.html) and marked    */
+/* stale when the English body changes. Generated sections 1–3 and    */
+/* the assembled-manual frame are produced in the requested language. */
+/* ------------------------------------------------------------------ */
+
+export const LANGUAGES = {
+  en: { code: 'en', label: 'English', short: 'EN', source: true },
+  pl: { code: 'pl', label: 'Polski', short: 'PL', source: false },
+};
+export const DEFAULT_LANG = 'en';
+export const isLanguage = (l) => Object.prototype.hasOwnProperty.call(LANGUAGES, l);
+export function langOf(l) {
+  const code = String(l || DEFAULT_LANG).toLowerCase();
+  if (!isLanguage(code)) throw new Error(`Unknown language "${l}" — one of ${Object.keys(LANGUAGES).join(', ')}`);
+  return code;
+}
+
+const STRINGS = {
+  en: {
+    manualTypes: { customer: 'Customer manual', technician: 'Technician manual', 'software-customer': 'Software customer manual', 'software-technician': 'Software technician manual' },
+    groups: GROUP_LABELS,
+    categories: CATEGORY_LABELS,
+    audiences: { customer: 'customer', technician: 'technician' },
+    revisionRecord: 'Revision record', documentRevisions: 'Document revisions', revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
+    introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualGroup: 'Manual group', manualType: 'Manual type',
+    hardware: 'Hardware', unit: 'Unit', relation: 'Relation', notes: 'Notes', notHardware: 'Not hardware-related',
+    softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', notSoftware: 'Not software-related',
+    audienceRow: (label, audience) => `${label} — ${audience} audience`,
+    introAudience: { technician: 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.', customer: 'It is intended for the operator of the simulator.' },
+    introSubject: (kind, name, detail) => (kind === 'software' ? `the software of the <strong>${name}</strong> module (${detail})` : `the <strong>${name}</strong> module (${detail})`),
+    intro1: (typeLabel, subject, audience, group) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience} It is a standalone mini-manual and is compiled into the ${group} (${typeLabel}) when this document version is released.`,
+    intro2: (version, draftRev) => `Document version ${version}${draftRev ? ` (draft, revision ${draftRev})` : ''}. Only released document versions are compiled into simulator manuals.`,
+    // assembled manual
+    tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
+    draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', compiled: 'compiled', modules: (n) => `${n} module${n === 1 ? '' : 's'}`, assembled: 'Assembled manual', draft: 'draft',
+  },
+  pl: {
+    manualTypes: { customer: 'Instrukcja użytkownika', technician: 'Instrukcja techniczna', 'software-customer': 'Instrukcja użytkownika oprogramowania', 'software-technician': 'Instrukcja techniczna oprogramowania' },
+    groups: { SIM: 'Instrukcja symulatora', IOS: 'Instrukcja IOS', RACK: 'Instrukcja szaf RACK' },
+    categories: { software: 'Oprogramowanie', 'cockpit-hardware': 'Sprzęt kokpitu', structure: 'Konstrukcja', peripherals: 'Urządzenia peryferyjne', rack: 'Rack' },
+    audiences: { customer: 'klient', technician: 'technik' },
+    revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
+    introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualGroup: 'Grupa instrukcji', manualType: 'Rodzaj instrukcji',
+    hardware: 'Sprzęt', unit: 'Jednostka', relation: 'Relacja', notes: 'Uwagi', notHardware: 'Nie dotyczy sprzętu',
+    softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', notSoftware: 'Nie dotyczy oprogramowania',
+    audienceRow: (label, audience) => `${label} — odbiorca: ${audience}`,
+    introAudience: { technician: 'Jest przeznaczony dla instalatora i technika serwisu i nie stanowi części dokumentacji przekazywanej operatorowi symulatora.', customer: 'Jest przeznaczony dla operatora symulatora.' },
+    introSubject: (kind, name, detail) => (kind === 'software' ? `oprogramowania modułu <strong>${name}</strong> (${detail})` : `modułu <strong>${name}</strong> (${detail})`),
+    intro1: (typeLabel, subject, audience, group) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience} Jest samodzielną mini-instrukcją i po wydaniu tej wersji dokumentu wchodzi w skład dokumentu ${group} (${typeLabel}).`,
+    intro2: (version, draftRev) => `Wersja dokumentu ${version}${draftRev ? ` (robocza, rewizja ${draftRev})` : ''}. Do instrukcji symulatora kompilowane są wyłącznie wydane wersje dokumentów.`,
+    tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
+    draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', compiled: 'skompilowano', modules: (n) => `${n} ${n === 1 ? 'moduł' : n < 5 ? 'moduły' : 'modułów'}`, assembled: 'Instrukcja złożona', draft: 'robocza',
+  },
+};
+
+/** UI strings of one language (English strings fill any gap). */
+export const strings = (lang) => ({ ...STRINGS.en, ...(STRINGS[langOf(lang)] || {}) });
+export const manualTypeLabel = (id, lang = DEFAULT_LANG) => strings(lang).manualTypes[manualTypeOf(id).id];
+export const groupLabel = (g, lang = DEFAULT_LANG) => strings(lang).groups[g] || GROUP_LABELS[g] || g;
+
+/** Sections 1–3 as read-only HTML, generated from module + doc metadata, in `lang`. */
+export function generatedSections(module, doc, lang = DEFAULT_LANG) {
+  const T = strings(lang);
   const record = (doc.revisionRecord || [])
     .map(
       (r) =>
-        `<tr><td>${esc(doc.version)} ${esc(r.rev)}${r.inherited ? ' <em>(inherited)</em>' : ''}</td><td>${fmtDate(
+        `<tr><td>${esc(doc.version)} ${esc(r.rev)}${r.inherited ? ` <em>(${T.inherited})</em>` : ''}</td><td>${fmtDate(
           r.date
         )}</td><td>${esc(r.summary)}</td></tr>`
     )
@@ -249,7 +314,7 @@ export function generatedSections(module, doc) {
         const range = cov ? (cov.to && cov.to !== cov.from ? `${cov.from} – ${cov.to}` : cov.from) : s.fromVersion;
         return `<tr><td>${esc(s.name)}</td><td>${esc(range || '—')}</td></tr>`;
       })
-      .join('\n') || '<tr><td colspan="2">Not software-related</td></tr>';
+      .join('\n') || `<tr><td colspan="2">${T.notSoftware}</td></tr>`;
 
   const hwRows =
     hardwareItemsOf(module)
@@ -257,56 +322,55 @@ export function generatedSections(module, doc) {
         (h) =>
           `<tr><td>${esc(hardwareItemLabel(h))}</td><td>${esc(hardwareDetail(h))}</td><td>${esc(h.notes || '')}</td></tr>`
       )
-      .join('\n') || '<tr><td colspan="3">Not hardware-related</td></tr>';
+      .join('\n') || `<tr><td colspan="3">${T.notHardware}</td></tr>`;
 
   const type = manualTypeOf(doc.manual);
-  const audience =
-    type.audience === 'technician'
-      ? 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.'
-      : 'It is intended for the operator of the simulator.';
-  const subject =
-    type.kind === 'software'
-      ? `the software of the <strong>${esc(module.name)}</strong> module (${esc(softwareLabel(module.softwares))})`
-      : `the <strong>${esc(module.name)}</strong> module (${esc(module.code || module.slug)})`;
+  const typeLabel = esc(T.manualTypes[type.id]);
+  const typeLower = lang === 'en' ? typeLabel.toLowerCase() : typeLabel.charAt(0).toLowerCase() + typeLabel.slice(1);
+  const audience = T.introAudience[type.audience];
+  const subject = T.introSubject(
+    type.kind,
+    esc(module.name),
+    type.kind === 'software' ? esc(softwareLabel(module.softwares)) : esc(module.code || module.slug)
+  );
+  const group = esc(T.groups[module.group] || module.group);
 
   return `<section class="auto-section" data-auto="1">
-<h2>Revision record</h2>
-<h3>Document revisions</h3>
+<h2>${T.revisionRecord}</h2>
+<h3>${T.documentRevisions}</h3>
 <table>
-<thead><tr><th>Revision</th><th>Date</th><th>Description of change</th></tr></thead>
+<thead><tr><th>${T.revision}</th><th>${T.date}</th><th>${T.change}</th></tr></thead>
 <tbody>
-${record || '<tr><td colspan="3">No revisions recorded</td></tr>'}
+${record || `<tr><td colspan="3">${T.noRevisions}</td></tr>`}
 </tbody>
 </table>
 </section>
 <section class="auto-section" data-auto="2">
-<h2>Introduction</h2>
-<p>This document is the <strong>${esc(type.label.toLowerCase())}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience} It is a standalone mini-manual and is compiled into the ${esc(
-    GROUP_LABELS[module.group] || module.group
-  )} (${esc(type.label.toLowerCase())}) when this document version is released.</p>
-<p>Document version ${esc(doc.version)}${doc.status === 'released' ? '' : ` (draft, revision ${esc('r' + doc.revision)})`}. Only released document versions are compiled into simulator manuals.</p>
+<h2>${T.introduction}</h2>
+<p>${T.intro1(typeLower, subject, audience, group)}</p>
+<p>${T.intro2(esc(doc.version), doc.status === 'released' ? '' : esc('r' + doc.revision))}</p>
 </section>
 <section class="auto-section" data-auto="3">
-<h2>General information</h2>
+<h2>${T.generalInfo}</h2>
 <table>
 <tbody>
-<tr><th>Module</th><td>${esc(module.name)}</td></tr>
-<tr><th>Code</th><td>${esc(module.code || '—')}</td></tr>
-<tr><th>Category</th><td>${esc(CATEGORY_LABELS[module.category] || module.category || '—')}</td></tr>
-<tr><th>Manual group</th><td>${esc(module.group)}</td></tr>
-<tr><th>Manual type</th><td>${esc(type.label)} — ${esc(type.audience)} audience</td></tr>
+<tr><th>${T.module}</th><td>${esc(module.name)}</td></tr>
+<tr><th>${T.code}</th><td>${esc(module.code || '—')}</td></tr>
+<tr><th>${T.category}</th><td>${esc(T.categories[module.category] || module.category || '—')}</td></tr>
+<tr><th>${T.manualGroup}</th><td>${esc(module.group)}</td></tr>
+<tr><th>${T.manualType}</th><td>${T.audienceRow(typeLabel, esc(T.audiences[type.audience]))}</td></tr>
 </tbody>
 </table>
-<h3>Hardware</h3>
+<h3>${T.hardware}</h3>
 <table>
-<thead><tr><th>Unit</th><th>Relation</th><th>Notes</th></tr></thead>
+<thead><tr><th>${T.unit}</th><th>${T.relation}</th><th>${T.notes}</th></tr></thead>
 <tbody>
 ${hwRows}
 </tbody>
 </table>
-<h3>Software relation</h3>
+<h3>${T.softwareRelation}</h3>
 <table>
-<thead><tr><th>Software</th><th>Covered releases</th></tr></thead>
+<thead><tr><th>${T.software}</th><th>${T.coveredReleases}</th></tr></thead>
 <tbody>
 ${swRows}
 </tbody>
@@ -363,6 +427,7 @@ export const MANUAL_CSS = `
 .manual-doc .chapter > h1 { font-size: 24px; border-bottom: 3px solid #16324f; padding-bottom: 8px; margin: 0 0 16px; }
 .manual-doc .chapter > h1::before { content: counter(chap) '  '; color: #16324f; }
 .manual-doc .draft-flag { display: inline-block; font-size: 12px; background: #fef3c7; color: #b45309; border-radius: 5px; padding: 2px 8px; margin-left: 10px; vertical-align: middle; }
+.manual-doc .lang-flag { background: #e5edff; color: #1d4ed8; }
 .manual-doc .chapter h2 { counter-increment: sec; counter-reset: subsec; font-size: 18px; margin: 30px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #16324f; }
 .manual-doc .chapter h2::before { content: counter(chap) '.' counter(sec) '  '; color: #16324f; }
 .manual-doc .chapter h3 { counter-increment: subsec; font-size: 14.5px; margin: 20px 0 8px; }
@@ -440,8 +505,9 @@ function headerBox(manual, logoHtml) {
  * chapters with anchored headings, proprietary footer.
  * opts: { logoUrl, coverUrl, footerText }
  */
-export function manualBodyHtml({ manual, chapters }, opts = {}) {
+export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts = {}) {
   const { logoUrl = null, coverUrl = null, footerText = FOOTER_TEXT } = opts;
+  const T = strings(lang);
   const date = new Date().toISOString().slice(0, 10);
   const logoHtml = logoUrl ? `<img class="logo" src="${esc(logoUrl)}" alt="FTD.aero">` : LOGO_SVG;
 
@@ -452,10 +518,10 @@ export function manualBodyHtml({ manual, chapters }, opts = {}) {
   const recordRows = processed
     .map((c, i) =>
       c.missing
-        ? `<tr><td>${i + 1}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="4" class="missing">no documentation</td></tr>`
+        ? `<tr><td>${i + 1}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="4" class="missing">${T.noDocumentation}</td></tr>`
         : `<tr><td>${i + 1}</td><td><a href="#ch-${esc(c.slug)}">${esc(c.module.name)}</a></td><td>${esc(
             c.module.code || '—'
-          )}</td><td>${esc(c.doc.version)}${c.isDraft ? ` draft r${c.doc.revision}` : ''}</td><td>${esc(
+          )}</td><td>${esc(c.doc.version)}${c.isDraft ? ` ${T.draft} r${c.doc.revision}` : ''}</td><td>${esc(
             c.doc.status
           )}</td><td>${fmtDate(c.doc.releasedAt || c.doc.updatedAt)}</td></tr>`
     )
@@ -464,7 +530,7 @@ export function manualBodyHtml({ manual, chapters }, opts = {}) {
   const toc = processed
     .map((c, i) => {
       const title = esc(c.module?.name || c.slug);
-      if (c.missing) return `<li class="missing"><span class="num">${i + 1}</span>${title} — no documentation</li>`;
+      if (c.missing) return `<li class="missing"><span class="num">${i + 1}</span>${title} — ${T.noDocumentation}</li>`;
       const subs = c.items
         .map(
           (it) =>
@@ -478,10 +544,14 @@ export function manualBodyHtml({ manual, chapters }, opts = {}) {
   const body = processed
     .map((c) => {
       if (c.missing) {
-        return `<section class="chapter" id="ch-${esc(c.slug)}"><h1>${esc(c.module?.name || c.slug)}</h1><p class="missing">This module has no documentation yet.</p></section>`;
+        return `<section class="chapter" id="ch-${esc(c.slug)}"><h1>${esc(c.module?.name || c.slug)}</h1><p class="missing">${T.noDocumentationYet}</p></section>`;
       }
+      const flags = [
+        c.isDraft ? `<span class="draft-flag">${esc(T.draftFlag(c.doc.version, c.doc.revision))}</span>` : '',
+        c.langFallback ? `<span class="draft-flag lang-flag">${esc(T.langFallback)}</span>` : '',
+      ].join('');
       return `<section class="chapter" id="ch-${esc(c.slug)}">
-<h1>${esc(c.module.name)}${c.isDraft ? `<span class="draft-flag">draft ${esc(c.doc.version)} r${c.doc.revision} — not released</span>` : ''}</h1>
+<h1>${esc(c.module.name)}${flags}</h1>
 ${c.html}
 </section>`;
     })
@@ -491,24 +561,24 @@ ${c.html}
     ? `<div class="cover-image"><img src="${esc(coverUrl)}" alt="${esc(manual.name)}"></div>`
     : `<div class="cover-placeholder">Cover illustration — set one via Edit manual</div>`;
 
-  return `<div class="manual-doc">
+  return `<div class="manual-doc" lang="${esc(lang)}">
 <div class="print-header">${headerBox(manual, logoHtml)}</div>
 <div class="print-footer">${esc(footerText)}</div>
 <div class="manual">
 <section class="cover" id="cover">
   ${headerBox(manual, logoHtml)}
   ${cover}
-  <div class="sub">${esc(GROUP_LABELS[manual.group] || (manual.group ? manual.group : 'Assembled manual'))} · ${esc(
-    manualTypeOf(manual.manual).label
-  )} · compiled ${date} · ${chapters.length} module${chapters.length === 1 ? '' : 's'}</div>
+  <div class="sub">${esc(T.groups[manual.group] || (manual.group ? manual.group : T.assembled))} · ${esc(
+    T.manualTypes[manualTypeOf(manual.manual).id]
+  )} · ${T.compiled} ${date} · ${T.modules(chapters.length)}</div>
 </section>
 <section class="front" id="front">
-  <h2 id="revision-record">Revision record</h2>
+  <h2 id="revision-record">${T.revisionRecord}</h2>
   <table>
-    <thead><tr><th>Ch.</th><th>Module</th><th>Code</th><th>Doc version</th><th>Status</th><th>Date</th></tr></thead>
+    <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.code}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
     <tbody>${recordRows}</tbody>
   </table>
-  <h2 id="toc">Table of contents</h2>
+  <h2 id="toc">${T.tableOfContents}</h2>
   <div class="toc"><ol>${toc}</ol></div>
 </section>
 ${body}
@@ -520,7 +590,7 @@ ${body}
 /** Standalone HTML document for export / print. */
 export function manualExportHtml(compiled, opts = {}) {
   return `<!doctype html>
-<html lang="en">
+<html lang="${esc(compiled.lang || DEFAULT_LANG)}">
 <head>
 <meta charset="utf-8">
 <title>${esc(compiled.manual.name)} — FTD.aero</title>

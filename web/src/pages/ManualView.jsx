@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, GROUPS, MANUAL_TYPES, manualType, readFileAsBase64 } from '../api.js';
+import { api, GROUPS, MANUAL_TYPES, manualType, readFileAsBase64, LANGUAGES, language } from '../api.js';
 import ModulePicker from '../components/ModulePicker.jsx';
 import { useToast } from '../App.jsx';
 
@@ -8,10 +8,12 @@ export default function ManualView() {
   const { slug } = useParams();
   const [data, setData] = useState(null);
   const [editing, setEditing] = useState(false);
+  const [lang, setLang] = useState('en');
   const toast = useToast();
   const navigate = useNavigate();
 
-  const load = useCallback(() => api.manual(slug).then(setData).catch((e) => toast(e.message, 'err')), [slug]);
+  const load = useCallback(() => api.manual(slug, lang).then(setData).catch((e) => toast(e.message, 'err')), [slug, lang]);
+  const q = lang !== 'en' ? `?lang=${lang}` : '';
   useEffect(() => {
     load();
   }, [load]);
@@ -30,6 +32,7 @@ export default function ManualView() {
   const { manual, chapters } = data;
   const drafts = chapters.filter((c) => c.isDraft).length;
   const missing = chapters.filter((c) => c.missing).length;
+  const untranslated = chapters.filter((c) => c.langFallback).length;
 
   return (
     <div className="page page-wide">
@@ -50,16 +53,28 @@ export default function ManualView() {
             <span className="chip">{chapters.length} chapter{chapters.length === 1 ? '' : 's'}</span>
             {drafts > 0 && <span className="badge badge-in-review">{drafts} from draft</span>}
             {missing > 0 && <span className="badge badge-missing">{missing} without doc</span>}
+            {untranslated > 0 && (
+              <span className="badge badge-draft" title={`${untranslated} chapter${untranslated === 1 ? '' : 's'} shown in English — no ${language(lang).label} translation`}>
+                {untranslated} in English
+              </span>
+            )}
             {drafts === 0 && missing === 0 && chapters.length > 0 && <span className="badge badge-released">All released</span>}
           </div>
         </div>
         <div className="btn-row">
+          <div className="mode-toggle" title="Language of the compiled manual — chapters without a translation fall back to English (flagged)">
+            {LANGUAGES.map((L) => (
+              <button key={L.code} className={lang === L.code ? 'active' : ''} onClick={() => setLang(L.code)}>
+                {L.short}
+              </button>
+            ))}
+          </div>
           <button className="btn" onClick={() => setEditing(true)}>Edit manual</button>
-          <a className="btn" href={`/api/manuals/${slug}/export.html`} target="_blank" rel="noreferrer" title="Opens the standalone document — use the browser's Print for PDF">
+          <a className="btn" href={`/api/manuals/${slug}/export.html${q}`} target="_blank" rel="noreferrer" title="Opens the standalone document — use the browser's Print for PDF">
             Open / print
           </a>
-          <a className="btn btn-primary" href={`/api/manuals/${slug}/export.html?download`}>
-            Export HTML
+          <a className="btn btn-primary" href={`/api/manuals/${slug}/export.html?download${lang !== 'en' ? `&lang=${lang}` : ''}`}>
+            Export HTML{lang !== 'en' ? ` (${language(lang).short})` : ''}
           </a>
           <a className="btn" href={`/api/manuals/${slug}/fat.html`} target="_blank" rel="noreferrer" title="FAT protocol: the checklists of all modules in this manual as one document">
             FAT protocol

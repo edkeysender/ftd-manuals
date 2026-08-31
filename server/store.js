@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { GitRepo } from './git.js';
 import {
   blankContent,
@@ -17,6 +18,9 @@ import {
   manualTypeOf,
   docKey,
   parseDocKey,
+  LANGUAGES,
+  DEFAULT_LANG,
+  langOf,
 } from './docgen.js';
 import { normalizeChecklist } from './checklist.js';
 import { validateAsset } from './images.js';
@@ -68,6 +72,9 @@ const moduleFile = (slug) => `modules/${slug}/module.json`;
 const docDir = (slug, manual, version) => `modules/${slug}/docs/${manual}/${version}`;
 const docJson = (dir) => `${dir}/doc.json`;
 const contentIn = (dir) => `${dir}/content.html`;
+/** Translation of the body: content.<lang>.html next to the English content.html. */
+const contentLangIn = (dir, lang) => (langOf(lang) === DEFAULT_LANG ? contentIn(dir) : `${dir}/content.${langOf(lang)}.html`);
+const contentHash = (html) => createHash('sha1').update(String(html || '')).digest('hex').slice(0, 12);
 const checklistIn = (dir) => `${dir}/checklist.json`;
 const VERSION_RE = /^A\d+\.\d+$/;
 const LEGACY_DOC_RE = /^modules\/([^/]+)\/docs\/(A\d+\.\d+)\/doc\.json$/;
@@ -614,19 +621,81 @@ async function findDoc(slug, key) {
   return doc ? { entry, doc } : null;
 }
 
-export async function getDoc(slug, key) {
+/**
+ * Language status of a doc: for every non-source language whether a translation exists,
+ * what it is based on and whether the English body changed since (`stale`).
+ * enHash is the hash of the current English body.
+ */
+function languageStatus(doc, enHash) {
+  const out = {};
+  for (const code of Object.keys(LANGUAGES)) {
+    if (code === DEFAULT_LANG) {
+      out[code] = { code, exists: true, source: true, stale: false };
+      continue;
+    }
+    const m = (doc.languages || {})[code];
+    out[code] = m
+      ? { code, exists: true, source: false, ...m, stale: !!m.basedOnHash && m.basedOnHash !== enHash }
+      : { code, exists: false, source: false, stale: false };
+  }
+  return out;
+}
+
+/**
+ * Read a doc version. `lang` selects the body: English (source) or a translation —
+ * `content` is '' when that translation does not exist yet (see `languages[lang].exists`).
+ * Generated sections 1–3 come out in the requested language.
+ */
+export async function getDoc(slug, key, { lang = DEFAULT_LANG } = {}) {
+  lang = langOf(lang);
   const hit = await findDoc(slug, key);
   if (!hit) return null;
   const { entry, doc } = hit;
-  const content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
+  const enContent = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
+  const content = lang === DEFAULT_LANG ? enContent : (await repo.show(doc.ref, contentLangIn(doc.dir, lang))) || '';
   const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
   return {
     module: entry.module,
     doc,
+    lang,
+    languages: languageStatus(doc, contentHash(enContent)),
     content,
-    generated: generatedSections(entry.module, doc),
+    generated: generatedSections(entry.module, doc, lang),
     checklist,
   };
+}
+
+/**
+ * Store a translation of a Draft/In-review doc body (from the AI or pasted by hand) and
+ * record what English revision/body it was made from, so later English edits mark it stale.
+ */
+export async function saveTranslation(slug, key, lang, html, { source = 'ai', summary = '' } = {}) {
+  lang = langOf(lang);
+  if (lang === DEFAULT_LANG) throw new Error('English is the source language — edit it as content');
+  const { branch, dir, meta } = await loadDraftDoc(slug, key);
+  if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
+  const enContent = (await repo.show(branch, contentIn(dir))) || '';
+  const ts = now();
+  meta.languages = meta.languages || {};
+  meta.languages[lang] = {
+    translatedAt: ts,
+    source,
+    basedOnRevision: meta.revision,
+    basedOnHash: contentHash(enContent),
+    updatedAt: ts,
+  };
+  meta.revision += 1;
+  const text = summary || `${LANGUAGES[lang].label} translation${source === 'ai' ? ' (AI)' : ''}`;
+  meta.revisionRecord.push({ rev: `r${meta.revision}`, date: ts, summary: text });
+  meta.updatedAt = ts;
+  await mutate(async () => {
+    await repo.checkout(branch);
+    await repo.writeFile(contentLangIn(dir, lang), html);
+    await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
+    await repo.commitAll(`${slug} ${meta.version}: r${meta.revision} — ${text}`);
+    await repo.checkout('main');
+  });
+  return meta;
 }
 
 /* ------------------------------------------------------------------ */
@@ -761,6 +830,13 @@ export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump =
     (await repo.show('main', contentIn(latest.dir))) ||
     blankContent(entry.module.name, entry.module.hardwareItems, type.id, entry.module.softwares);
   const checklist = latest.fat ? await repo.show('main', checklistIn(latest.dir)) : null;
+  // Translations travel with the content: the new version starts with the same English body, so
+  // their basedOnHash still matches and they are not stale until English is edited again.
+  const translations = [];
+  for (const code of Object.keys(latest.languages || {})) {
+    const html = await repo.show('main', contentLangIn(latest.dir, code));
+    if (html) translations.push({ code, html });
+  }
   // The new version is the manual for every manual-affecting release this manual type does not cover yet.
   const covers = uncoveredReleases(entry.module, entry.docs, await getSoftwareFeed())
     .filter((r) => r.manual === type.id)
@@ -784,6 +860,7 @@ export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump =
     ],
     copiedFrom: { slug, manual: type.id, version: latest.version },
     fat: !!checklist,
+    languages: Object.fromEntries(translations.map((t) => [t.code, { ...latest.languages[t.code], basedOnRevision: 1 }])),
   };
 
   await mutate(async () => {
@@ -791,6 +868,7 @@ export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump =
     await repo.createBranch(branch, 'main');
     await repo.writeFile(docJson(dir), JSON.stringify(doc, null, 2) + '\n');
     await repo.writeFile(contentIn(dir), content);
+    for (const t of translations) await repo.writeFile(contentLangIn(dir, t.code), t.html);
     if (checklist) await repo.writeFile(checklistIn(dir), checklist);
     await repo.commitAll(`${slug}: create ${type.label.toLowerCase()} ${version} r1 (draft)${coversLabel ? ` for ${coversLabel}` : ''}`);
     await repo.checkout('main');
@@ -818,23 +896,33 @@ async function loadDraftDoc(slug, key) {
  * an entry is appended to the revision record (accepted change); otherwise it
  * is a plain autosave commit on the same revision.
  */
-export async function saveDraftContent(slug, key, html, { bump = false, summary = '' } = {}) {
+export async function saveDraftContent(slug, key, html, { bump = false, summary = '', lang = DEFAULT_LANG } = {}) {
+  lang = langOf(lang);
   const { branch, dir, meta } = await loadDraftDoc(slug, key);
   if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
   const version = meta.version;
   const ts = now();
+  const tag = lang === DEFAULT_LANG ? '' : ` (${LANGUAGES[lang].short})`;
   if (bump) {
     meta.revision += 1;
-    meta.revisionRecord.push({ rev: `r${meta.revision}`, date: ts, summary: summary || 'Content update' });
+    meta.revisionRecord.push({ rev: `r${meta.revision}`, date: ts, summary: (summary || 'Content update') + tag });
   }
   meta.updatedAt = ts;
+  if (lang !== DEFAULT_LANG) {
+    // A hand-edited translation: keep what it was based on (staleness still tracks English edits).
+    meta.languages = meta.languages || {};
+    const prev = meta.languages[lang];
+    meta.languages[lang] = prev
+      ? { ...prev, updatedAt: ts, edited: true }
+      : { translatedAt: ts, source: 'manual', basedOnRevision: meta.revision, basedOnHash: contentHash((await repo.show(branch, contentIn(dir))) || ''), updatedAt: ts };
+  }
 
   await mutate(async () => {
     await repo.checkout(branch);
-    await repo.writeFile(contentIn(dir), html);
+    await repo.writeFile(contentLangIn(dir, lang), html);
     await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
     await repo.commitAll(
-      bump ? `${slug} ${version}: r${meta.revision} — ${summary || 'content update'}` : `${slug} ${version}: autosave`
+      bump ? `${slug} ${version}: r${meta.revision} — ${summary || 'content update'}${tag}` : `${slug} ${version}: autosave${tag}`
     );
     await repo.checkout('main');
   });
@@ -1435,7 +1523,8 @@ export async function deleteManual(slug) {
  * or — flagged — its latest draft when nothing is released yet. A module
  * without that manual type is a missing chapter.
  */
-export async function compileManual(slug) {
+export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
+  lang = langOf(lang);
   const manual = await getManual(slug);
   if (!manual) return null;
   const type = manualTypeOf(manual.manual).id;
@@ -1454,19 +1543,23 @@ export async function compileManual(slug) {
       chapters.push({ slug: mslug, module: entry.module, missing: true, reason: `no ${MANUAL_TYPES[type].label.toLowerCase()}` });
       continue;
     }
-    const content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
+    // Translation when the manual is compiled in another language; English (flagged) when there is none.
+    let content = lang === DEFAULT_LANG ? null : await repo.show(doc.ref, contentLangIn(doc.dir, lang));
+    const langFallback = lang !== DEFAULT_LANG && !content;
+    if (!content) content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
     const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
     chapters.push({
       slug: mslug,
       module: entry.module,
       doc,
-      generated: generatedSections(entry.module, doc),
+      generated: generatedSections(entry.module, doc, lang),
       content,
       checklist,
       isDraft: doc.status !== 'released',
+      langFallback,
     });
   }
-  return { manual, chapters };
+  return { manual, chapters, lang };
 }
 
 /* ------------------------------------------------------------------ */

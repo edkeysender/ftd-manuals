@@ -23,12 +23,15 @@ export const api = {
   /** New draft of one manual type: {manual, bump} for a next version, {manual, start, checklist} for a manual the module lacks. */
   nextDocVersion: (slug, body) => request(`/api/modules/${slug}/docs`, { method: 'POST', body: typeof body === 'string' ? { bump: body } : body }),
   manualTypes: () => request('/api/manual-types'),
-  doc: (slug, version) => request(`/api/modules/${slug}/docs/${version}`),
-  saveContent: (slug, version, html, bump = false, summary = '') =>
+  /** lang: 'en' (source) or a translation code — content is '' when that translation does not exist yet. */
+  doc: (slug, version, lang = 'en') => request(`/api/modules/${slug}/docs/${version}${lang && lang !== 'en' ? `?lang=${lang}` : ''}`),
+  saveContent: (slug, version, html, bump = false, summary = '', lang = 'en') =>
     request(`/api/modules/${slug}/docs/${version}/content`, {
       method: 'PUT',
-      body: { html, bump, summary },
+      body: { html, bump, summary, lang },
     }),
+  /** AI translation of the English body into lang (or store `html` as the translation). Returns the doc in that language. */
+  translate: (slug, version, lang, html) => request(`/api/modules/${slug}/docs/${version}/translate`, { method: 'POST', body: { lang, html } }),
   submitReview: (slug, version) => request(`/api/modules/${slug}/docs/${version}/submit-review`, { method: 'POST' }),
   backToDraft: (slug, version) => request(`/api/modules/${slug}/docs/${version}/back-to-draft`, { method: 'POST' }),
   release: (slug, version) => request(`/api/modules/${slug}/docs/${version}/release`, { method: 'POST' }),
@@ -43,7 +46,7 @@ export const api = {
     request(`/api/modules/${slug}/docs/${version}/cover`, { method: 'POST', body: { name, version: swVersion } }),
   aiChat: (body) => request('/api/ai/chat', { method: 'POST', body }),
   manuals: () => request('/api/manuals'),
-  manual: (slug) => request(`/api/manuals/${slug}`),
+  manual: (slug, lang = 'en') => request(`/api/manuals/${slug}${lang && lang !== 'en' ? `?lang=${lang}` : ''}`),
   createManual: (body) => request('/api/manuals', { method: 'POST', body }),
   updateManual: (slug, body) => request(`/api/manuals/${slug}`, { method: 'PUT', body }),
   deleteManual: (slug) => request(`/api/manuals/${slug}`, { method: 'DELETE' }),
@@ -98,6 +101,13 @@ export const MANUAL_TYPES = [
   { id: 'software-technician', label: 'Software technician manual', short: 'SW · Technician', kind: 'software', audience: 'technician', sections: ['Installation', 'Configuration', 'Administration', 'Appendixes'], desc: 'For the technician: installing, configuring, updating and administering the linked software.' },
 ];
 export const manualType = (id) => MANUAL_TYPES.find((t) => t.id === id) || { id, label: id, short: id, kind: 'hardware', sections: [] };
+
+/** Doc languages: English is the source of every doc, the others are optional translations (mirrors server/docgen.js LANGUAGES). */
+export const LANGUAGES = [
+  { code: 'en', label: 'English', short: 'EN', source: true },
+  { code: 'pl', label: 'Polski', short: 'PL', source: false },
+];
+export const language = (code) => LANGUAGES.find((l) => l.code === code) || LANGUAGES[0];
 
 export const STATUS_LABELS = {
   released: 'Released',
