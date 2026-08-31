@@ -3,9 +3,12 @@ import path from 'node:path';
 import fs from 'node:fs';
 import * as store from './store.js';
 import * as ai from './ai.js';
+import * as illustrate from './illustrate.js';
 import { blankContent, manualBodyHtml, manualExportHtml, MANUAL_CSS } from './docgen.js';
 import { handleMcpRequest, TOOLS as MCP_TOOLS } from './mcp.js';
 import { GitTransientError } from './git.js';
+import * as inbox from './inbox.js';
+import { templateChecklist, checklistBodyHtml, fatProtocolBodyHtml, checklistExportHtml, CHECKLIST_CSS } from './checklist.js';
 
 const PORT = process.env.PORT || 5179;
 const app = express();
@@ -37,6 +40,9 @@ app.post('/api/modules', wrap(async (req, res) => {
   let seed = [];
   let aiNote = null;
   const start = input.start || { mode: 'blank' };
+  // Hardware: catalog ids and/or new items — resolved (not yet written) so the
+  // template, the AI draft and the FAT checklist see the same units.
+  input.hardwareItems = await store.previewHardware(input, input.name);
 
   if (start.mode === 'copy') {
     const src = await store.getDoc(start.sourceSlug, start.sourceVersion);
@@ -50,11 +56,20 @@ app.post('/api/modules', wrap(async (req, res) => {
       content = await ai.generateFirstDraft(input, await store.getAiGuidelines());
       input.startSummary = 'AI first draft';
     } catch (e) {
-      content = blankContent(input.name);
+      content = blankContent(input.name, input.hardwareItems);
       aiNote = `AI draft failed (${e.message}) — created blank template instead.`;
     }
   } else {
-    content = blankContent(input.name);
+    content = blankContent(input.name, input.hardwareItems);
+  }
+
+  // FAT checklist: { mode: 'template' | 'copy' | 'none' } or a full checklist object
+  const fat = input.checklist;
+  if (!fat || fat.mode === 'none') input.checklist = null;
+  else if (fat.mode === 'template') input.checklist = templateChecklist(input);
+  else if (fat.mode === 'copy') {
+    const src = start.mode === 'copy' ? await store.getDoc(start.sourceSlug, start.sourceVersion) : null;
+    input.checklist = src?.checklist || templateChecklist(input);
   }
 
   const created = await store.createModuleDoc(input, content, seed);
@@ -65,6 +80,32 @@ app.get('/api/modules/:slug', wrap(async (req, res) => {
   const m = await store.getModule(req.params.slug);
   if (!m) return res.status(404).json({ error: 'Module not found' });
   res.json(m);
+}));
+
+/** Module metadata: name, code, category, group, softwares, hardware (catalog ids and/or new items). */
+app.patch('/api/modules/:slug', wrap(async (req, res) => {
+  const patch = req.body || {};
+  if (patch.group !== undefined && !['SIM', 'IOS', 'RACK'].includes(patch.group)) {
+    throw new Error('Manual group must be SIM, IOS or RACK');
+  }
+  res.json(await store.updateModule(req.params.slug, patch));
+}));
+
+/* ---------- hardware catalog ---------- */
+app.get('/api/hardware', wrap(async (req, res) => {
+  res.json(await store.listHardware());
+}));
+
+app.post('/api/hardware', wrap(async (req, res) => {
+  res.json(await store.createHardware(req.body || {}));
+}));
+
+app.put('/api/hardware/:id', wrap(async (req, res) => {
+  res.json(await store.updateHardware(req.params.id, req.body || {}));
+}));
+
+app.delete('/api/hardware/:id', wrap(async (req, res) => {
+  res.json(await store.deleteHardware(req.params.id));
 }));
 
 app.post('/api/modules/:slug/docs', wrap(async (req, res) => {
@@ -82,6 +123,52 @@ app.put('/api/modules/:slug/docs/:version/content', wrap(async (req, res) => {
   const { html, bump, summary } = req.body;
   if (typeof html !== 'string') throw new Error('html is required');
   res.json(await store.saveDraftContent(req.params.slug, req.params.version, html, { bump, summary }));
+}));
+
+/* ---------- FAT checklist (per doc version) ---------- */
+async function fatRenderOpts() {
+  const logo = await store.getBrandLogo();
+  return { logoUrl: logo ? `/api/settings/logo?v=${encodeURIComponent(logo.name)}` : null };
+}
+
+/** Replace the console-served logo URL with a data URI so the export is self-contained. */
+async function inlineLogo(html) {
+  const logo = await store.getBrandLogo();
+  if (!logo) return html;
+  const mime = MIME[path.extname(logo.name).toLowerCase()] || 'application/octet-stream';
+  return html.replace(/\/api\/settings\/logo(\?[^"' >)]*)?/g, `data:${mime};base64,${logo.buffer.toString('base64')}`);
+}
+
+app.get('/api/modules/:slug/docs/:version/checklist', wrap(async (req, res) => {
+  const r = await store.getChecklist(req.params.slug, req.params.version);
+  if (!r) return res.status(404).json({ error: 'Doc not found' });
+  const opts = await fatRenderOpts();
+  res.json({
+    checklist: r.checklist,
+    template: templateChecklist(r.module),
+    css: CHECKLIST_CSS,
+    html: r.checklist ? checklistBodyHtml(r.module, r.doc, r.checklist, opts) : null,
+  });
+}));
+
+app.put('/api/modules/:slug/docs/:version/checklist', wrap(async (req, res) => {
+  const { checklist, summary } = req.body;
+  if (checklist !== null && typeof checklist !== 'object') throw new Error('checklist must be an object or null');
+  res.json(await store.saveChecklist(req.params.slug, req.params.version, checklist, { summary }));
+}));
+
+app.get('/api/modules/:slug/docs/:version/checklist.html', wrap(async (req, res) => {
+  const r = await store.getChecklist(req.params.slug, req.params.version);
+  if (!r) return res.status(404).json({ error: 'Doc not found' });
+  if (!r.checklist) return res.status(404).json({ error: 'This doc version has no FAT checklist' });
+  const html = await inlineLogo(
+    checklistExportHtml(`FAT ${r.module.code || r.module.slug} ${r.doc.version}`, checklistBodyHtml(r.module, r.doc, r.checklist, await fatRenderOpts()))
+  );
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  if (req.query.download !== undefined) {
+    res.set('Content-Disposition', `attachment; filename="${r.module.slug}-${r.doc.version}-fat.html"`);
+  }
+  res.send(html);
 }));
 
 app.post('/api/modules/:slug/docs/:version/submit-review', wrap(async (req, res) => {
@@ -148,12 +235,75 @@ app.get('/api/modules/:slug/assets', wrap(async (req, res) => {
   res.json(await store.listAssets(req.params.slug));
 }));
 
+app.delete('/api/modules/:slug/docs/:version/assets/:file', wrap(async (req, res) => {
+  res.json(await store.deleteAsset(req.params.slug, req.params.version, req.params.file));
+}));
+
+/* ---------- inbox: drop folder on the console machine, imported into drafts by name ---------- */
+app.get('/api/inbox', wrap(async (req, res) => {
+  res.json({ dir: inbox.INBOX_DIR, roots: inbox.IMPORT_ROOTS, files: await inbox.listInbox() });
+}));
+
+app.post('/api/inbox', wrap(async (req, res) => {
+  const files = (req.body.files || [])
+    .map((f) => ({ name: f.name, buffer: Buffer.from(f.dataBase64 || '', 'base64') }))
+    .filter((f) => f.buffer.length > 0);
+  if (!files.length) throw new Error('No files provided');
+  res.json(await inbox.saveToInbox(files));
+}));
+
+app.get('/api/inbox/:file', wrap(async (req, res) => {
+  const f = await inbox.readInbox(req.params.file);
+  if (!f) return res.status(404).json({ error: 'Not in inbox' });
+  res.set('Content-Type', MIME[path.extname(f.name).toLowerCase()] || 'application/octet-stream');
+  res.set('Cache-Control', 'no-cache');
+  res.send(f.buffer);
+}));
+
+app.delete('/api/inbox/:file', wrap(async (req, res) => {
+  await inbox.deleteInbox(req.params.file);
+  res.json({ ok: true });
+}));
+
+app.post('/api/modules/:slug/docs/:version/assets/import', wrap(async (req, res) => {
+  const names = req.body.names || [];
+  if (!names.length) throw new Error('names is required');
+  res.json(await store.importFromInbox(req.params.slug, req.params.version, names, { keep: !!req.body.keep }));
+}));
+
 app.post('/api/modules/:slug/docs/:version/assets', wrap(async (req, res) => {
   const files = (req.body.files || [])
     .map((f) => ({ name: f.name, buffer: Buffer.from(f.dataBase64 || '', 'base64') }))
     .filter((f) => f.buffer.length > 0);
   if (!files.length) throw new Error('No files provided');
   res.json(await store.saveAssets(req.params.slug, req.params.version, files));
+}));
+
+/* ---------- photo → house-style line-art (same engine as the AI chat and MCP) ---------- */
+app.post('/api/modules/:slug/docs/:version/illustrate', wrap(async (req, res) => {
+  const { name, dataBase64, assetName, instructions, outputName, keepSource, editOf } = req.body || {};
+  const d = await store.getDoc(req.params.slug, req.params.version);
+  if (!d) throw new Error('Doc not found');
+  if (!(d.doc.status === 'draft' || d.doc.status === 'in-review')) throw new Error('Illustrations are added to a Draft or In-review doc version');
+  const reference = assetName
+    ? { assetName }
+    : dataBase64
+      ? { name: name || 'photo.png', buffer: Buffer.from(dataBase64 || '', 'base64') }
+      : null;
+  if (!reference && !editOf) throw new Error('No image data');
+  if (reference?.buffer && !reference.buffer.length) throw new Error('No image data');
+  if (reference?.buffer && reference.buffer.length > 20 * 1024 * 1024) throw new Error('Image is larger than 20 MB');
+  res.json(
+    await illustrate.convertToLineArt({
+      slug: req.params.slug,
+      version: req.params.version,
+      reference,
+      instructions: instructions || '',
+      name: outputName || null,
+      keepSource: keepSource !== false,
+      editOf: editOf || null,
+    })
+  );
 }));
 
 /* ---------- AI assistant (same actions available over the API and MCP) ---------- */
@@ -213,6 +363,7 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
     messages: messages || [],
     context: ctx,
     guidelines: await store.getAiGuidelines(),
+    illustrationStyle: await illustrate.getStyle(),
   });
 
   // 4. Generate any illustrations the model requested, before returning the
@@ -225,7 +376,11 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
         const buf = await store.getAsset(slug, gi.reference_asset);
         if (buf) reference = { name: gi.reference_asset, buffer: buf };
       }
-      const buffer = await ai.generateImage({ prompt: gi.prompt, reference });
+      const prompt =
+        gi.style === 'line-art' || !gi.prompt
+          ? illustrate.lineArtPrompt(await illustrate.getStyle(), gi.prompt || '', { hasReference: !!reference })
+          : gi.prompt;
+      const buffer = await ai.generateImage({ prompt, reference });
       const [saved] = await store.saveAssets(slug, version, [{ name: gi.name, buffer }]);
       // Keep the html consistent if sanitization changed the file name.
       if (result.html && saved.name !== gi.name) {
@@ -343,6 +498,20 @@ app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
   res.send(html);
 }));
 
+// FAT protocol: the checklists of every module in the manual as one standalone document.
+app.get('/api/manuals/:slug/fat.html', wrap(async (req, res) => {
+  const compiled = await store.compileManual(req.params.slug);
+  if (!compiled) return res.status(404).json({ error: 'Manual not found' });
+  const html = await inlineLogo(
+    checklistExportHtml(`FAT protocol — ${compiled.manual.name}`, fatProtocolBodyHtml(compiled, await fatRenderOpts()))
+  );
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  if (req.query.download !== undefined) {
+    res.set('Content-Disposition', `attachment; filename="${compiled.manual.slug}-fat.html"`);
+  }
+  res.send(html);
+}));
+
 /* ---------- settings ---------- */
 app.get('/api/settings/ai', wrap(async (req, res) => {
   res.json({
@@ -351,6 +520,40 @@ app.get('/api/settings/ai', wrap(async (req, res) => {
     reasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'low',
     available: ai.aiAvailable(),
   });
+}));
+
+app.get('/api/settings/illustration-style', wrap(async (req, res) => {
+  const saved = await store.getIllustrationStyle();
+  res.json({
+    name: illustrate.STYLE_NAME,
+    style: saved || illustrate.DEFAULT_STYLE,
+    isDefault: !saved,
+    defaultStyle: illustrate.DEFAULT_STYLE,
+    exemplars: await store.listStyleExemplars(),
+    imageModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2',
+  });
+}));
+
+// Style exemplars: finished house-style illustrations the image model is shown with every photo.
+app.get('/api/settings/illustration-style/exemplars/:name', wrap(async (req, res) => sendImage(res, await store.getStyleExemplar(req.params.name))));
+
+app.post('/api/settings/illustration-style/exemplars', wrap(async (req, res) => {
+  const files = (req.body.files || [])
+    .map((f) => ({ name: f.name || 'exemplar.png', buffer: Buffer.from(f.dataBase64 || '', 'base64') }))
+    .filter((f) => f.buffer.length > 0);
+  if (!files.length) throw new Error('No files provided');
+  if ((await store.listStyleExemplars()).length + files.length > 6) throw new Error('At most 6 exemplars — the image model takes a limited number of input images');
+  res.json(await store.saveStyleExemplars(files));
+}));
+
+app.delete('/api/settings/illustration-style/exemplars/:name', wrap(async (req, res) => {
+  await store.deleteStyleExemplar(req.params.name);
+  res.json({ ok: true });
+}));
+
+app.put('/api/settings/illustration-style', wrap(async (req, res) => {
+  await store.saveIllustrationStyle(req.body.style || '');
+  res.json({ ok: true });
 }));
 
 app.put('/api/settings/ai', wrap(async (req, res) => {
@@ -395,6 +598,7 @@ if (fs.existsSync(dist)) {
 }
 
 await store.initStore();
+await inbox.ensureInbox();
 app.listen(PORT, () => {
   console.log(`FTD Documentation Console API on http://localhost:${PORT}`);
   if (!ai.aiAvailable()) console.log('Note: OPENAI_API_KEY not set — AI assistant disabled.');

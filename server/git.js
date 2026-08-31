@@ -15,7 +15,7 @@ export class GitTransientError extends Error {}
 
 // Each git call is a child process; under load the spawns themselves fail
 // (EAGAIN / out-of-memory), so cap how many run at once.
-const MAX_CONCURRENT = 4;
+const MAX_CONCURRENT = 8;
 let running = 0;
 const waiters = [];
 function acquire() {
@@ -31,6 +31,22 @@ function release() {
   else running--;
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** execFile with optional stdin content (execFileP has no input option). */
+function execFileWithInput(args, opts, input) {
+  if (input === undefined) return execFileP('git', args, opts);
+  return new Promise((resolve, reject) => {
+    const child = execFile('git', args, opts, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        reject(err);
+      } else resolve({ stdout, stderr });
+    });
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
+  });
+}
 
 /**
  * Thin wrapper around the git CLI for the document store repository.
@@ -73,13 +89,13 @@ export class GitRepo {
    * A "ref or path is not there" answer is raised as GitMissingError so
    * callers can tell it from a real failure instead of swallowing both.
    */
-  async _exec(args, encoding) {
+  async _exec(args, encoding, input) {
     const opts = { cwd: this.dir, maxBuffer: 64 * 1024 * 1024, windowsHide: true };
     if (encoding) opts.encoding = encoding;
     for (let attempt = 0; ; attempt++) {
       await acquire();
       try {
-        const { stdout } = await execFileP('git', args, opts);
+        const { stdout } = await execFileWithInput(args, opts, input);
         return stdout;
       } catch (e) {
         const text = [e.message || '', e.stderr || ''].join(' ');
@@ -101,6 +117,37 @@ export class GitRepo {
 
   async rawBuffer(args) {
     return this._exec(args, 'buffer');
+  }
+
+  /**
+   * Read many blobs in ONE git process: `git cat-file --batch` fed with
+   * "<ref>:<path>" lines. Returns Map<"ref:path", Buffer|null> (null = missing).
+   * A list is one spawn instead of one per file — the difference between
+   * 15 s and 0.3 s for a cold module list on a slow-spawn machine.
+   */
+  async showMany(requests) {
+    const keys = [...new Set(requests.map(({ ref, file }) => `${ref}:${file}`))];
+    const out = new Map();
+    if (!keys.length) return out;
+    const buf = await this._exec(['cat-file', '--batch'], 'buffer', keys.join('\n') + '\n');
+    let pos = 0;
+    for (const key of keys) {
+      const nl = buf.indexOf(0x0a, pos);
+      if (nl === -1) break;
+      const header = buf.toString('utf8', pos, nl);
+      pos = nl + 1;
+      // "<sha> <type> <size>" or "<object> missing" / "<object> ambiguous"
+      const m = /^(\S+) (\S+) (\d+)$/.exec(header);
+      if (!m || m[2] === 'missing' || m[2] === 'ambiguous') {
+        out.set(key, null);
+        continue;
+      }
+      const size = Number(m[3]);
+      out.set(key, m[2] === 'blob' ? Buffer.from(buf.subarray(pos, pos + size)) : null);
+      pos += size + 1; // content + trailing newline
+    }
+    for (const key of keys) if (!out.has(key)) out.set(key, null);
+    return out;
   }
 
   /** Binary file content at ref:path (Buffer), or null. */

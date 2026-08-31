@@ -12,7 +12,17 @@
  * The console only produces the blank protocol. Filled-in FAT records belong
  * to a unit (serial number), not to the manual, and are out of scope here.
  */
-import { CATEGORY_LABELS, GROUP_LABELS, FOOTER_TEXT, LOGO_SVG, hardwareLabel, softwareLabel } from './docgen.js';
+import {
+  CATEGORY_LABELS,
+  GROUP_LABELS,
+  FOOTER_TEXT,
+  LOGO_SVG,
+  hardwareLabel,
+  hardwareItemsOf,
+  hardwareItemLabel,
+  hardwareDetail,
+  softwareLabel,
+} from './docgen.js';
 
 const esc = (s) =>
   String(s ?? '')
@@ -35,8 +45,14 @@ const R = (check, extra = {}) => ({ check, expected: '', type: 'record', mandato
 const IDENTIFICATION = (module) =>
   P('Identification', [
     R('Unit serial number'),
-    ...(module.hardware?.type === 'ftd' ? [R(`Hardware version (manual covers ${module.hardware.version || 'v1'})`)] : []),
-    ...(module.hardware?.type === 'cots' ? [R(`Manufacturer part / model no. (${hardwareLabel(module.hardware)})`)] : []),
+    ...(hardwareItemsOf(module).length > 1
+      ? [R(`Unit type under test (${hardwareItemsOf(module).map(hardwareItemLabel).join(' / ')})`)]
+      : []),
+    ...hardwareItemsOf(module).map((h) =>
+      h.type === 'ftd'
+        ? R(`${hardwareItemLabel(h)}: hardware version (manual covers ${h.version || 'v1'})`)
+        : R(`${hardwareItemLabel(h)}: manufacturer part / model no. (${hardwareDetail(h)})`)
+    ),
     ...(module.softwares || []).map((s) => R(`${s.name} installed version${s.fromVersion ? ` (min. ${s.fromVersion})` : ''}`)),
     I('Module identification label present and matches order', 'Label legible, code and serial match'),
   ]);
@@ -124,7 +140,7 @@ const SIGN_OFF = () =>
 
 /** Category-driven starting checklist. Every item is expected to be reviewed by the author. */
 export function templateChecklist(module) {
-  const hw = module.hardware?.type || 'none';
+  const hw = hardwareItemsOf(module).some((h) => h.type === 'ftd') ? 'ftd' : hardwareItemsOf(module).length ? 'cots' : 'none';
   const phases = [IDENTIFICATION(module)];
   switch (module.category) {
     case 'software':
@@ -289,6 +305,20 @@ function moduleSection(module, doc, checklist, { chapter = null } = {}) {
   const swRows = (module.softwares || [])
     .map((s) => `<tr><th>${esc(s.name)} version</th><td class="value"></td></tr>`)
     .join('');
+  const hwItems = hardwareItemsOf(module);
+  const hwRows =
+    hwItems.length === 0
+      ? '<tr><th>Hardware version</th><td class="value"></td></tr>'
+      : (hwItems.length > 1 ? `<tr><th>Unit type under test</th><td class="value"></td></tr>` : '') +
+        hwItems
+          .map((h) =>
+            h.type === 'ftd'
+              ? `<tr><th>${esc(hardwareItemLabel(h))} — hardware version</th><td class="value">${esc(h.version || '')}</td></tr>`
+              : `<tr><th>${esc(hardwareItemLabel(h))} — part / model no.</th><td class="value">${esc(
+                  [h.manufacturer, h.model].filter(Boolean).join(' ')
+                )}</td></tr>`
+          )
+          .join('');
   return `<section class="module" id="fat-${esc(module.slug)}">
 <h1>${chapter ? `${chapter}. ` : ''}${esc(module.name)} <span style="font-weight:400;color:#64748b">(${esc(module.code || module.slug)})</span>${
     isDraft ? `<span class="draft-flag">draft ${esc(doc.version)} r${doc.revision} — not released</span>` : ''
@@ -298,12 +328,12 @@ function moduleSection(module, doc, checklist, { chapter = null } = {}) {
   )}, ${esc(GROUP_LABELS[module.group] || module.group)}) against module manual <strong>${esc(module.code || module.slug)} ${esc(
     doc.version
   )}</strong>${isDraft ? ` r${doc.revision}` : ''}, checklist revision r${doc.revision}. Hardware: ${esc(
-    hardwareLabel(module.hardware)
+    hardwareLabel(module)
   )}. Software: ${esc(softwareLabel(module.softwares))}.</p>
 <table class="ident">
 <tbody>
 <tr><th>Unit serial number</th><td class="value"></td></tr>
-<tr><th>Hardware version</th><td class="value">${module.hardware?.type === 'ftd' ? esc(module.hardware.version || '') : ''}</td></tr>
+${hwRows}
 ${swRows}
 <tr><th>Test date</th><td class="value"></td></tr>
 <tr><th>Tested by (FTD.aero)</th><td class="value"></td></tr>

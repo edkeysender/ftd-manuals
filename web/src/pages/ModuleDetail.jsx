@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, CATEGORIES, timeAgo, readFileAsBase64 } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast } from '../App.jsx';
+import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
 
 const catLabel = (c) => (CATEGORIES.find(([k]) => k === c) || [null, c])[1];
 
@@ -58,6 +59,11 @@ export default function ModuleDetail() {
             {module.code && <code>{module.code}</code>}
             <span className="chip">{catLabel(module.category)}</span>
             <span className="chip">{module.group}</span>
+            {(module.hardwareItems || []).map((h) => (
+              <span key={h.id || h.name} className="chip chip-hw" title={hwDetail(h)}>
+                {h.name}
+              </span>
+            ))}
             <StatusBadge status={data.status} />
           </div>
         </div>
@@ -82,6 +88,9 @@ export default function ModuleDetail() {
       <div className="tabs">
         <button className={tab === 'docs' ? 'active' : ''} onClick={() => setTab('docs')}>
           Documentation
+        </button>
+        <button className={tab === 'hardware' ? 'active' : ''} onClick={() => setTab('hardware')}>
+          Hardware{module.hardwareItems?.length ? ` (${module.hardwareItems.length})` : ''}
         </button>
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
           Assets
@@ -166,6 +175,11 @@ export default function ModuleDetail() {
                       View
                     </button>
                   )}
+                  {d.fat && (
+                    <a className="btn btn-sm" href={`/api/modules/${slug}/docs/${d.version}/checklist.html`} target="_blank" rel="noreferrer" title="Blank FAT protocol for this doc version">
+                      FAT
+                    </a>
+                  )}
                 </td>
               </tr>
             ))}
@@ -203,8 +217,260 @@ export default function ModuleDetail() {
 
       {tab === 'assets' && <AssetsTab slug={slug} docs={docs} />}
 
+      {tab === 'hardware' && <HardwareTab module={module} slug={slug} reload={load} />}
+
       {tab === 'software' && (
         <SoftwareTab data={data} slug={slug} reload={load} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Inbox: files dropped here land in a folder on the console machine (data/inbox)
+ * and can be attached to the draft by name — from here or by the assistant
+ * over MCP (list_inbox + import_local_files), without any bytes passing
+ * through the model.
+ */
+function InboxPanel({ slug, draft, onImported }) {
+  const toast = useToast();
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const [open, setOpen] = useState(true);
+  const load = () => api.inbox().then(setInfo).catch((e) => toast(e.message, 'err'));
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function drop(fileList) {
+    const files = [...fileList];
+    if (!files.length) return;
+    setBusy(true);
+    try {
+      const saved = await api.uploadInbox(await Promise.all(files.map(readFileAsBase64)));
+      toast(`${saved.length} file${saved.length === 1 ? '' : 's'} in the inbox`);
+      load();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importFiles(names) {
+    if (!draft) return toast('Create a doc draft first', 'err');
+    setBusy(true);
+    try {
+      const saved = await api.importInbox(slug, draft.version, names);
+      toast(`${saved.length} file${saved.length === 1 ? '' : 's'} attached to ${draft.version}`);
+      load();
+      onImported();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const files = info?.files || [];
+  const fmt = (n) => (n >= 1024 * 1024 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
+  return (
+    <div className="inbox">
+      <div className="inbox-head">
+        <button className="inbox-toggle" onClick={() => setOpen(!open)}>
+          {open ? '▾' : '▸'} Inbox <span className="muted">— {files.length} file{files.length === 1 ? '' : 's'} waiting</span>
+        </button>
+        <span className="muted small" title={info?.dir}>
+          Drop artwork here, then attach it yourself or tell the assistant which figure goes where (it imports by name — no image bytes through the chat).
+        </span>
+      </div>
+      {open && (
+        <>
+          <div
+            className={`dropzone inbox-drop ${drag ? 'over' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDrag(true);
+            }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDrag(false);
+              drop(e.dataTransfer.files);
+            }}
+          >
+            <strong>{busy ? 'Working…' : 'Drop files for the inbox'}</strong>
+            <span className="muted">
+              {' — or '}
+              <label className="link">
+                choose files
+                <input type="file" multiple accept="image/*,.pdf,.svg" hidden onChange={(e) => { drop(e.target.files); e.target.value = ''; }} />
+              </label>
+              . Stored in <code>{info?.dir || '…'}</code> on the console machine; not committed until attached.
+            </span>
+          </div>
+          {files.length > 0 && (
+            <div className="asset-grid inbox-grid">
+              {files.map((f) => (
+                <div className={`asset-card ${f.complete === false ? 'broken' : ''}`} key={f.name}>
+                  {/\.(png|jpe?g|gif|webp|svg)$/i.test(f.name) ? (
+                    <img src={`/api/inbox/${encodeURIComponent(f.name)}`} alt={f.name} loading="lazy" />
+                  ) : (
+                    <div className="asset-file">{f.name.split('.').pop().toUpperCase()}</div>
+                  )}
+                  <div className="asset-name" title={f.name}>{f.name}</div>
+                  <div className="muted small">
+                    {fmt(f.size)}{f.width ? ` · ${f.width}×${f.height}` : ''}{f.complete === false ? ' · truncated!' : ''}
+                  </div>
+                  <div className="btn-row">
+                    <button className="btn btn-sm btn-primary" disabled={!draft || busy || f.complete === false} onClick={() => importFiles([f.name])}>
+                      Attach to {draft ? draft.version : 'draft'}
+                    </button>
+                    <button
+                      className="btn-icon"
+                      title="Delete from inbox"
+                      onClick={async () => {
+                        try {
+                          await api.deleteInbox(f.name);
+                          load();
+                        } catch (e) {
+                          toast(e.message, 'err');
+                        }
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {draft && files.filter((f) => f.complete !== false).length > 1 && (
+                <button className="btn attach-all" disabled={busy} onClick={() => importFiles(files.filter((f) => f.complete !== false).map((f) => f.name))}>
+                  Attach all to {draft.version}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Which hardware units this module's manual describes: assign from the shared
+ *  catalog, create new units, edit a unit's catalog record, unassign. Saved as a
+ *  module-metadata commit (on the open draft branch when there is one). */
+function HardwareTab({ module, slug, reload }) {
+  const toast = useToast();
+  const [catalog, setCatalog] = useState(null);
+  const [value, setValue] = useState(() => (module.hardwareItems || []).map((h) => (h.id && !h.missing ? { id: h.id } : { ...h })));
+  const [editing, setEditing] = useState(null); // catalog id being edited
+  const [busy, setBusy] = useState(false);
+
+  const loadCatalog = () => api.hardware().then(setCatalog).catch((e) => toast(e.message, 'err'));
+  useEffect(() => {
+    loadCatalog();
+  }, []);
+
+  const savedIds = (module.hardwareItems || []).map((h) => h.id).filter(Boolean);
+  const dirty =
+    value.some((v) => !v.id) ||
+    value.length !== savedIds.length ||
+    value.some((v, i) => v.id !== savedIds[i]);
+
+  async function save() {
+    setBusy(true);
+    try {
+      const updated = await api.updateModule(slug, { hardware: value });
+      toast(`Hardware saved — ${updated.hardwareItems.length ? updated.hardwareItems.map((h) => h.name).join(', ') : 'none'}`);
+      await reload();
+      await loadCatalog();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveItem(id, patch) {
+    try {
+      await api.updateHardware(id, patch);
+      toast('Catalog item updated');
+      setEditing(null);
+      await loadCatalog();
+      await reload();
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  if (catalog === null) return <div className="muted">Loading…</div>;
+  const assigned = (module.hardwareItems || []).filter((h) => h.id && !h.missing);
+
+  return (
+    <div className="hw-tab">
+      <div className="sw-register">
+        <h3>Units described by this manual</h3>
+        <p className="muted small">
+          Each unit gets its own row in <em>3 General information</em> and in the FAT protocol header. When a manual
+          covers several unit types (e.g. three camera models), describe each one in its own subsection of
+          Installation and Operation.
+        </p>
+        <HardwarePicker catalog={catalog} value={value} onChange={setValue} />
+        <div className="btn-row" style={{ marginTop: 12 }}>
+          <button className="btn btn-primary btn-sm" disabled={!dirty || busy} onClick={save}>
+            {busy ? 'Saving…' : 'Save hardware assignment'}
+          </button>
+          {dirty && (
+            <button
+              className="btn btn-sm"
+              onClick={() => setValue((module.hardwareItems || []).map((h) => (h.id && !h.missing ? { id: h.id } : { ...h })))}
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {assigned.length > 0 && (
+        <div className="sw-block" style={{ marginTop: 20 }}>
+          <h3>Catalog records</h3>
+          <p className="muted small">Editing a record changes it for every module that uses it.</p>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Unit</th>
+                <th>Relation</th>
+                <th>Notes</th>
+                <th>Also used by</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {assigned.map((h) => {
+                const rec = catalog.find((c) => c.id === h.id) || h;
+                const others = (rec.usedBy || []).filter((m) => m.slug !== slug);
+                return editing === h.id ? (
+                  <tr key={h.id}>
+                    <td colSpan="5">
+                      <HardwareForm initial={rec} submitLabel="Save record" onSubmit={(p) => saveItem(h.id, p)} onCancel={() => setEditing(null)} />
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={h.id}>
+                    <td><strong>{rec.name}</strong> <code className="muted">{rec.id}</code></td>
+                    <td>{hwDetail(rec)}</td>
+                    <td className="muted">{rec.notes || '—'}</td>
+                    <td className="muted">{others.length ? others.map((m) => <Link key={m.slug} to={`/modules/${m.slug}`}>{m.name}</Link>).reduce((acc, x) => (acc.length ? [...acc, ', ', x] : [x]), []) : '—'}</td>
+                    <td className="btn-row">
+                      <button className="btn btn-sm" onClick={() => setEditing(h.id)}>Edit record</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -215,7 +481,26 @@ function AssetsTab({ slug, docs }) {
   const [assets, setAssets] = useState(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
+  const [drawing, setDrawing] = useState(null); // asset name being converted
   const draft = docs.find((d) => d.status === 'draft' || d.status === 'in-review');
+
+  /** Redraw an existing photo in the FTD house style (same engine as the editor's drop target). */
+  async function toLineArt(asset) {
+    if (!draft) return toast('Create a doc draft first', 'err');
+    const instructions = window.prompt(`Redraw ${asset.name} as Technical Aviation Manual Line-Art.
+Optional instructions (what to number, arrows, emphasis):`, '');
+    if (instructions === null) return;
+    setDrawing(asset.name);
+    try {
+      const r = await api.illustrate(slug, draft.version, { assetName: asset.name, instructions });
+      toast(`${r.illustration.name} added to ${draft.version} — insert it from the editor's AI pane or with Copy <figure>`);
+      load();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setDrawing(null);
+    }
+  }
 
   const load = () => api.listAssets(slug).then(setAssets).catch((e) => toast(e.message, 'err'));
   useEffect(() => {
@@ -241,6 +526,7 @@ function AssetsTab({ slug, docs }) {
 
   return (
     <div>
+      <InboxPanel slug={slug} draft={draft} onImported={load} />
       <div
         className={`dropzone ${drag ? 'over' : ''} ${draft ? '' : 'disabled'}`}
         onDragOver={(e) => {
@@ -283,15 +569,45 @@ function AssetsTab({ slug, docs }) {
               <div className="asset-name" title={a.url}>
                 {a.name}
               </div>
-              <button
-                className="btn btn-sm"
-                onClick={() => {
-                  navigator.clipboard?.writeText(`<figure><img src="${a.url}" alt="${a.name}"><figcaption>TODO(author): caption</figcaption></figure>`);
-                  toast('Figure HTML copied — paste it in the HTML source view');
-                }}
-              >
-                Copy &lt;figure&gt;
-              </button>
+              <div className="btn-row">
+                <button
+                  className="btn btn-sm"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(`<figure><img src="${a.url}" alt="${a.name}"><figcaption>TODO(author): caption</figcaption></figure>`);
+                    toast('Figure HTML copied — paste it in the HTML source view');
+                  }}
+                >
+                  Copy &lt;figure&gt;
+                </button>
+                {/.(png|jpe?g|webp|gif)$/i.test(a.name) && !/-lineart.png$/i.test(a.name) && (
+                  <button
+                    className="btn btn-sm"
+                    disabled={!draft || drawing === a.name}
+                    title="Redraw this photo in the FTD Technical Aviation Manual Line-Art style"
+                    onClick={() => toLineArt(a)}
+                  >
+                    {drawing === a.name ? 'Drawing…' : '✎ Line-art'}
+                  </button>
+                )}
+                {draft && (
+                  <button
+                    className="btn-icon"
+                    title={`Remove from ${draft.version} (git rm on ${draft.branch})`}
+                    onClick={async () => {
+                      if (!confirm(`Remove ${a.name} from ${draft.version}? Figures referencing it will break.`)) return;
+                      try {
+                        await api.deleteAsset(slug, draft.version, a.name);
+                        toast(`${a.name} removed`);
+                        load();
+                      } catch (e) {
+                        toast(e.message, 'err');
+                      }
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

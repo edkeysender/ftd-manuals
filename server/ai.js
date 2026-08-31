@@ -53,7 +53,11 @@ export async function generateFirstDraft(module, guidelines = '') {
   const sys = `You draft module manuals for FTD.aero flight simulation training devices. Produce the body HTML of a mini-manual (sections 4–7 only, starting at <h2>Installation</h2>). ${HTML_RULES}
 ${guidelinesBlock(guidelines)}
 Return ONLY the raw HTML, no markdown fences, no commentary.`;
-  const user = `Module metadata:\n${JSON.stringify(module, null, 2)}\n\nDraft the manual body. Keep it a plausible skeleton with concrete structure, and use TODO(author) markers for every fact you cannot know.`;
+  const hwHint =
+    (module.hardwareItems || []).length > 1
+      ? ` The module covers ${module.hardwareItems.length} hardware unit types (${module.hardwareItems.map((h) => h.name).join(', ')}): describe each one in its own <h3> subsection under Installation and Operation, and keep what is common to all of them in the shared paragraphs.`
+      : '';
+  const user = `Module metadata:\n${JSON.stringify(module, null, 2)}\n\nDraft the manual body. Keep it a plausible skeleton with concrete structure, and use TODO(author) markers for every fact you cannot know.${hwHint}`;
   const html = await callOpenAI([
     { role: 'system', content: sys },
     { role: 'user', content: user },
@@ -71,7 +75,7 @@ Return ONLY the raw HTML, no markdown fences, no commentary.`;
  * the user pasted, images already downloaded into the module's asset store,
  * and text attachments from the chat.
  */
-export async function chatEdit({ module, doc, content, messages, context = {}, guidelines = '' }) {
+export async function chatEdit({ module, doc, content, messages, context = {}, guidelines = '', illustrationStyle = '' }) {
   const { pages = [], assets = [], attachmentsText = [] } = context;
 
   const assetBlock = assets.length
@@ -89,7 +93,10 @@ ${pages.map((p) => `=== ${p.url}${p.title ? ` — ${p.title}` : ''} ===\n${p.tex
     ? `ATTACHED FILES from the chat:\n${attachmentsText.map((a) => `=== ${a.name} ===\n${a.text}`).join('\n\n')}`
     : '';
 
-  const sys = `You are the AI assistant of the FTD.aero Documentation Console, working inside the manual editor for module "${module.name}" (doc ${doc.version} r${doc.revision}, status ${doc.status}).
+  const hwLine = (module.hardwareItems || []).length
+    ? `\nHardware units this manual describes: ${module.hardwareItems.map((h) => `${h.name} (${h.type === 'ftd' ? `FTD.aero ${h.version || 'v1'}` : `COTS ${[h.manufacturer, h.model].filter(Boolean).join(' ')}`})${h.notes ? ` — ${h.notes}` : ''}`).join('; ')}. When several units are listed, keep each one described in its own subsection.`
+    : '';
+  const sys = `You are the AI assistant of the FTD.aero Documentation Console, working inside the manual editor for module "${module.name}" (doc ${doc.version} r${doc.revision}, status ${doc.status}).${hwLine}
 You receive the CURRENT DOCUMENT BODY (sections 4–7 HTML) and the user's instruction.
 ${HTML_RULES}
 ${guidelinesBlock(guidelines)}
@@ -103,8 +110,10 @@ ${pageBlock}
 ${attachBlock}
 
 IMAGE GENERATION — you can create new illustrations (diagrams, line-art conversions of photos, style renderings). Add to your JSON:
-"generate_images": [{"name": "kebab-case-name.png", "prompt": "<detailed illustration prompt, including the full style definition to apply>", "reference_asset": "<file name of an existing asset to use as visual reference, or null>"}]
-The console generates each image with an image model (the reference asset is supplied to it as the visual base) and saves it into the asset store BEFORE your edit is displayed — so you may embed it in the html immediately as <img src="/api/modules/${module.slug}/assets/<name>">. Use at most 3 per turn. Use this whenever the user asks for an illustration, a technical drawing, or a photo converted to a drawing style — never refuse such requests and never claim you cannot transform images.
+"generate_images": [{"name": "kebab-case-name.png", "style": "line-art" | null, "prompt": "<what to draw / what to emphasise>", "reference_asset": "<file name of an existing asset to use as visual reference, or null>"}]
+HOUSE STYLE: FTD.aero manual illustrations use the "Technical Aviation Manual Line-Art" style (a.k.a. "our style", "FTD style", "OEM aircraft manual style"). Whenever the user asks for that style, for a photo converted to a technical drawing, or for a manual illustration without naming another style, set "style": "line-art" — the console then prepends the full house-style definition to your prompt itself, so your prompt only needs to describe the subject, the steps/callouts to show and any emphasis. For reference, the definition is:
+${(illustrationStyle || '').trim()}
+The console generates each image with an image model (the reference asset is supplied to it as the visual base) and saves it into the asset store BEFORE your edit is displayed — so you may embed it in the html immediately as <img src="/api/modules/${module.slug}/assets/<name>">. Assets named *-lineart.png are already in the house style — embed them directly instead of regenerating. Use at most 3 per turn. Use this whenever the user asks for an illustration, a technical drawing, or a photo converted to a drawing style — never refuse such requests and never claim you cannot transform images.
 
 Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences>", "html": "<full updated body HTML>", "generate_images": [...] } — set "html" to null when no change is made, omit "generate_images" when none are needed.`;
 
@@ -124,35 +133,38 @@ Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences
     reply: parsed.reply || 'Done.',
     html: typeof parsed.html === 'string' && parsed.html.trim() ? parsed.html : null,
     generateImages: Array.isArray(parsed.generate_images)
-      ? parsed.generate_images.filter((g) => g && g.name && g.prompt).slice(0, 3)
+      ? parsed.generate_images.filter((g) => g && g.name && (g.prompt || g.style)).slice(0, 3)
       : [],
   };
 }
 
 /* ------------------------------------------------------------------ */
-/* Image generation (gpt-image-1)                                      */
+/* Image generation (OpenAI images API, OPENAI_IMAGE_MODEL)             */
 /* ------------------------------------------------------------------ */
 
-const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2'; // gpt-image-1 is scheduled for shutdown 2026-10-23
 const IMAGE_QUALITY = process.env.OPENAI_IMAGE_QUALITY || 'medium';
 
 /**
- * Generate one image. When a reference buffer is given, the images/edits
- * endpoint is used so the output is based on the reference (e.g. a photo
- * converted to a line drawing); otherwise plain generation.
- * Returns a PNG Buffer.
+ * Generate one image. When reference images are given, the images/edits
+ * endpoint is used so the output is based on them — the prompt refers to them
+ * as "image 1", "image 2"… in the order given (e.g. a photo to redraw followed
+ * by style exemplars); otherwise plain generation. Returns a PNG Buffer.
  */
-export async function generateImage({ prompt, reference = null }) {
+export async function generateImage({ prompt, reference = null, references = [] }) {
   if (!aiAvailable()) throw new Error('OPENAI_API_KEY is not set');
   const headers = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
+  const inputs = [reference, ...references].filter((r) => r && r.buffer && r.buffer.length);
   let res;
-  if (reference) {
+  if (inputs.length) {
     const form = new FormData();
     form.append('model', IMAGE_MODEL);
     form.append('quality', IMAGE_QUALITY);
     form.append('prompt', prompt);
-    const type = /\.png$/i.test(reference.name) ? 'image/png' : /\.webp$/i.test(reference.name) ? 'image/webp' : 'image/jpeg';
-    form.append('image[]', new Blob([reference.buffer], { type }), reference.name);
+    for (const r of inputs) {
+      const type = /\.png$/i.test(r.name) ? 'image/png' : /\.webp$/i.test(r.name) ? 'image/webp' : 'image/jpeg';
+      form.append('image[]', new Blob([r.buffer], { type }), r.name);
+    }
     res = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers,

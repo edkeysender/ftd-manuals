@@ -50,6 +50,149 @@ function BrandingCard() {
   );
 }
 
+function IllustrationStyleCard() {
+  const toast = useToast();
+  const [info, setInfo] = useState(null);
+  const [style, setStyle] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const exRef = useRef(null);
+
+  const reload = () =>
+    api.illustrationStyle().then((s) => {
+      setInfo(s);
+      setStyle(s.style);
+    }).catch((e) => toast(e.message, 'err'));
+  useEffect(() => {
+    reload();
+  }, []);
+
+  async function addExemplars(fileList) {
+    const files = [...fileList].filter((f) => /^image\//.test(f.type));
+    if (!files.length) return;
+    setBusy(true);
+    try {
+      await api.uploadStyleExemplars(await Promise.all(files.map(readFileAsBase64)));
+      toast(`${files.length} style example${files.length === 1 ? '' : 's'} saved — sent to the image model with every photo from now on`);
+      await reload();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeExemplar(name) {
+    if (!confirm(`Remove style example ${name}?`)) return;
+    try {
+      await api.deleteStyleExemplar(name);
+      await reload();
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  async function save(text) {
+    setSaving(true);
+    try {
+      await api.saveIllustrationStyle(text);
+      const s = await api.illustrationStyle();
+      setInfo(s);
+      setStyle(s.style);
+      setDirty(false);
+      toast('Illustration style saved — every photo → line-art conversion now uses it');
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="settings-card">
+      <h2>Illustration style{info && <span className="fat-chip">{info.name}</span>}</h2>
+      <p>
+        The house style every manual illustration is drawn in. It is applied automatically when a photo is dropped
+        on the editor's AI pane, when the AI chat or an MCP agent generates a <em>line-art</em> illustration, and by
+        the <em>Line-art</em> button on the Assets tab.
+        {info?.imageModel && <> Image model <code>{info.imageModel}</code>.</>}
+      </p>
+
+      <h3 className="settings-sub">Style examples</h3>
+      <p className="muted">
+        The most reliable way to get <em>exactly</em> your look: drop 2–4 finished illustrations you already made (e.g.
+        in ChatGPT). They are sent to the image model together with every photo as "match this style" references —
+        the written definition below only fills the gaps. Best examples: single-view drawings of one device with
+        numbered callouts, on a white background.
+      </p>
+      <div
+        className={`dropzone ${drag ? 'over' : ''}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          addExemplars(e.dataTransfer.files);
+        }}
+      >
+        <strong>{busy ? 'Saving…' : 'Drop finished house-style illustrations here'}</strong>
+        <span className="muted">
+          {' '}— or{' '}
+          <label className="link">
+            choose files
+            <input ref={exRef} type="file" multiple accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { addExemplars(e.target.files); e.target.value = ''; }} />
+          </label>
+          . Up to 6, PNG/JPG/WEBP.
+        </span>
+      </div>
+      {info && info.exemplars.length > 0 && (
+        <div className="asset-grid exemplar-grid">
+          {info.exemplars.map((e) => (
+            <div className="asset-card" key={e.name}>
+              <img src={`${e.url}?v=${encodeURIComponent(e.name)}`} alt={e.name} loading="lazy" />
+              <div className="asset-name">{e.name}</div>
+              <button className="btn btn-sm btn-danger" onClick={() => removeExemplar(e.name)}>Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {info && info.exemplars.length === 0 && (
+        <p className="hint">No style examples yet — conversions rely on the written definition alone, which tends to produce multi-panel sheets.</p>
+      )}
+
+      <h3 className="settings-sub">Written definition</h3>
+      <p className="muted">
+        Stored in <code>settings/illustration-style.md</code>{info?.isDefault ? ' (built-in default in use)' : ''}.
+      </p>
+      <textarea
+        className="guidelines-edit"
+        value={style}
+        spellCheck={false}
+        onChange={(e) => {
+          setStyle(e.target.value);
+          setDirty(true);
+        }}
+      />
+      <div className="btn-row">
+        <button className="btn btn-primary" disabled={!dirty || saving} onClick={() => save(style)}>
+          {saving ? 'Saving…' : 'Save style'}
+        </button>
+        {info && !info.isDefault && (
+          <button className="btn" disabled={saving} onClick={() => save('')}>
+            Reset to built-in default
+          </button>
+        )}
+        {dirty && <span className="hint">unsaved changes</span>}
+      </div>
+    </section>
+  );
+}
+
 export default function Settings() {
   const toast = useToast();
   const [aiSettings, setAiSettings] = useState(null);
@@ -115,6 +258,8 @@ export default function Settings() {
           {dirty && <span className="hint">unsaved changes</span>}
         </div>
       </section>
+
+      <IllustrationStyleCard />
 
       <BrandingCard />
 

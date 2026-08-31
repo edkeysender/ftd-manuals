@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, CATEGORIES, GROUPS } from '../api.js';
 import { useToast } from '../App.jsx';
+import HardwarePicker, { hwDetail } from './HardwarePicker.jsx';
 
 const START_MODES = [
   {
@@ -36,15 +37,17 @@ export default function Wizard({ onClose, onCreated }) {
   const [releasedDocs, setReleasedDocs] = useState([]);
   const [source, setSource] = useState('');
 
-  // Step 3
-  const [hwType, setHwType] = useState('none');
-  const [hwVersion, setHwVersion] = useState('v1');
-  const [hwMaker, setHwMaker] = useState('');
-  const [hwModel, setHwModel] = useState('');
+  // Step 3 — hardware: [{id}] from the catalog and/or new items created inline
+  const [hardware, setHardware] = useState([]);
+  const [catalog, setCatalog] = useState([]);
   const [swLinked, setSwLinked] = useState(false);
   const [softwares, setSoftwares] = useState([{ name: '', fromVersion: '' }]);
 
+  // Step 4 — FAT checklist
+  const [fatMode, setFatMode] = useState('template');
+
   useEffect(() => {
+    api.hardware().then(setCatalog).catch(() => setCatalog([]));
     api.modules().then((mods) => {
       const opts = [];
       for (const m of mods) {
@@ -71,32 +74,30 @@ export default function Wizard({ onClose, onCreated }) {
     ? softwares.filter((s) => s.name.trim()).map((s) => ({ name: s.name.trim(), fromVersion: s.fromVersion.trim() }))
     : [];
 
-  const hardware = useMemo(() => {
-    if (hwType === 'ftd') return { type: 'ftd', version: hwVersion.trim() || 'v1' };
-    if (hwType === 'cots') return { type: 'cots', manufacturer: hwMaker.trim(), model: hwModel.trim() };
-    return { type: 'none' };
-  }, [hwType, hwVersion, hwMaker, hwModel]);
+  const hwItems = hardware.map((h) => (h.id ? catalog.find((c) => c.id === h.id) || { name: h.id } : h));
+  const hasFtdHw = hwItems.some((h) => h.type === 'ftd');
 
   const summary = useMemo(() => {
     const parts = [
       `${name || '—'}${code ? ` (${code})` : ''}`,
       `${(GROUPS.find(([k]) => k === group) || [])[1]} manual`,
       START_MODES.find((m) => m.key === startMode)?.title,
-      hwType === 'none'
+      hwItems.length === 0
         ? 'no hardware'
-        : hwType === 'ftd'
-          ? `FTD.aero build ${hwVersion}`
-          : `COTS ${hwMaker} ${hwModel}`.trim(),
+        : hwItems.length === 1
+          ? `${hwItems[0].name} (${hwDetail(hwItems[0])})`
+          : `${hwItems.length} hardware units: ${hwItems.map((h) => h.name).join(', ')}`,
       cleanSoftwares.length
         ? `linked to ${cleanSoftwares.map((s) => `${s.name}${s.fromVersion ? ` from ${s.fromVersion}` : ''}`).join(', ')}`
         : 'not software-related',
+      fatMode === 'none' ? 'no FAT checklist' : fatMode === 'copy' ? 'FAT checklist copied' : 'FAT checklist from template',
     ];
     if (startMode === 'copy') {
       const src = releasedDocs.find((d) => `${d.slug}|${d.version}` === source);
       parts[2] = src ? `copy of ${src.name} ${src.version}` : 'copy of — (pick a source)';
     }
     return parts.join(' · ');
-  }, [name, code, group, startMode, source, releasedDocs, hwType, hwVersion, hwMaker, hwModel, cleanSoftwares]);
+  }, [name, code, group, startMode, source, releasedDocs, hardware, catalog, cleanSoftwares, fatMode]);
 
   const canNext =
     step === 1 ? name.trim().length > 0 : step === 2 ? (startMode !== 'copy' || source) : true;
@@ -112,6 +113,7 @@ export default function Wizard({ onClose, onCreated }) {
         group,
         hardware,
         softwares: cleanSoftwares,
+        checklist: { mode: fatMode },
         start:
           startMode === 'copy'
             ? { mode: 'copy', sourceSlug, sourceVersion }
@@ -130,7 +132,7 @@ export default function Wizard({ onClose, onCreated }) {
         <div className="modal-head">
           <h2>New module doc</h2>
           <div className="steps">
-            {['Module', 'Starting content', 'Relations'].map((label, i) => (
+            {['Module', 'Starting content', 'Relations', 'FAT checklist'].map((label, i) => (
               <span key={label} className={`step ${step === i + 1 ? 'active' : ''} ${step > i + 1 ? 'done' : ''}`}>
                 {i + 1} · {label}
               </span>
@@ -211,36 +213,13 @@ export default function Wizard({ onClose, onCreated }) {
           {step === 3 && (
             <div className="form-grid">
               <div className="field">
-                <span className="field-label">Hardware</span>
-                <div className="choice-row">
-                  {[
-                    ['ftd', 'FTD.aero build'],
-                    ['cots', 'Bought (COTS)'],
-                    ['none', 'No hardware'],
-                  ].map(([k, l]) => (
-                    <button key={k} type="button" className={`choice ${hwType === k ? 'selected' : ''}`} onClick={() => setHwType(k)}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
-                {hwType === 'ftd' && (
-                  <label className="inline">
-                    Hardware version
-                    <input value={hwVersion} onChange={(e) => setHwVersion(e.target.value)} placeholder="v2" />
-                  </label>
-                )}
-                {hwType === 'cots' && (
-                  <div className="pair">
-                    <label className="inline">
-                      Manufacturer
-                      <input value={hwMaker} onChange={(e) => setHwMaker(e.target.value)} placeholder="Brunner" />
-                    </label>
-                    <label className="inline">
-                      Model / part no
-                      <input value={hwModel} onChange={(e) => setHwModel(e.target.value)} placeholder="CLS-E MK II" />
-                    </label>
-                  </div>
-                )}
+                <span className="field-label">Hardware — the unit types this manual describes</span>
+                <p className="muted small">
+                  Assign existing units from the shared catalog or create new ones. One manual can cover several unit
+                  types (e.g. three camera models): each gets its own subsection in Installation and Operation and its own
+                  row in General information and the FAT protocol.
+                </p>
+                <HardwarePicker catalog={catalog} value={hardware} onChange={setHardware} />
               </div>
 
               <div className="field">
@@ -286,6 +265,32 @@ export default function Wizard({ onClose, onCreated }) {
               <div className="summary-line">{summary}</div>
             </div>
           )}
+
+          {step === 4 && (
+            <div className="form-grid">
+              <div className="field">
+                <span className="field-label">Factory acceptance test checklist</span>
+                <p className="muted small">
+                  A separate document generated next to the manual for this doc version: identification, checks per phase with
+                  expected results, non-conformances and sign-off. Items are edited in the editor's FAT tab; the assistant can
+                  derive them from the manual's procedures.
+                </p>
+                <div className="choice-cards">
+                  {[
+                    ['template', 'Start from the category template', `Phases and checks typical for ${(CATEGORIES.find(([k]) => k === category) || [])[1] || category} modules${hasFtdHw ? ', incl. calibration' : ''}${cleanSoftwares.length ? ', incl. software version checks' : ''}. Review the TODO(author) items.`],
+                    ...(startMode === 'copy' ? [['copy', 'Copy from the source manual', 'Takes the checklist of the copied doc version (falls back to the template when it has none).']] : []),
+                    ['none', 'No FAT checklist', 'This module is not acceptance-tested on its own. One can be added later in the editor.'],
+                  ].map(([k, title, desc]) => (
+                    <button key={k} type="button" className={`choice-card ${fatMode === k ? 'selected' : ''}`} onClick={() => setFatMode(k)}>
+                      {title}
+                      <span>{desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="summary-line">{summary}</div>
+            </div>
+          )}
         </div>
 
         <div className="modal-foot">
@@ -294,7 +299,7 @@ export default function Wizard({ onClose, onCreated }) {
           ) : (
             <span />
           )}
-          {step < 3 ? (
+          {step < 4 ? (
             <button className="btn btn-primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
               Next →
             </button>

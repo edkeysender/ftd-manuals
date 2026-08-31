@@ -14,6 +14,12 @@ export const api = {
   modules: () => request('/api/modules'),
   createModule: (input) => request('/api/modules', { method: 'POST', body: input }),
   module: (slug) => request(`/api/modules/${slug}`),
+  /** Module metadata patch: name, code, category, group, softwares, hardware ([{id}] and/or new items). */
+  updateModule: (slug, patch) => request(`/api/modules/${slug}`, { method: 'PATCH', body: patch }),
+  hardware: () => request('/api/hardware'),
+  createHardware: (item) => request('/api/hardware', { method: 'POST', body: item }),
+  updateHardware: (id, patch) => request(`/api/hardware/${id}`, { method: 'PUT', body: patch }),
+  deleteHardware: (id) => request(`/api/hardware/${id}`, { method: 'DELETE' }),
   nextDocVersion: (slug, bump) => request(`/api/modules/${slug}/docs`, { method: 'POST', body: { bump } }),
   doc: (slug, version) => request(`/api/modules/${slug}/docs/${version}`),
   saveContent: (slug, version, html, bump = false, summary = '') =>
@@ -43,6 +49,22 @@ export const api = {
   uploadAssets: (slug, version, files) =>
     request(`/api/modules/${slug}/docs/${version}/assets`, { method: 'POST', body: { files } }),
   listAssets: (slug) => request(`/api/modules/${slug}/assets`),
+  deleteAsset: (slug, version, name) =>
+    request(`/api/modules/${slug}/docs/${version}/assets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  inbox: () => request('/api/inbox'),
+  uploadInbox: (files) => request('/api/inbox', { method: 'POST', body: { files } }),
+  deleteInbox: (name) => request(`/api/inbox/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  importInbox: (slug, version, names, keep = false) =>
+    request(`/api/modules/${slug}/docs/${version}/assets/import`, { method: 'POST', body: { names, keep } }),
+  /** Photo → FTD house-style line-art. body: {name, dataBase64} or {assetName}, plus optional instructions. */
+  illustrate: (slug, version, body) => request(`/api/modules/${slug}/docs/${version}/illustrate`, { method: 'POST', body }),
+  illustrationStyle: () => request('/api/settings/illustration-style'),
+  saveIllustrationStyle: (style) => request('/api/settings/illustration-style', { method: 'PUT', body: { style } }),
+  uploadStyleExemplars: (files) => request('/api/settings/illustration-style/exemplars', { method: 'POST', body: { files } }),
+  deleteStyleExemplar: (name) => request(`/api/settings/illustration-style/exemplars/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  checklist: (slug, version) => request(`/api/modules/${slug}/docs/${version}/checklist`),
+  saveChecklist: (slug, version, checklist, summary = '') =>
+    request(`/api/modules/${slug}/docs/${version}/checklist`, { method: 'PUT', body: { checklist, summary } }),
 };
 
 export const CATEGORIES = [

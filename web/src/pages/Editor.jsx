@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, timeAgo } from '../api.js';
+import { api, readFileAsBase64, timeAgo } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
+import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { useToast } from '../App.jsx';
 
 const AUTO_OUTLINE = [
@@ -24,6 +25,11 @@ function removePendingBlocks(html) {
 }
 
 const hasPendingMarkers = (html) => /class="[^"]*ai-edit-pending/.test(html || '');
+
+const isImageFile = (f) => (f.type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(f.name || '');
+const escapeAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const figureHtml = (url, alt) =>
+  `<figure><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}"><figcaption>TODO(author): figure caption</figcaption></figure><p></p>`;
 
 /* The pre-edit snapshot survives refreshes in localStorage so Accept/Discard
    still work after a reload. */
@@ -55,6 +61,7 @@ export default function Editor() {
   const [docMeta, setDocMeta] = useState(null);
   const [html, setHtml] = useState('');
   const [mode, setMode] = useState('rich');
+  const [tab, setTab] = useState('manual'); // 'manual' | 'fat'
   const [savedAt, setSavedAt] = useState(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -62,13 +69,18 @@ export default function Editor() {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
+  const [busyKind, setBusyKind] = useState('chat'); // 'chat' | 'illustrate'
   const [aiStart, setAiStart] = useState(null);
+  const [dropOver, setDropOver] = useState(false);
+  const [styleInfo, setStyleInfo] = useState(null); // {exemplars:[…]} — whether style examples exist
   const [attachments, setAttachments] = useState([]);
   const [, forceTick] = useState(0);
 
   const editorRef = useRef(null);
   const chatRef = useRef(null);
   const fileRef = useRef(null);
+  const photoRef = useRef(null);
+  const selRef = useRef(null); // last caret position inside the rich editor
   const htmlRef = useRef('');
   htmlRef.current = html;
 
@@ -109,6 +121,10 @@ export default function Editor() {
       })
       .catch((e) => toast(e.message, 'err'));
   }, [slug, version]);
+
+  useEffect(() => {
+    api.illustrationStyle().then(setStyleInfo).catch(() => {});
+  }, []);
 
   // Imperatively fill the contenteditable whenever content is replaced wholesale.
   const setEditorHtml = useCallback((value) => {
@@ -164,6 +180,39 @@ export default function Editor() {
   };
 
   const insertHtml = (snippet) => exec('insertHTML', snippet);
+
+  // Remember where the caret is so an illustration can be dropped in at that spot
+  // even after the user has clicked around the AI pane.
+  const rememberSelection = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && editorRef.current?.contains(sel.anchorNode)) {
+      selRef.current = sel.getRangeAt(0).cloneRange();
+    }
+  };
+
+  /** Insert a block at the remembered caret position (or at the end of the body). */
+  const insertAtCaret = (snippet) => {
+    if (mode !== 'rich' || !editorRef.current) {
+      setHtml((h) => `${h.replace(/\s*$/, '')}\n${snippet}\n`);
+      setDirty(true);
+      return;
+    }
+    const el = editorRef.current;
+    el.focus();
+    const sel = window.getSelection();
+    let range = selRef.current;
+    if (!range || !el.contains(range.commonAncestorContainer)) {
+      range = document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+    }
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('insertHTML', false, snippet);
+    onInput();
+    rememberSelection();
+    el.querySelector('figure:last-of-type')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   const TOOLBAR = [
     ['H2', () => exec('formatBlock', '<h2>'), 'Section heading'],
@@ -263,6 +312,92 @@ export default function Editor() {
     setAttachments((a) => [...a, ...read.filter(Boolean)]);
   }
 
+  /* ---------- photo → FTD line-art ---------- */
+  const pushMsg = (m) => setMessages((prev) => [...prev, m]);
+
+  /**
+   * Convert dropped/pasted photos into house-style line-art. Whatever is typed
+   * in the chat box at that moment is used as extra instructions for the
+   * drawing (e.g. "number the three latches"). Each result lands in the chat
+   * with an Insert button and is also visible to the assistant as an asset.
+   */
+  async function illustrateFiles(fileList) {
+    const files = [...fileList].filter(isImageFile);
+    if (!files.length) return toast('Drop an image file (PNG, JPG, WEBP) to convert it to line-art', 'err');
+    if (!editable) return toast('Read-only doc — illustrations can only be added to a draft', 'err');
+    if (aiBusy) return;
+    const instructions = chatInput.trim();
+    setChatInput('');
+    setAiBusy(true);
+    setBusyKind('illustrate');
+    setAiStart(Date.now());
+    try {
+      for (const f of files) {
+        pushMsg({ role: 'user', content: `🖼 ${f.name} → FTD line-art${instructions ? `\n${instructions}` : ''}` });
+        try {
+          const payload = await readFileAsBase64(f);
+          const r = await api.illustrate(slug, version, { name: payload.name, dataBase64: payload.dataBase64, instructions });
+          pushMsg(illustrationMsg(r, instructions));
+        } catch (e) {
+          pushMsg({ role: 'assistant', content: `Line-art failed for ${f.name}: ${e.message}` });
+        }
+      }
+    } finally {
+      setAiBusy(false);
+      setBusyKind('chat');
+      setAiStart(null);
+    }
+  }
+
+  function illustrationMsg(r, instructions) {
+    return {
+      role: 'assistant',
+      content: `Line-art ready: ${r.illustration.url}${r.source ? ` (drawn from ${r.source.name})` : ''}. Insert it into the manual at the cursor, or tell me where it belongs — e.g. "put it in Installation step 2 with a caption".`,
+      illustration: { ...r.illustration, v: Date.now() },
+      source: r.source,
+      instructions,
+    };
+  }
+
+  /**
+   * Iterate on a drawing the way ChatGPT does: the model edits the current
+   * illustration (photo attached for geometry) instead of starting over.
+   * The edited file keeps its name — the previous version stays in git history.
+   */
+  async function regenerate(m) {
+    if (aiBusy) return;
+    const instructions = window.prompt('What should change in this drawing? (e.g. "number the two latches, add an arrow showing the pull direction, remove the hand")', '');
+    if (instructions === null) return;
+    setAiBusy(true);
+    setBusyKind('illustrate');
+    setAiStart(Date.now());
+    pushMsg({ role: 'user', content: `🖼 edit ${m.illustration.name}${instructions ? `\n${instructions}` : ''}` });
+    try {
+      const r = await api.illustrate(slug, version, { editOf: m.illustration.name, assetName: m.source?.name, instructions });
+      pushMsg(illustrationMsg(r, instructions));
+    } catch (e) {
+      pushMsg({ role: 'assistant', content: `Line-art failed: ${e.message}` });
+    } finally {
+      setAiBusy(false);
+      setBusyKind('chat');
+      setAiStart(null);
+    }
+  }
+
+  function insertIllustration(m) {
+    if (!editable || pending) return toast('Accept or discard the pending AI edit first', 'err');
+    if (tab !== 'manual') setTab('manual');
+    const alt = m.illustration.name.replace(/\.[a-z0-9]+$/i, '').replace(/-lineart$/, '').replace(/-/g, ' ');
+    insertAtCaret(figureHtml(m.illustration.url, alt));
+    pushMsg({ role: 'assistant', content: `Inserted ${m.illustration.name} as a figure — edit the caption in the document.` });
+  }
+
+  const onPaneDrop = (e) => {
+    e.preventDefault();
+    setDropOver(false);
+    if (e.dataTransfer?.files?.length) illustrateFiles(e.dataTransfer.files);
+  };
+
   async function sendChat() {
     const text = chatInput.trim();
     if ((!text && attachments.length === 0) || aiBusy || pending) return;
@@ -273,6 +408,7 @@ export default function Editor() {
     setChatInput('');
     setAttachments([]);
     setAiBusy(true);
+    setBusyKind('chat');
     setAiStart(Date.now());
     try {
       const res = await api.aiChat({
@@ -370,13 +506,19 @@ export default function Editor() {
           <StatusBadge status={docMeta.status} />
         </div>
         <div className="editor-actions">
-          {editable && (
+          <div className="mode-toggle doc-tabs">
+            <button className={tab === 'manual' ? 'active' : ''} onClick={() => setTab('manual')}>Manual</button>
+            <button className={tab === 'fat' ? 'active' : ''} onClick={() => setTab('fat')}>
+              FAT checklist{data.checklist ? '' : ' (none)'}
+            </button>
+          </div>
+          {editable && tab === 'manual' && (
             <span className="save-indicator">
               {savedLabel}
               {docMeta.branch && <> · branch <code>{docMeta.branch}</code></>}
             </span>
           )}
-          {editable && (
+          {editable && tab === 'manual' && (
             <button
               className="btn btn-sm"
               onClick={() => {
@@ -420,7 +562,19 @@ export default function Editor() {
 
         {/* center: document */}
         <section className="pane doc-pane">
-          {editable && (
+          {tab === 'fat' && (
+            <ChecklistEditor
+              slug={slug}
+              version={version}
+              editable={editable}
+              checklist={data.checklist || null}
+              onSaved={(r) => {
+                setData((d) => ({ ...d, checklist: r.checklist }));
+                setDocMeta(r.doc);
+              }}
+            />
+          )}
+          {tab === 'manual' && editable && (
             <div className="toolbar">
               {mode === 'rich' &&
                 TOOLBAR.map(([label, fn, title]) => (
@@ -446,7 +600,7 @@ export default function Editor() {
             </div>
           )}
 
-          {pending && (
+          {tab === 'manual' && pending && (
             <div className="ai-pending-bar">
               <span>
                 <strong>AI EDIT · pending</strong> — “{pending.instruction}”
@@ -459,7 +613,7 @@ export default function Editor() {
             </div>
           )}
 
-          <div className="doc-scroll">
+          <div className="doc-scroll" style={tab === 'fat' ? { display: 'none' } : undefined}>
             <div className="doc-page">
               <div
                 className="generated"
@@ -473,6 +627,9 @@ export default function Editor() {
                   contentEditable={editable && !pending}
                   suppressContentEditableWarning
                   onInput={onInput}
+                  onKeyUp={rememberSelection}
+                  onMouseUp={rememberSelection}
+                  onBlur={rememberSelection}
                 />
               ) : (
                 <textarea
@@ -490,30 +647,105 @@ export default function Editor() {
         </section>
 
         {/* right: AI assistant */}
-        <aside className="pane ai-pane">
+        <aside
+          className={`pane ai-pane ${dropOver ? 'drop-over' : ''}`}
+          onDragOver={(e) => {
+            if (!editable) return;
+            e.preventDefault();
+            setDropOver(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setDropOver(false);
+          }}
+          onDrop={onPaneDrop}
+        >
           <div className="pane-title">
             AI assistant <span className="ai-tag">API · MCP enabled</span>
           </div>
+          {dropOver && (
+            <div className="drop-veil">
+              <strong>Drop photo → FTD line-art</strong>
+              <span>Technical Aviation Manual Line-Art · result appears here, ready to insert</span>
+            </div>
+          )}
           <div className="chat" ref={chatRef}>
-            {messages.map((m, i) => (
-              <div key={i} className={`msg msg-${m.role}`}>
-                {m.content}
-              </div>
-            ))}
+            {messages.map((m, i) =>
+              m.illustration ? (
+                <div key={i} className="msg msg-assistant msg-figure">
+                  <a href={m.illustration.url} target="_blank" rel="noreferrer" title="Open full size">
+                    <img src={`${m.illustration.url}?v=${m.illustration.v}`} alt={m.illustration.name} />
+                  </a>
+                  <div className="fig-meta">
+                    <code>{m.illustration.name}</code>
+                    {m.source && <span className="muted"> · from {m.source.name}</span>}
+                  </div>
+                  <div className="btn-row">
+                    <button
+                      className="btn btn-sm btn-primary"
+                      disabled={!editable || !!pending || aiBusy}
+                      title="Insert as a figure at the cursor position in the document"
+                      onClick={() => insertIllustration(m)}
+                    >
+                      Insert into manual
+                    </button>
+                    <button className="btn btn-sm" disabled={aiBusy || !editable} onClick={() => regenerate(m)} title="Ask for changes — the model edits this drawing rather than starting over">
+                      Edit drawing…
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div key={i} className={`msg msg-${m.role}`}>
+                  {m.content}
+                </div>
+              )
+            )}
             {aiBusy && (
               <div className="msg msg-assistant thinking">
                 <span className="typing">
                   <span /><span /><span />
                 </span>
                 <span className="thinking-label">
-                  working… {aiStart ? Math.round((Date.now() - aiStart) / 1000) : 0}s
-                  <span className="thinking-stage"> · fetching sources, drafting, marking pending edits</span>
+                  {busyKind === 'illustrate' ? 'drawing…' : 'working…'} {aiStart ? Math.round((Date.now() - aiStart) / 1000) : 0}s
+                  <span className="thinking-stage">
+                    {busyKind === 'illustrate'
+                      ? ' · redrawing the photo in Technical Aviation Manual Line-Art (30–90 s)'
+                      : ' · fetching sources, drafting, marking pending edits'}
+                  </span>
                 </span>
               </div>
             )}
           </div>
           {editable ? (
             <div className="chat-composer">
+              <button
+                className="lineart-strip"
+                type="button"
+                disabled={aiBusy}
+                title="Pick a photo — it is redrawn in the FTD house style and appears here ready to insert"
+                onClick={() => photoRef.current?.click()}
+              >
+                <span className="lineart-icon">✎</span>
+                <span>
+                  <strong>Photo → FTD line-art</strong>
+                  <span className="muted">
+                    {' '}— drop, paste or click; type instructions below first to steer the drawing
+                    {styleInfo && styleInfo.exemplars.length === 0 && (
+                      <> · <Link to="/settings">add style examples in Settings</Link> to match your look</>
+                    )}
+                  </span>
+                </span>
+              </button>
+              <input
+                ref={photoRef}
+                type="file"
+                multiple
+                hidden
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={(e) => {
+                  illustrateFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
               {attachments.length > 0 && (
                 <div className="attach-chips">
                   {attachments.map((a, i) => (
@@ -553,6 +785,13 @@ export default function Editor() {
                   }
                   disabled={aiBusy || !!pending}
                   onChange={(e) => setChatInput(e.target.value)}
+                  onPaste={(e) => {
+                    const imgs = [...(e.clipboardData?.files || [])].filter(isImageFile);
+                    if (imgs.length) {
+                      e.preventDefault();
+                      illustrateFiles(imgs);
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();

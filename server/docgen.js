@@ -25,10 +25,42 @@ export const FOOTER_TEXT =
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-export function hardwareLabel(hw) {
+/* ------------------------------------------------------------------ */
+/* Hardware                                                            */
+/* A module links to N items of the shared hardware catalog            */
+/* (hardware.json on main). Each item is one physical unit type:       */
+/* {id, name, type: 'ftd'|'cots', version | manufacturer+model, notes}.*/
+/* ------------------------------------------------------------------ */
+
+/** Relation detail of one catalog item (or a legacy inline relation object). */
+export function hardwareDetail(hw) {
   if (!hw || hw.type === 'none') return '—';
   if (hw.type === 'ftd') return `FTD.aero · ${hw.version || 'v1'}`;
-  return `COTS · ${[hw.manufacturer, hw.model].filter(Boolean).join(' ')}`;
+  return `COTS · ${[hw.manufacturer, hw.model].filter(Boolean).join(' ')}`.trim();
+}
+
+/** Display name of one hardware item: its catalog name, else the relation detail. */
+export function hardwareItemLabel(hw) {
+  if (!hw || hw.type === 'none') return '—';
+  return hw.name || hardwareDetail(hw);
+}
+
+/** Items of a module. Accepts a module (hardwareItems), an array of items, or a legacy relation object. */
+export function hardwareItemsOf(x) {
+  if (!x) return [];
+  if (Array.isArray(x)) return x.filter((h) => h && h.type !== 'none');
+  if (Array.isArray(x.hardwareItems)) return x.hardwareItems.filter((h) => h && h.type !== 'none');
+  if (Array.isArray(x.hardware)) return x.hardware.filter((h) => h && h.type !== 'none');
+  const hw = x.hardware && typeof x.hardware === 'object' ? x.hardware : x.type ? x : null;
+  return hw && hw.type !== 'none' ? [hw] : [];
+}
+
+/** One-line label for lists: item names joined, or the single item's detail. */
+export function hardwareLabel(x) {
+  const items = hardwareItemsOf(x);
+  if (items.length === 0) return '—';
+  if (items.length === 1 && !items[0].name) return hardwareDetail(items[0]);
+  return items.map(hardwareItemLabel).join(' · ');
 }
 
 export function softwareLabel(softwares) {
@@ -36,13 +68,26 @@ export function softwareLabel(softwares) {
   return softwares.map((s) => s.name).join(' · ');
 }
 
-/** Blank content for sections 4–7 (FTD standard template). */
-export function blankContent(moduleName) {
+/** Blank content for sections 4–7 (FTD standard template). When the module covers
+ *  several hardware items (e.g. three camera types) Installation and Operation get
+ *  one sub-section per item so each unit type is described on its own. */
+export function blankContent(moduleName, hardwareItems = []) {
+  const items = hardwareItemsOf(hardwareItems);
+  const variants = (verb) =>
+    items.length > 1
+      ? items
+          .map(
+            (h) =>
+              `<h3>${esc(hardwareItemLabel(h))}</h3>
+<p>TODO: describe ${verb} of the ${esc(hardwareItemLabel(h))} (${esc(hardwareDetail(h))}).</p>`
+          )
+          .join('\n') + '\n'
+      : '';
   return `<h2>Installation</h2>
 <p>TODO: describe how the ${esc(moduleName)} module is installed and connected.</p>
-<h2>Operation</h2>
+${variants('installation and connection')}<h2>Operation</h2>
 <p>TODO: describe normal operation of the ${esc(moduleName)} module.</p>
-<h2>Maintenance</h2>
+${variants('normal operation')}<h2>Maintenance</h2>
 <p>TODO: describe inspection intervals and maintenance actions.</p>
 <h2>Appendixes</h2>
 <p>TODO: reference drawings, wiring diagrams and third-party documents.</p>
@@ -74,6 +119,14 @@ export function generatedSections(module, doc) {
       })
       .join('\n') || '<tr><td colspan="2">Not software-related</td></tr>';
 
+  const hwRows =
+    hardwareItemsOf(module)
+      .map(
+        (h) =>
+          `<tr><td>${esc(hardwareItemLabel(h))}</td><td>${esc(hardwareDetail(h))}</td><td>${esc(h.notes || '')}</td></tr>`
+      )
+      .join('\n') || '<tr><td colspan="3">Not hardware-related</td></tr>';
+
   return `<section class="auto-section" data-auto="1">
 <h2>Revision record</h2>
 <h3>Document revisions</h3>
@@ -101,7 +154,13 @@ ${record || '<tr><td colspan="3">No revisions recorded</td></tr>'}
 <tr><th>Code</th><td>${esc(module.code || '—')}</td></tr>
 <tr><th>Category</th><td>${esc(CATEGORY_LABELS[module.category] || module.category || '—')}</td></tr>
 <tr><th>Manual group</th><td>${esc(module.group)}</td></tr>
-<tr><th>Hardware</th><td>${esc(hardwareLabel(module.hardware))}</td></tr>
+</tbody>
+</table>
+<h3>Hardware</h3>
+<table>
+<thead><tr><th>Unit</th><th>Relation</th><th>Notes</th></tr></thead>
+<tbody>
+${hwRows}
 </tbody>
 </table>
 <h3>Software relation</h3>

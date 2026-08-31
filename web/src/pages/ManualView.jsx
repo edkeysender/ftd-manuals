@@ -57,6 +57,9 @@ export default function ManualView() {
           <a className="btn btn-primary" href={`/api/manuals/${slug}/export.html?download`}>
             Export HTML
           </a>
+          <a className="btn" href={`/api/manuals/${slug}/fat.html`} target="_blank" rel="noreferrer" title="FAT protocol: the checklists of all modules in this manual as one document">
+            FAT protocol
+          </a>
           <button
             className="btn btn-danger"
             onClick={() => {
