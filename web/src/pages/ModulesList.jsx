@@ -10,8 +10,12 @@ const catLabel = (c) => (CATEGORIES.find(([k]) => k === c) || [null, c])[1];
 export default function ModulesList() {
   const [rows, setRows] = useState(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const toast = useToast();
+
+  const q = query.trim().toLowerCase();
+  const visible = rows === null ? null : q ? rows.filter((m) => `${m.name} ${m.code || ''}`.toLowerCase().includes(q)) : rows;
 
   const load = () => api.modules().then(setRows).catch((e) => toast(e.message, 'err'));
   useEffect(() => {
@@ -22,9 +26,20 @@ export default function ModulesList() {
     <div className="page">
       <div className="page-head">
         <h1>Modules</h1>
-        <button className="btn btn-primary" onClick={() => setWizardOpen(true)}>
-          + New module doc
-        </button>
+        <div className="btn-row">
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Search modules by name…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
+            aria-label="Search modules by name"
+          />
+          <button className="btn btn-primary" onClick={() => setWizardOpen(true)}>
+            + New module doc
+          </button>
+        </div>
       </div>
 
       {rows === null ? (
@@ -36,6 +51,10 @@ export default function ModulesList() {
             Create the first one with <strong>+ New module doc</strong> — it starts a draft branch and a doc
             version A1.0 r1.
           </p>
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="empty">
+          <p>No modules match “{query.trim()}”.</p>
         </div>
       ) : (
         <table className="table modules-table">
@@ -51,7 +70,7 @@ export default function ModulesList() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((m) => (
+            {visible.map((m) => (
               <tr key={m.slug} className="row-link" onClick={() => navigate(`/modules/${m.slug}`)}>
                 <td>
                   <div className="module-cell">
