@@ -76,6 +76,8 @@ const contentIn = (dir) => `${dir}/content.html`;
 const contentLangIn = (dir, lang) => (langOf(lang) === DEFAULT_LANG ? contentIn(dir) : `${dir}/content.${langOf(lang)}.html`);
 const contentHash = (html) => createHash('sha1').update(String(html || '')).digest('hex').slice(0, 12);
 const checklistIn = (dir) => `${dir}/checklist.json`;
+/** Review comments of a doc version: {threads: [...]} next to doc.json on the draft branch. */
+const commentsIn = (dir) => `${dir}/comments.json`;
 const VERSION_RE = /^A\d+\.\d+$/;
 const LEGACY_DOC_RE = /^modules\/([^/]+)\/docs\/(A\d+\.\d+)\/doc\.json$/;
 const TYPED_DOC_RE = /^modules\/([^/]+)\/docs\/([a-z][a-z-]*)\/(A\d+\.\d+)\/doc\.json$/;
@@ -185,7 +187,10 @@ async function collectAllUncached() {
     const moduleRef = info.moduleRefs.has('main') ? 'main' : [...info.moduleRefs][0];
     wanted.push({ ref: moduleRef, file: moduleFile(slug) });
     for (const d of info.docs.values()) {
-      for (const ref of d.refs) wanted.push({ ref, file: docJson(d.dir) });
+      for (const ref of d.refs) {
+        wanted.push({ ref, file: docJson(d.dir) });
+        if (ref !== 'main') wanted.push({ ref, file: commentsIn(d.dir) }); // open review threads live on draft branches
+      }
     }
   }
   wanted.push({ ref: 'main', file: HARDWARE_FILE });
@@ -222,7 +227,10 @@ async function collectAllUncached() {
         chosen = get(ref, docJson(d.dir));
         chosenRef = ref;
       }
-      if (chosen) docs.push({ ...chosen, manual: d.manual, key, dir: d.dir, ref: chosenRef });
+      if (chosen) {
+        const threads = chosenRef !== 'main' ? get(chosenRef, commentsIn(d.dir))?.threads || [] : [];
+        docs.push({ ...chosen, manual: d.manual, key, dir: d.dir, ref: chosenRef, openComments: threads.filter((c) => c.status === 'open').length });
+      }
     }
     // newest version first within a manual type; types in their canonical order
     docs.sort(
@@ -960,6 +968,128 @@ export async function saveChecklist(slug, key, checklist, { summary = '' } = {})
     await repo.checkout('main');
   });
   return { doc: meta, checklist: normalized };
+}
+
+/* ------------------------------------------------------------------ */
+/* Review comments                                                     */
+/* Viewers select text in a draft and comment on it; the author        */
+/* resolves, replies, or has the AI propose the change. Threads are    */
+/* committed on the draft branch (no revision bump) and merge to main  */
+/* with the release as the review record of that version.              */
+/* ------------------------------------------------------------------ */
+
+const commentId = () => `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+const cleanText = (s, max = 4000) => String(s ?? '').trim().slice(0, max);
+
+async function readThreads(ref, dir) {
+  return (await readJson(ref, commentsIn(dir)))?.threads || [];
+}
+
+/** All review threads of a doc version (any status), open first, newest first. */
+export async function listComments(slug, key) {
+  const hit = await findDoc(slug, key);
+  if (!hit) return null;
+  const threads = await readThreads(hit.doc.ref, hit.doc.dir);
+  threads.sort((a, b) => (a.status === b.status ? b.createdAt.localeCompare(a.createdAt) : a.status === 'open' ? -1 : 1));
+  return { doc: hit.doc, threads };
+}
+
+async function writeThreads(slug, key, mutateThreads, message) {
+  const { branch, dir, meta } = await loadDraftDoc(slug, key);
+  if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — comments are made on a Draft or In-review doc`);
+  let result = null;
+  await mutate(async () => {
+    await repo.checkout(branch);
+    const threads = await readThreads(branch, dir);
+    result = mutateThreads(threads);
+    await repo.writeFile(commentsIn(dir), JSON.stringify({ threads }, null, 2) + '\n');
+    await repo.commitAll(`${slug} ${meta.version}: ${message(result)}`);
+    await repo.checkout('main');
+  });
+  return result;
+}
+
+/**
+ * Add a review thread. anchor: { quote (selected text), section (<h2> title it sits in),
+ * before/after (a few chars of context to disambiguate), lang } — the quote is how the
+ * comment is re-found in the document; it stays valid as long as the text does.
+ */
+export async function addComment(slug, key, { author, text, anchor = {} }) {
+  const body = cleanText(text);
+  if (!body) throw new Error('Comment text is required');
+  const thread = {
+    id: commentId(),
+    status: 'open',
+    author: cleanText(author, 80) || 'Reviewer',
+    text: body,
+    createdAt: now(),
+    anchor: {
+      quote: cleanText(anchor.quote, 600),
+      section: cleanText(anchor.section, 200),
+      before: cleanText(anchor.before, 80),
+      after: cleanText(anchor.after, 80),
+      lang: langOf(anchor.lang || DEFAULT_LANG),
+    },
+    replies: [],
+  };
+  return writeThreads(slug, key, (threads) => (threads.push(thread), thread), (c) => `comment by ${c.author}`);
+}
+
+export async function replyComment(slug, key, id, { author, text }) {
+  const body = cleanText(text);
+  if (!body) throw new Error('Reply text is required');
+  return writeThreads(
+    slug,
+    key,
+    (threads) => {
+      const c = threads.find((x) => x.id === id);
+      if (!c) throw new Error(`Comment ${id} not found`);
+      c.replies.push({ id: commentId(), author: cleanText(author, 80) || 'Author', text: body, createdAt: now() });
+      return c;
+    },
+    (c) => `reply on comment ${c.id}`
+  );
+}
+
+/** Resolve or reopen a thread; `note` becomes a reply (e.g. "applied in r4"). */
+export async function setCommentStatus(slug, key, id, status, { author, note, revision } = {}) {
+  if (!['open', 'resolved'].includes(status)) throw new Error('status must be open or resolved');
+  return writeThreads(
+    slug,
+    key,
+    (threads) => {
+      const c = threads.find((x) => x.id === id);
+      if (!c) throw new Error(`Comment ${id} not found`);
+      c.status = status;
+      if (status === 'resolved') {
+        c.resolvedAt = now();
+        c.resolvedBy = cleanText(author, 80) || 'Author';
+        if (revision) c.resolvedIn = `r${revision}`;
+      } else {
+        delete c.resolvedAt;
+        delete c.resolvedBy;
+        delete c.resolvedIn;
+      }
+      const n = cleanText(note);
+      if (n) c.replies.push({ id: commentId(), author: cleanText(author, 80) || 'Author', text: n, createdAt: now() });
+      return c;
+    },
+    (c) => `comment ${c.id} ${status}`
+  );
+}
+
+export async function deleteComment(slug, key, id) {
+  return writeThreads(
+    slug,
+    key,
+    (threads) => {
+      const i = threads.findIndex((x) => x.id === id);
+      if (i < 0) throw new Error(`Comment ${id} not found`);
+      const [c] = threads.splice(i, 1);
+      return c;
+    },
+    (c) => `comment ${c.id} deleted`
+  );
 }
 
 export async function setDocStatus(slug, key, status) {

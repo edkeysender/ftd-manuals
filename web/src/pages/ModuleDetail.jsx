@@ -164,6 +164,10 @@ function ManualsTab({ data, slug, act, reload }) {
               <button className="btn btn-primary btn-sm" onClick={() => navigate(`/modules/${slug}/docs/${d.key}/edit`)}>
                 {t('Edit')}
               </button>
+              <button className="btn btn-sm" title={t('Read-only view where reviewers select text and comment')} onClick={() => navigate(`/modules/${slug}/docs/${d.key}/review`)}>
+                {t('Review')}
+                {d.openComments > 0 && <span className="count-pill" style={{ marginLeft: 6 }}>{d.openComments}</span>}
+              </button>
               {d.status === 'draft' && (
                 <button className="btn btn-sm" onClick={() => act(() => api.submitReview(slug, d.key), t('{doc} submitted for review', { doc: docLabel(d) }))}>
                   {t('Submit for review')}

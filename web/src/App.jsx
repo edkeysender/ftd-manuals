@@ -28,7 +28,7 @@ export default function App() {
     api.status().then(setStatus).catch(() => {});
   }, [location]);
 
-  const isEditor = /\/edit$/.test(location.pathname);
+  const isEditor = /\/(edit|review)$/.test(location.pathname);
   const { locale } = useLocale();
 
   return (
@@ -67,6 +67,7 @@ export default function App() {
             <Route path="/" element={<ModulesList />} />
             <Route path="/modules/:slug" element={<ModuleDetail />} />
             <Route path="/modules/:slug/docs/:version/edit" element={<Editor />} />
+            <Route path="/modules/:slug/docs/:version/review" element={<Editor review />} />
             <Route path="/software" element={<SoftwareList />} />
             <Route path="/manuals" element={<ManualsList />} />
             <Route path="/manuals/:slug" element={<ManualView />} />

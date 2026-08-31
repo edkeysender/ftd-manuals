@@ -88,6 +88,81 @@ async function imagesFromHtml(html) {
   return files;
 }
 
+/* ---------- review comments: anchoring a quote in the rendered page ---------- */
+
+/** Find `quote` in the text of `root` (optionally the occurrence preceded by `before`) and return a Range. */
+function findQuoteRange(root, quote, before = '') {
+  if (!root || !quote) return null;
+  const nodes = [];
+  let text = '';
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode())) {
+    nodes.push({ node: n, start: text.length });
+    text += n.nodeValue;
+  }
+  let idx = -1;
+  if (before) {
+    const ctx = text.indexOf(before + quote);
+    if (ctx >= 0) idx = ctx + before.length;
+  }
+  if (idx < 0) idx = text.indexOf(quote);
+  if (idx < 0) {
+    // whitespace may have been normalised by the editor — retry with a loose pattern
+    const loose = new RegExp(quote.trim().split(/\s+/).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'));
+    const m = loose.exec(text);
+    if (!m) return null;
+    idx = m.index;
+    quote = m[0];
+  }
+  const end = idx + quote.length;
+  const locate = (pos) => {
+    let i = nodes.findIndex((x, k) => pos < x.start + x.node.nodeValue.length || k === nodes.length - 1);
+    if (i < 0) i = nodes.length - 1;
+    return [nodes[i].node, Math.max(0, Math.min(pos - nodes[i].start, nodes[i].node.nodeValue.length))];
+  };
+  const r = document.createRange();
+  r.setStart(...locate(idx));
+  r.setEnd(...locate(end));
+  return r;
+}
+
+/** Describe the current selection inside `root`: quote, enclosing <h2> title, context before/after. */
+function describeSelection(root) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+  const range = sel.getRangeAt(0);
+  if (!root || !root.contains(range.commonAncestorContainer)) return null;
+  const quote = sel.toString().replace(/\s+/g, ' ').trim();
+  if (quote.length < 2) return null;
+  let el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  let section = '';
+  // walk backwards through the page for the nearest preceding h2
+  const heads = [...root.querySelectorAll('h2')];
+  for (const h of heads) {
+    if (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) section = h.textContent.trim();
+  }
+  const pre = document.createRange();
+  pre.setStart(root, 0);
+  pre.setEnd(range.startContainer, range.startOffset);
+  const before = pre.toString().replace(/\s+/g, ' ').slice(-40);
+  const post = document.createRange();
+  post.setStart(range.endContainer, range.endOffset);
+  post.setEnd(root, root.childNodes.length);
+  const after = post.toString().replace(/\s+/g, ' ').slice(0, 40);
+  const rect = range.getBoundingClientRect();
+  return { quote: quote.slice(0, 600), section, before, after, rect };
+}
+
+const REVIEWER_KEY = 'ftd-reviewer-name';
+const reviewerName = () => {
+  try {
+    return localStorage.getItem(REVIEWER_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
 /* The pre-edit snapshot survives refreshes in localStorage so Accept/Discard
    still work after a reload. */
 const snapshotKey = (slug, version) => `ftd-pending-ai:${slug}:${version}`;
@@ -109,10 +184,26 @@ const clearSnapshot = (slug, version) => {
   } catch {}
 };
 
-export default function Editor() {
+/**
+ * Manual editor. With `review` the same page is the read-only review view other
+ * people get: they select text and comment; the author sees the threads in the
+ * editor's Comments tab, resolves them, or asks the AI to propose the change.
+ */
+export default function Editor({ review = false }) {
   const { slug, version } = useParams();
   const toast = useToast();
   const navigate = useNavigate();
+
+  // review comments
+  const [comments, setComments] = useState([]);
+  const [sidePane, setSidePane] = useState(review ? 'comments' : 'ai'); // 'ai' | 'comments'
+  const [selInfo, setSelInfo] = useState(null); // current text selection in the page → "Comment" popover
+  const [newComment, setNewComment] = useState(null); // anchor being commented on
+  const [commentText, setCommentText] = useState('');
+  const [activeComment, setActiveComment] = useState(null);
+  const [replyTo, setReplyTo] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [showResolved, setShowResolved] = useState(false);
 
   const [data, setData] = useState(null); // {module, doc, content, generated, lang, languages}
   const [docMeta, setDocMeta] = useState(null);
@@ -148,7 +239,108 @@ export default function Editor() {
   const htmlRef = useRef('');
   htmlRef.current = html;
 
-  const editable = docMeta && (docMeta.status === 'draft' || docMeta.status === 'in-review');
+  const docOpen = docMeta && (docMeta.status === 'draft' || docMeta.status === 'in-review');
+  const editable = docOpen && !review;
+  const canComment = !!docOpen; // anyone viewing an open draft may comment
+  const openComments = comments.filter((c) => c.status === 'open');
+
+  const loadComments = useCallback(() => api.comments(slug, version).then(setComments).catch(() => setComments([])), [slug, version]);
+  useEffect(() => {
+    loadComments();
+  }, [loadComments]);
+
+  /** Who is commenting — asked once per browser. */
+  function whoAmI() {
+    let name = reviewerName();
+    if (!name) {
+      name = (window.prompt(t('Your name (shown on your comments):'), '') || '').trim();
+      if (!name) return null;
+      try {
+        localStorage.setItem(REVIEWER_KEY, name);
+      } catch {}
+    }
+    return name;
+  }
+
+  async function submitComment() {
+    const name = whoAmI();
+    if (!name || !newComment || !commentText.trim()) return;
+    try {
+      const c = await api.addComment(slug, version, { author: name, text: commentText.trim(), anchor: { ...newComment, lang } });
+      setNewComment(null);
+      setCommentText('');
+      setActiveComment(c.id);
+      await loadComments();
+      toast(t('Comment added'));
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  async function submitReply(id) {
+    const name = whoAmI();
+    if (!name || !replyText.trim()) return;
+    try {
+      await api.replyComment(slug, version, id, { author: name, text: replyText.trim() });
+      setReplyTo(null);
+      setReplyText('');
+      await loadComments();
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  async function setStatus(c, status, note) {
+    try {
+      await api.setCommentStatus(slug, version, c.id, { status, author: reviewerName() || 'Author', note });
+      await loadComments();
+      toast(status === 'resolved' ? t('Comment resolved') : t('Comment reopened'));
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  async function removeComment(c) {
+    if (!confirm(t('Delete this comment thread?'))) return;
+    try {
+      await api.deleteComment(slug, version, c.id);
+      await loadComments();
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
+
+  /** Scroll the page to the quoted text and select it. */
+  function jumpToComment(c) {
+    setActiveComment(c.id);
+    const r = findQuoteRange(pageRef.current, c.anchor?.quote, c.anchor?.before);
+    if (!r) return toast(t('The quoted text is no longer in the document'), 'err');
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    (r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  /** Text selection in the page → floating "Comment" button. */
+  function onPageMouseUp() {
+    if (!canComment) return;
+    setTimeout(() => setSelInfo(describeSelection(pageRef.current)), 0);
+  }
+  function startComment() {
+    if (!selInfo) return;
+    setNewComment({ quote: selInfo.quote, section: selInfo.section, before: selInfo.before, after: selInfo.after });
+    setCommentText('');
+    setSidePane('comments');
+    setSelInfo(null);
+  }
+  useEffect(() => {
+    const clear = (e) => {
+      if (e.target.closest?.('.comment-fab')) return;
+      setSelInfo(null);
+    };
+    document.addEventListener('mousedown', clear);
+    return () => document.removeEventListener('mousedown', clear);
+  }, []);
   // Pending-AI snapshots are per language; English keeps the old key so earlier snapshots still recover.
   const snapId = lang === 'en' ? version : `${version}@${lang}`;
   const langInfo = languages ? languages[lang] : null;
@@ -191,6 +383,7 @@ export default function Editor() {
           setPending({
             original: snap?.original ?? null,
             instruction: snap?.instruction ?? t('recovered AI edit'),
+            commentId: snap?.commentId ?? null,
             recovered: true,
           });
           setMessages([
@@ -325,6 +518,25 @@ export default function Editor() {
     return () => CSS.highlights.delete('todo');
   }, [html, data, mode, tab, pending]);
 
+  /* ---------- review comment highlights ---------- */
+  useEffect(() => {
+    if (!highlightsSupported()) return undefined;
+    const open = tab === 'manual' && mode === 'rich' ? comments.filter((c) => c.status === 'open' && (c.anchor?.lang || 'en') === lang) : [];
+    const ranges = [];
+    const active = [];
+    for (const c of open) {
+      const r = findQuoteRange(pageRef.current, c.anchor?.quote, c.anchor?.before);
+      if (!r) continue;
+      (c.id === activeComment ? active : ranges).push(r);
+    }
+    CSS.highlights.set('comment', new Highlight(...ranges));
+    CSS.highlights.set('comment-active', new Highlight(...active));
+    return () => {
+      CSS.highlights.delete('comment');
+      CSS.highlights.delete('comment-active');
+    };
+  }, [comments, activeComment, html, data, mode, tab, lang]);
+
   /** Cycle through the open TODOs, scrolling each into view and selecting it. */
   const jumpToTodo = () => {
     const ranges = todoRangesRef.current;
@@ -434,8 +646,10 @@ export default function Editor() {
       setSavedAt(new Date().toISOString());
       setDirty(false);
       toast(t('Committed r{rev}', { rev: meta.revision }));
+      return meta;
     } catch (e) {
       toast(e.message, 'err');
+      return null;
     } finally {
       setSaving(false);
     }
@@ -643,8 +857,22 @@ export default function Editor() {
     return () => window.removeEventListener('paste', onWindowPaste);
   });
 
-  async function sendChat() {
-    const text = chatInput.trim();
+  /** Ask the AI to propose the change a reviewer asked for; the proposal goes through the normal Accept / Discard flow. */
+  function askAiForComment(c) {
+    if (pending) return toast(t('Accept or discard the pending AI edit first'), 'err');
+    const instruction = t('Reviewer comment by {author} on “{quote}” (section {section}): {text} — apply the requested change to that passage.', {
+      author: c.author,
+      quote: c.anchor?.quote || '',
+      section: c.anchor?.section || '—',
+      text: c.text,
+    });
+    setSidePane('ai');
+    setActiveComment(c.id);
+    sendChat(instruction, c.id);
+  }
+
+  async function sendChat(overrideText, commentId = null) {
+    const text = typeof overrideText === 'string' ? overrideText.trim() : chatInput.trim();
     if ((!text && attachments.length === 0) || aiBusy || pending) return;
     const sent = attachments;
     const label = sent.length ? `${text}${text ? '\n' : ''}📎 ${sent.map((a) => a.name).join(', ')}` : text;
@@ -667,8 +895,8 @@ export default function Editor() {
       setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
       if (res.html) {
         const instruction = text || t('use {files}', { files: sent.map((a) => a.name).join(', ') });
-        saveSnapshot(slug, snapId, { original: htmlRef.current, instruction });
-        setPending({ original: htmlRef.current, instruction });
+        saveSnapshot(slug, snapId, { original: htmlRef.current, instruction, commentId });
+        setPending({ original: htmlRef.current, instruction, commentId });
         setEditorHtml(res.html);
         setDirty(true); // autosave the marked content so a refresh can recover it
       }
@@ -683,10 +911,24 @@ export default function Editor() {
   async function acceptAI() {
     const clean = stripPending(htmlRef.current);
     setEditorHtml(clean);
-    const instruction = pending.instruction;
+    const { instruction, commentId } = pending;
     setPending(null);
     clearSnapshot(slug, snapId);
-    await commitRevision(`AI edit: ${instruction}`);
+    const meta = await commitRevision(`AI edit: ${instruction}`);
+    // An accepted proposal for a reviewer comment closes the thread with a note.
+    if (commentId && meta) {
+      try {
+        await api.setCommentStatus(slug, version, commentId, {
+          status: 'resolved',
+          author: reviewerName() || 'Author',
+          revision: meta.revision,
+          note: t('Change proposed by the AI and accepted by the author in r{rev}.', { rev: meta.revision }),
+        });
+        await loadComments();
+      } catch (e) {
+        toast(e.message, 'err');
+      }
+    }
   }
 
   function discardAI() {
@@ -753,8 +995,22 @@ export default function Editor() {
             {docMeta.version} r{docMeta.revision}
           </span>
           <StatusBadge status={docMeta.status} />
+          {review && <span className="review-tag" title={t('Read-only review view — select text to comment')}>{t('Review')}</span>}
         </div>
         <div className="editor-actions">
+          {editable && (
+            <button
+              className="btn btn-sm"
+              title={t('Copy a link reviewers use to read this draft and comment on it')}
+              onClick={() => {
+                const url = `${window.location.origin}${window.location.pathname}#/modules/${slug}/docs/${version}/review`;
+                navigator.clipboard?.writeText(url);
+                toast(t('Review link copied'));
+              }}
+            >
+              🔗 {t('Review link')}
+            </button>
+          )}
           <div className="mode-toggle doc-tabs">
             <button className={tab === 'manual' ? 'active' : ''} onClick={() => setTab('manual')}>{t('Manual')}</button>
             <button className={tab === 'fat' ? 'active' : ''} onClick={() => setTab('fat')}>
@@ -797,18 +1053,29 @@ export default function Editor() {
               {t('Commit revision')}
             </button>
           )}
-          {docMeta.status === 'draft' && (
+          {!review && docMeta.status === 'draft' && (
             <button className="btn btn-primary btn-sm" onClick={submitReview}>
               {t('Submit for review')}
             </button>
           )}
-          {docMeta.status === 'in-review' && (
+          {!review && docMeta.status === 'in-review' && (
             <button className="btn btn-primary btn-sm" onClick={release}>
               {t('Approve & release')}
             </button>
           )}
         </div>
       </header>
+
+      {selInfo && canComment && (
+        <button
+          className="comment-fab"
+          style={{ top: Math.max(8, selInfo.rect.top - 38), left: Math.max(8, selInfo.rect.left + selInfo.rect.width / 2 - 50) }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={startComment}
+        >
+          💬 {t('Comment')}
+        </button>
+      )}
 
       <div className="editor-panes">
         {/* left: outline */}
@@ -928,7 +1195,7 @@ export default function Editor() {
               )}
             </div>
           )}
-          <div className="doc-scroll" style={tab === 'fat' ? { display: 'none' } : undefined}>
+          <div className="doc-scroll" style={tab === 'fat' ? { display: 'none' } : undefined} onMouseUp={onPageMouseUp}>
             <div className="doc-page" ref={pageRef}>
               <div
                 className="generated"
@@ -975,16 +1242,123 @@ export default function Editor() {
           }}
           onDrop={onPaneDrop}
         >
-          <div className="pane-title">
-            {t('AI assistant')} <span className="ai-tag">{t('API · MCP enabled')}</span>
+          <div className="pane-title side-tabs">
+            {!review && (
+              <button className={sidePane === 'ai' ? 'active' : ''} onClick={() => setSidePane('ai')}>
+                {t('AI assistant')}
+              </button>
+            )}
+            <button className={sidePane === 'comments' ? 'active' : ''} onClick={() => setSidePane('comments')}>
+              {t('Comments')}
+              {openComments.length > 0 && <span className="count-pill">{openComments.length}</span>}
+            </button>
+            {sidePane === 'ai' && <span className="ai-tag">{t('API · MCP enabled')}</span>}
           </div>
-          {dropOver && (
+          {sidePane === 'comments' && (
+            <div className="comments-pane">
+              {newComment && (
+                <div className="comment-card new">
+                  <div className="comment-quote" title={newComment.section}>“{newComment.quote}”</div>
+                  {newComment.section && <div className="muted small">{t('in section')} {newComment.section}</div>}
+                  <textarea
+                    autoFocus
+                    rows={3}
+                    placeholder={t('What should change here?')}
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitComment();
+                      if (e.key === 'Escape') setNewComment(null);
+                    }}
+                  />
+                  <div className="btn-row">
+                    <button className="btn btn-primary btn-sm" disabled={!commentText.trim()} onClick={submitComment}>
+                      {t('Add comment')}
+                    </button>
+                    <button className="btn btn-sm" onClick={() => setNewComment(null)}>{t('Cancel')}</button>
+                  </div>
+                </div>
+              )}
+              {!newComment && canComment && (
+                <div className="hint comments-hint">{t('Select text in the document and click Comment to start a thread.')}</div>
+              )}
+              {comments.filter((c) => c.status === 'open' || showResolved).length === 0 && !newComment && (
+                <div className="muted small comments-empty">{t('No open comments.')}</div>
+              )}
+              {comments
+                .filter((c) => c.status === 'open' || showResolved)
+                .map((c) => (
+                  <div key={c.id} className={`comment-card ${c.status} ${activeComment === c.id ? 'active' : ''}`} onClick={() => setActiveComment(c.id)}>
+                    <div className="comment-head">
+                      <strong>{c.author}</strong>
+                      <span className="muted small">{timeAgo(c.createdAt)}</span>
+                      {(c.anchor?.lang || 'en') !== lang && <span className="chip">{(c.anchor?.lang || 'en').toUpperCase()}</span>}
+                      {c.status === 'resolved' && <span className="badge badge-released">{t('Resolved')}{c.resolvedIn ? ` · ${c.resolvedIn}` : ''}</span>}
+                    </div>
+                    <button className="comment-quote" title={t('Show in document')} onClick={() => jumpToComment(c)}>
+                      “{c.anchor?.quote}”
+                    </button>
+                    <div className="comment-text">{c.text}</div>
+                    {c.replies?.map((r) => (
+                      <div key={r.id} className="comment-reply">
+                        <strong>{r.author}</strong> <span className="muted small">{timeAgo(r.createdAt)}</span>
+                        <div>{r.text}</div>
+                      </div>
+                    ))}
+                    {replyTo === c.id ? (
+                      <div className="comment-replybox">
+                        <textarea
+                          autoFocus
+                          rows={2}
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitReply(c.id);
+                            if (e.key === 'Escape') setReplyTo(null);
+                          }}
+                        />
+                        <div className="btn-row">
+                          <button className="btn btn-primary btn-sm" disabled={!replyText.trim()} onClick={() => submitReply(c.id)}>{t('Reply')}</button>
+                          <button className="btn btn-sm" onClick={() => setReplyTo(null)}>{t('Cancel')}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="btn-row comment-actions">
+                        {canComment && (
+                          <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); setReplyTo(c.id); setReplyText(''); }}>{t('Reply')}</button>
+                        )}
+                        {editable && c.status === 'open' && (
+                          <button className="btn btn-sm btn-primary" title={t('The AI proposes the change; you review it as a pending edit and accept or discard it')} onClick={(e) => { e.stopPropagation(); askAiForComment(c); }}>
+                            ✨ {t('Ask AI to propose')}
+                          </button>
+                        )}
+                        {editable && c.status === 'open' && (
+                          <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); setStatus(c, 'resolved'); }}>{t('Resolve')}</button>
+                        )}
+                        {editable && c.status === 'resolved' && (
+                          <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); setStatus(c, 'open'); }}>{t('Reopen')}</button>
+                        )}
+                        {editable && (
+                          <button className="btn-icon" title={t('Delete thread')} onClick={(e) => { e.stopPropagation(); removeComment(c); }}>✕</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              {comments.some((c) => c.status === 'resolved') && (
+                <button className="link comments-toggle" onClick={() => setShowResolved(!showResolved)}>
+                  {showResolved ? t('Hide resolved') : t('Show {n} resolved', { n: comments.filter((c) => c.status === 'resolved').length })}
+                </button>
+              )}
+            </div>
+          )}
+          {dropOver && sidePane === 'ai' && (
             <div className="drop-veil">
               <strong>{t('Drop photo → FTD line-art')}</strong>
               <span>{t('Technical Aviation Manual Line-Art · result appears here, ready to insert')}</span>
             </div>
           )}
-          <div className="chat" ref={chatRef}>
+          <div className="chat" ref={chatRef} style={sidePane === 'ai' ? undefined : { display: 'none' }}>
             {messages.map((m, i) =>
               m.illustration ? (
                 <div key={i} className="msg msg-assistant msg-figure">
@@ -1124,9 +1498,9 @@ export default function Editor() {
                 </button>
               </div>
             </div>
-          ) : (
+          ) : sidePane === 'ai' ? (
             <div className="chat-input muted">{t('Read-only — {status} docs cannot be edited.', { status: t(docMeta.status) })}</div>
-          )}
+          ) : null}
         </aside>
       </div>
     </div>

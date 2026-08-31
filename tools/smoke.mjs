@@ -630,6 +630,31 @@ try {
   ok(!(mcpTr instanceof Error) && mcpTr.languages.pl.exists && mcpTr.lang === 'pl', 'MCP translate_doc stores a supplied translation');
   const mcpTrAi = await call(134, 'translate_doc', { slug: 'starting-panel', manual: 'software-customer', lang: 'pl' });
   ok(mcpTrAi instanceof Error && /OPENAI_API_KEY/.test(mcpTrAi.message), 'MCP translate_doc without html needs the AI');
+  // review comments: viewers comment on selected text; author resolves; MCP agents see and close threads
+  const techBody = (await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).content;
+  const cm = await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/comments', {
+    author: 'Ola', text: 'Say which fuse rating.', anchor: { quote: 'Replace the fuse.', section: 'Maintenance', before: '', after: '', lang: 'en' },
+  });
+  ok(cm.id && cm.status === 'open' && cm.author === 'Ola' && cm.anchor.quote === 'Replace the fuse.', 'comment thread created on a quote');
+  const cmEmpty = await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/comments', { author: 'Ola', text: '   ' }).catch((e) => e);
+  ok(cmEmpty instanceof Error && /text is required/.test(cmEmpty.message), 'empty comment rejected');
+  ok((await req('GET', '/api/modules/starting-panel')).docs.find((d) => d.key === 'technician:A1.0').openComments === 1, 'module docs carry the open comment count');
+  ok((await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).content === techBody, 'commenting does not touch the body');
+  const rp = await req('POST', `/api/modules/starting-panel/docs/technician:A1.0/comments/${cm.id}/replies`, { author: 'Author', text: '5 A slow-blow — will add.' });
+  ok(rp.replies.length === 1 && rp.replies[0].author === 'Author', 'reply added to the thread');
+  const mcpCm = await call(140, 'list_comments', { slug: 'starting-panel', manual: 'technician' });
+  ok(Array.isArray(mcpCm) && mcpCm[0].id === cm.id && mcpCm[0].replies.length === 1, 'MCP list_comments');
+  const mcpRes = await call(141, 'resolve_comment', { slug: 'starting-panel', manual: 'technician', id: cm.id, note: 'Fuse rating added in r9' });
+  ok(!(mcpRes instanceof Error) && mcpRes.status === 'resolved' && mcpRes.resolvedBy === 'AI agent' && mcpRes.replies.at(-1).text === 'Fuse rating added in r9', 'MCP resolve_comment with a closing note');
+  ok((await req('GET', '/api/modules/starting-panel')).docs.find((d) => d.key === 'technician:A1.0').openComments === 0, 'resolved threads leave the open count');
+  const reopened = await req('PUT', `/api/modules/starting-panel/docs/technician:A1.0/comments/${cm.id}`, { status: 'open', author: 'Ola' });
+  ok(reopened.status === 'open' && !reopened.resolvedBy, 'thread reopened');
+  const listed = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0/comments');
+  ok(listed.length === 1 && listed[0].status === 'open', 'GET comments lists the thread');
+  const gone = await req('DELETE', `/api/modules/starting-panel/docs/technician:A1.0/comments/${cm.id}`);
+  ok(gone.id === cm.id && (await req('GET', '/api/modules/starting-panel/docs/technician:A1.0/comments')).length === 0, 'thread deleted');
+  const cmReleased = await req('POST', '/api/modules/starting-panel/docs/customer:A1.1/comments', { author: 'Ola', text: 'x', anchor: { quote: 'y' } }).catch((e) => e);
+  ok(cmReleased instanceof Error && /no draft branch|Draft or In-review/.test(cmReleased.message), 'no comments on a released doc');
   // cleanup: drop the 2N link so the checks below see STP Core only
   await call(128, 'link_software', { slug: 'starting-panel', name: '2N Access Unit', unlink: true });
   ok((await req('GET', '/api/modules/starting-panel')).module.softwares.length === 1, '2N link removed (cleanup)');

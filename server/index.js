@@ -234,6 +234,31 @@ async function inlineLogo(html) {
   return html.replace(/\/api\/settings\/logo(\?[^"' >)]*)?/g, `data:${mime};base64,${logo.buffer.toString('base64')}`);
 }
 
+/* ---------- review comments (per doc version, on the draft branch) ---------- */
+app.get('/api/modules/:slug/docs/:version/comments', wrap(async (req, res) => {
+  const r = await store.listComments(req.params.slug, req.params.version);
+  if (!r) return res.status(404).json({ error: 'Doc not found' });
+  res.json(r.threads);
+}));
+
+app.post('/api/modules/:slug/docs/:version/comments', wrap(async (req, res) => {
+  res.json(await store.addComment(req.params.slug, req.params.version, req.body || {}));
+}));
+
+app.post('/api/modules/:slug/docs/:version/comments/:id/replies', wrap(async (req, res) => {
+  res.json(await store.replyComment(req.params.slug, req.params.version, req.params.id, req.body || {}));
+}));
+
+/** body: {status: 'resolved'|'open', author?, note?, revision?} */
+app.put('/api/modules/:slug/docs/:version/comments/:id', wrap(async (req, res) => {
+  const { status, author, note, revision } = req.body || {};
+  res.json(await store.setCommentStatus(req.params.slug, req.params.version, req.params.id, status, { author, note, revision }));
+}));
+
+app.delete('/api/modules/:slug/docs/:version/comments/:id', wrap(async (req, res) => {
+  res.json(await store.deleteComment(req.params.slug, req.params.version, req.params.id));
+}));
+
 app.get('/api/modules/:slug/docs/:version/checklist', wrap(async (req, res) => {
   const r = await store.getChecklist(req.params.slug, req.params.version);
   if (!r) return res.status(404).json({ error: 'Doc not found' });

@@ -419,3 +419,29 @@ label.inline { font-weight: 400; color: var(--muted); }
 .topbar .ui-lang { margin-left: 14px; border-color: #2b3a4d; }
 .topbar .ui-lang button { padding: 3px 9px; font-size: 12px; color: #9fb0c3; background: transparent; }
 .topbar .ui-lang button.active { background: var(--accent); color: #fff; }
+
+/* ---------- review comments ---------- */
+::highlight(comment) { background-color: #fde68a; }
+::highlight(comment-active) { background-color: #f59e0b; color: #fff; }
+.review-tag { font-size: 12px; font-weight: 600; border-radius: 5px; padding: 2px 8px; background: #fef3c7; color: #92400e; }
+.comment-fab { position: fixed; z-index: 50; border: none; border-radius: 999px; background: #1c2733; color: #fff; padding: 6px 14px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); }
+.comment-fab:hover { background: var(--accent); }
+.side-tabs { gap: 0; padding: 8px 8px 0; border-bottom: 1px solid var(--line); }
+.side-tabs button { border: none; background: none; padding: 6px 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 6px; }
+.side-tabs button.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.side-tabs .ai-tag { margin-left: auto; }
+.count-pill { background: #f59e0b; color: #fff; border-radius: 999px; font-size: 10.5px; padding: 0 6px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+.comments-pane { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.comments-hint, .comments-empty { padding: 4px 2px; }
+.comment-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fafbfc; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.comment-card.active { border-color: #f59e0b; box-shadow: 0 0 0 2px #fde68a; }
+.comment-card.resolved { opacity: 0.75; }
+.comment-card.new { border-color: var(--accent); background: #eef4ff; }
+.comment-card textarea { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; resize: vertical; }
+.comment-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.comment-quote { text-align: left; border: none; background: #fff7d6; border-left: 3px solid #f59e0b; border-radius: 4px; padding: 4px 8px; color: #78350f; font-size: 12.5px; font-style: italic; cursor: pointer; max-height: 64px; overflow: hidden; }
+.comment-quote:hover { background: #fde68a; }
+.comment-text { white-space: pre-wrap; }
+.comment-reply { border-top: 1px dashed var(--line); padding-top: 6px; white-space: pre-wrap; }
+.comment-actions { flex-wrap: wrap; }
+.comments-toggle { border: none; background: none; color: var(--accent); text-align: left; padding: 4px 2px; }

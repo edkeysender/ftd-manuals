@@ -76,6 +76,12 @@ export const api = {
   saveIllustrationStyle: (style) => request('/api/settings/illustration-style', { method: 'PUT', body: { style } }),
   uploadStyleExemplars: (files) => request('/api/settings/illustration-style/exemplars', { method: 'POST', body: { files } }),
   deleteStyleExemplar: (name) => request(`/api/settings/illustration-style/exemplars/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  /** Review comments of a doc version (threads on selected text, kept on the draft branch). */
+  comments: (slug, version) => request(`/api/modules/${slug}/docs/${version}/comments`),
+  addComment: (slug, version, body) => request(`/api/modules/${slug}/docs/${version}/comments`, { method: 'POST', body }),
+  replyComment: (slug, version, id, body) => request(`/api/modules/${slug}/docs/${version}/comments/${id}/replies`, { method: 'POST', body }),
+  setCommentStatus: (slug, version, id, body) => request(`/api/modules/${slug}/docs/${version}/comments/${id}`, { method: 'PUT', body }),
+  deleteComment: (slug, version, id) => request(`/api/modules/${slug}/docs/${version}/comments/${id}`, { method: 'DELETE' }),
   checklist: (slug, version) => request(`/api/modules/${slug}/docs/${version}/checklist`),
   saveChecklist: (slug, version, checklist, summary = '') =>
     request(`/api/modules/${slug}/docs/${version}/checklist`, { method: 'PUT', body: { checklist, summary } }),

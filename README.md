@@ -70,6 +70,15 @@ until re-translated. Sections 1–3 and the assembled-manual frame render in the
 be viewed/exported in PL (`?lang=pl`) with untranslated chapters falling back to English and flagged. MCP:
 `lang` on `get_doc` and the edit tools, `translate_doc`.
 
+### Review comments
+
+**Review link** in the editor gives reviewers a read-only view of a draft (`…/review`): they select text,
+click **Comment** and leave a thread (name asked once per browser). Threads are committed on the draft
+branch (`comments.json`) and highlighted in the document. In the editor's **Comments** tab the author
+replies, resolves, or clicks **Ask AI to propose** — the AI applies the requested change as a pending edit;
+accepting it commits a revision and resolves the thread with a note. MCP agents see threads with
+`list_comments` and close them with `resolve_comment` after editing the quoted passage.
+
 The **Software** page lists every linked software with its modules, their software customer / technician
 manuals (create, edit, new version) and the release feed with coverage; `list_software`,
 `register_software_release` and `cover_release` expose the same over MCP.
