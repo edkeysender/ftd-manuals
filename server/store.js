@@ -483,6 +483,58 @@ export async function getSoftwareFeed() {
   return feedCache;
 }
 
+/**
+ * Software-centric view for the Software page and MCP: one row per software name known
+ * from module links or the release feed — the modules linked to it, their software manuals
+ * (software-customer / software-technician) and the releases with the docs covering each.
+ */
+export async function listSoftware() {
+  const { modules } = await collectAll();
+  const feed = await getSoftwareFeed();
+  const names = new Set(Object.keys(feed));
+  for (const { module } of modules) for (const s of module.softwares || []) if (s?.name) names.add(s.name);
+  const SW_TYPES = MANUAL_ORDER.filter((t) => MANUAL_TYPES[t].kind === 'software');
+  return [...names]
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => {
+      const linked = modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name));
+      const rows = linked.map(({ module, docs }) => {
+        const link = module.softwares.find((s) => s.name === name);
+        const summary = manualsSummary(docs);
+        const manuals = {};
+        for (const t of SW_TYPES) if (summary[t]) manuals[t] = summary[t];
+        return {
+          slug: module.slug,
+          name: module.name,
+          code: module.code || null,
+          group: module.group,
+          fromVersion: link.fromVersion || '',
+          manuals,
+          allManuals: Object.keys(summary),
+          docs: docs
+            .filter((d) => SW_TYPES.includes(d.manual))
+            .map((d) => ({ key: d.key, manual: d.manual, version: d.version, revision: d.revision, status: d.status, branch: d.branch, covers: d.covers || [], updatedAt: d.updatedAt })),
+          uncovered: uncoveredReleases(module, docs, feed).filter((u) => u.name === name),
+        };
+      });
+      const releases = (feed[name] || []).map((rel) => ({
+        ...rel,
+        coveredBy: linked.flatMap(({ module, docs }) =>
+          docs
+            .filter((d) => (d.covers || []).some((c) => c.name === name && versionCovered(rel.version, c)))
+            .map((d) => ({ slug: module.slug, key: d.key, manual: d.manual, version: d.version, status: d.status }))
+        ),
+      }));
+      return {
+        name,
+        modules: rows,
+        releases,
+        manualCount: rows.reduce((n, r) => n + Object.keys(r.manuals).length, 0),
+        uncoveredCount: rows.reduce((n, r) => n + r.uncovered.length, 0),
+      };
+    });
+}
+
 export async function listModules() {
   const { modules } = await collectAll();
   const feed = await getSoftwareFeed();
@@ -969,8 +1021,9 @@ export function sanitizeAssetName(name) {
 export const assetUrl = (slug, name) => `/api/modules/${slug}/assets/${encodeURIComponent(name)}`;
 
 /** Commit files into the draft's assets folder. files: [{name, buffer}] */
-export async function saveAssets(slug, version, files) {
-  const { branch } = await loadDraftDoc(slug, version);
+export async function saveAssets(slug, key, files) {
+  const { branch, meta: docMeta, manual } = await loadDraftDoc(slug, key);
+  const version = docMeta.version;
   if (!files.length) throw new Error('No files to save');
   for (const f of files) validateAsset(f.name, f.buffer); // reject truncated / mislabelled files before anything is committed
   const entry = await moduleOf(slug);
@@ -984,7 +1037,7 @@ export async function saveAssets(slug, version, files) {
       const name = sanitizeAssetName(f.name);
       await repo.writeFile(assetFile(slug, name), f.buffer);
       // A re-upload under the same name is a new picture: fresh stamp, same "applies to".
-      meta[name] = { addedIn: version, addedAt: ts, ...stamp, appliesTo: meta[name]?.appliesTo || [] };
+      meta[name] = { addedIn: version, addedManual: manual, addedAt: ts, ...stamp, appliesTo: meta[name]?.appliesTo || [] };
       saved.push(name);
     }
     await repo.writeFile(assetMetaFile(slug), JSON.stringify(meta, null, 2) + '\n');
@@ -1043,8 +1096,9 @@ export async function deleteAsset(slug, version, name) {
  *  - `verify`: re-stamp with today's software releases / hardware versions — the author has
  *    checked the picture is still right (or replaced it) after a manual-affecting change.
  */
-export async function setAssetMeta(slug, version, name, { appliesTo, verify = false } = {}) {
-  const { branch } = await loadDraftDoc(slug, version);
+export async function setAssetMeta(slug, key, name, { appliesTo, verify = false } = {}) {
+  const { branch, meta: docMeta, manual } = await loadDraftDoc(slug, key);
+  const version = docMeta.version;
   const base = sanitizeAssetName(name);
   if (!(await getAsset(slug, base))) throw new Error(`Asset "${name}" not found`);
   const entry = await moduleOf(slug);
@@ -1062,14 +1116,14 @@ export async function setAssetMeta(slug, version, name, { appliesTo, verify = fa
   await mutate(async () => {
     await repo.checkout(branch);
     const meta = (await readJson(branch, assetMetaFile(slug))) || {};
-    stamp = meta[base] || { addedIn: version, addedAt: ts, software: [], hardware: [], appliesTo: [] };
+    stamp = meta[base] || { addedIn: version, addedManual: manual, addedAt: ts, software: [], hardware: [], appliesTo: [] };
     const changes = [];
     if (appliesTo !== undefined) {
       stamp.appliesTo = [...new Set(appliesTo)];
       changes.push(stamp.appliesTo.length ? `applies to ${stamp.appliesTo.join(', ')}` : 'applies to all hardware');
     }
     if (verify) {
-      Object.assign(stamp, currentStamp(module, feed), { verifiedIn: version, verifiedAt: ts });
+      Object.assign(stamp, currentStamp(module, feed), { verifiedIn: version, verifiedManual: manual, verifiedAt: ts });
       const what = [...stamp.software.map((s) => `${s.name} ${s.version}`), ...stamp.hardware.map((h) => `${h.name} ${h.version}`)].filter(Boolean);
       changes.push(`verified for ${what.join(', ') || 'current versions'}`);
     }

@@ -12,7 +12,7 @@ import path from 'node:path';
 import * as store from './store.js';
 import * as ai from './ai.js';
 import * as illustrate from './illustrate.js';
-import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf } from './docgen.js';
+import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf, parseDocKey, docKey } from './docgen.js';
 import { templateChecklist } from './checklist.js';
 import * as inbox from './inbox.js';
 
@@ -21,18 +21,23 @@ const RW = { readOnlyHint: false, destructiveHint: false, idempotentHint: false,
 
 const MANUAL_HELP = MANUAL_ORDER.map((id) => `"${id}" = ${MANUAL_TYPES[id].label} (${MANUAL_TYPES[id].sections.join(', ')})`).join('; ');
 
-const SLUG_VER = {
-  slug: { type: 'string', description: 'Module slug, e.g. starting-panel' },
-  version: {
-    type: 'string',
-    description:
-      'Doc key "<manual>:<version>", e.g. technician:A1.0 or software-customer:A1.0 (must be Draft or In review). A bare version like A1.0 means the customer manual. Keys are listed by get_module.',
-  },
-};
 const MANUAL_PROP = {
   type: 'string',
   enum: MANUAL_ORDER,
   description: `Manual type — a module is documented per audience: ${MANUAL_HELP}. Software manuals need the module linked to a software.`,
+};
+/** Every doc-scoped tool addresses one manual of a module: `manual` + `version`, or a full key in `version`. */
+const SLUG_VER = {
+  slug: { type: 'string', description: 'Module slug, e.g. starting-panel' },
+  manual: {
+    ...MANUAL_PROP,
+    description: `Which manual of the module the call targets (default customer). ${MANUAL_PROP.description}`,
+  },
+  version: {
+    type: 'string',
+    description:
+      'Doc version of that manual, e.g. A1.0 — or a full key "<manual>:<version>" such as technician:A1.0 / software-customer:A1.0. Omit to target the latest doc of `manual` (its open draft when one exists). Editing tools need a Draft or In-review doc. Keys are listed by get_module.',
+  },
 };
 
 export const TOOLS = [
@@ -51,15 +56,27 @@ export const TOOLS = [
     annotations: { title: 'Get module', ...RO },
   },
   {
+    name: 'list_manual_types',
+    description:
+      'The manual types a module can have — customer, technician, software-customer, software-technician — with audience, section names and what belongs in each section. Use it to decide which manual a piece of source material belongs to.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { title: 'List manual types', ...RO },
+  },
+  {
+    name: 'list_software',
+    description:
+      'Software-centric view: every software linked to a module, with the modules linked to it, their software manuals (software-customer / software-technician: key, version, status), and the registered releases with which docs cover each. Use it to manage software manuals across modules and to find releases nobody documents yet.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Optional software name filter' } } },
+    annotations: { title: 'List software', ...RO },
+  },
+  {
     name: 'get_doc',
     description:
-      'Get a doc version of a module: metadata (incl. `manual` type and `key`), revision record, the editable body HTML (sections 4–7) and its FAT checklist (null when none). Omit version for the latest version of the given manual type (default customer).',
+      'Get a doc version of a module: metadata (incl. `manual` type and `key`), revision record, the editable body HTML (sections 4–7) and its FAT checklist (null when none). Omit version for the latest doc of `manual` (default customer).',
     inputSchema: {
       type: 'object',
       properties: {
-        slug: SLUG_VER.slug,
-        version: { type: 'string', description: 'Doc key, e.g. technician:A1.0 (bare A1.0 = customer manual); omit for the latest of `manual`' },
-        manual: MANUAL_PROP,
+        ...SLUG_VER,
         include_assets: { type: 'boolean', description: 'Also return the module assets list (saves a list_assets call)' },
       },
       required: ['slug'],
@@ -413,29 +430,90 @@ export const TOOLS = [
     annotations: { title: 'FAT checklist template', ...RO },
   },
   {
+    name: 'register_software_release',
+    description:
+      'Register a release of a software in the release feed (softwares.json on main). manual_affecting: true means every manual type of every module linked to that software needs a new doc version covering it (orange dot until each has one); false means the released docs can simply extend their covered range with cover_release.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Software name exactly as linked to modules (see list_software)' },
+        version: { type: 'string', description: 'Release version, e.g. v2.1.0' },
+        manual_affecting: { type: 'boolean' },
+        note: { type: 'string' },
+      },
+      required: ['name', 'version'],
+    },
+    annotations: { title: 'Register software release', ...RW },
+  },
+  {
+    name: 'cover_release',
+    description:
+      'Make a doc the manual for a software release: widens a Released doc\'s covered range (non-manual-affecting release) or assigns the release to an open Draft/In-review doc (a manual-affecting release that got its own doc version). Each manual type covers releases on its own — call it once per manual (customer, technician, software-customer, …) that documents the software.',
+    inputSchema: {
+      type: 'object',
+      properties: { ...SLUG_VER, software: { type: 'string', description: 'Software name linked to the module' }, release: { type: 'string', description: 'Release version from the feed' } },
+      required: ['slug', 'software', 'release'],
+    },
+    annotations: { title: 'Cover software release', ...RW },
+  },
+  {
     name: 'submit_for_review',
     description: 'Mark a Draft doc version as In review.',
-    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug', 'version'] },
+    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
     annotations: { title: 'Submit for review', ...RW },
+  },
+  {
+    name: 'back_to_draft',
+    description: 'Return an In-review doc version to Draft.',
+    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
+    annotations: { title: 'Back to draft', ...RW },
+  },
+  {
+    name: 'discard_doc',
+    description: 'Discard a Draft/In-review doc version: deletes its draft branch and everything committed on it (content, checklist, assets added there). A never-released module with no other draft disappears entirely. Irreversible — confirm with the user first.',
+    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug', 'version'] },
+    annotations: { title: 'Discard doc', ...RW, destructiveHint: true },
   },
   {
     name: 'release_doc',
     description:
-      'Release an In-review doc version: merges the draft branch to main, freezes the revision counter and supersedes older released versions.',
-    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug', 'version'] },
+      'Release an In-review doc version: merges the draft branch to main, freezes the revision counter and supersedes older released versions of the same manual type.',
+    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
     annotations: { title: 'Release doc', ...RW, idempotentHint: true },
   },
 ];
 
-async function latestKey(slug, manual) {
-  const m = await store.getModule(slug);
-  if (!m || !m.docs.length) throw new Error(`Module "${slug}" not found or has no docs`);
-  const type = manualTypeOf(manual || DEFAULT_MANUAL).id;
-  const doc = m.docs.find((d) => d.manual === type);
-  if (!doc) {
-    throw new Error(`Module "${slug}" has no ${MANUAL_TYPES[type].label.toLowerCase()} — it has: ${Object.keys(m.manuals).join(', ') || 'none'}`);
+/** Tools that address one doc of a module (slug + manual/version) — their `version` is resolved to a full key. */
+const DOC_SCOPED = new Set(TOOLS.filter((t) => t.inputSchema.properties?.version && t.inputSchema.properties?.manual).map((t) => t.name));
+
+/**
+ * Resolve the doc a call addresses to a key "<manual>:<version>":
+ *  - `version` may already be a key (then `manual`, if given, must agree),
+ *  - a bare `version` is combined with `manual` (default customer),
+ *  - no `version`: the latest doc of `manual`, preferring its open draft.
+ */
+async function resolveDocKey(args) {
+  const version = String(args.version || '').trim();
+  let manual = args.manual ? manualTypeOf(args.manual).id : null;
+  if (version.includes(':')) {
+    const parsed = parseDocKey(version);
+    if (manual && parsed.manual !== manual) {
+      throw new Error(`version "${version}" names the ${parsed.manual} manual but manual is "${manual}" — give one or the other`);
+    }
+    return docKey(parsed.manual, parsed.version);
   }
-  return doc.key;
+  manual = manual || DEFAULT_MANUAL;
+  if (version) return docKey(manual, version);
+  const m = await store.getModule(args.slug);
+  if (!m) throw new Error(`Module "${args.slug}" not found`);
+  const typed = m.docs.filter((d) => d.manual === manual);
+  if (!typed.length) {
+    const have = Object.keys(m.manuals || {});
+    throw new Error(
+      `Module "${args.slug}" has no ${MANUAL_TYPES[manual].label.toLowerCase()} — it has: ${have.join(', ') || 'none'}. Create one with create_doc_version {manual: "${manual}"}.`
+    );
+  }
+  return (typed.find((d) => d.status === 'draft' || d.status === 'in-review') || typed[0]).key;
 }
 
 async function currentBody(slug, version) {
@@ -470,7 +548,27 @@ function insertIntoSection(content, section, html, position = 'end') {
 }
 
 async function callTool(name, args) {
+  if (name === 'discard_doc' && !String(args.version || '').trim()) {
+    throw new Error('discard_doc needs an explicit version (e.g. "A1.0" with manual, or "technician:A1.0") — it is irreversible');
+  }
+  if (DOC_SCOPED.has(name)) args = { ...args, version: await resolveDocKey(args) };
   switch (name) {
+    case 'list_manual_types':
+      return MANUAL_ORDER.map((id) => MANUAL_TYPES[id]);
+    case 'list_software': {
+      const rows = await store.listSoftware();
+      const q = (args.name || '').toLowerCase().trim();
+      return q ? rows.filter((r) => r.name.toLowerCase().includes(q)) : rows;
+    }
+    case 'register_software_release':
+      return await store.registerSoftwareRelease({ name: args.name, version: args.version, manualAffecting: !!args.manual_affecting, note: args.note });
+    case 'cover_release':
+      return await store.linkReleaseToDoc(args.slug, args.version, args.software, args.release);
+    case 'back_to_draft':
+      return await store.setDocStatus(args.slug, args.version, 'draft');
+    case 'discard_doc':
+      await store.discardDraft(args.slug, args.version);
+      return { ok: true, discarded: args.version };
     case 'search_modules': {
       const rows = await store.listModules();
       const q = (args.query || '').toLowerCase().trim();
@@ -485,7 +583,7 @@ async function callTool(name, args) {
       return m;
     }
     case 'get_doc': {
-      const version = args.version || (await latestKey(args.slug, args.manual));
+      const version = args.version; // resolved above
       const d = await store.getDoc(args.slug, version);
       if (!d) throw new Error(`Doc ${args.slug} ${version} not found`);
       const out = { module: d.module, doc: d.doc, content: d.content, checklist: d.checklist || null };

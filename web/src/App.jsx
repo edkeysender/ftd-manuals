@@ -7,6 +7,7 @@ import Editor from './pages/Editor.jsx';
 import Settings from './pages/Settings.jsx';
 import ManualsList from './pages/ManualsList.jsx';
 import ManualView from './pages/ManualView.jsx';
+import SoftwareList from './pages/SoftwareList.jsx';
 
 const ToastContext = createContext(() => {});
 export const useToast = () => useContext(ToastContext);
@@ -40,6 +41,7 @@ export default function App() {
             <NavLink to="/" end>
               Modules
             </NavLink>
+            <NavLink to="/software">Software</NavLink>
             <NavLink to="/manuals">Manuals</NavLink>
             <NavLink to="/settings">Settings</NavLink>
           </nav>
@@ -61,6 +63,7 @@ export default function App() {
             <Route path="/" element={<ModulesList />} />
             <Route path="/modules/:slug" element={<ModuleDetail />} />
             <Route path="/modules/:slug/docs/:version/edit" element={<Editor />} />
+            <Route path="/software" element={<SoftwareList />} />
             <Route path="/manuals" element={<ManualsList />} />
             <Route path="/manuals/:slug" element={<ManualView />} />
             <Route path="/settings" element={<Settings />} />

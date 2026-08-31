@@ -25,6 +25,10 @@ The functional spec lives in this file's history and in the Modules spec provide
   editor route; a bare `A1.0` means the customer manual (docs created before the split, stored in
   `docs/<version>/`, are read as customer manuals — never migrated; new docs go to `docs/<manual>/<version>/`).
   Every doc record carries `manual`, `key`, `dir`, `branch` — use them, never recompute paths or branch names.
+- MCP: every doc-scoped tool takes `slug` + `manual` (+ optional `version`; omitted = latest doc of that type,
+  preferring its open draft) or a full key in `version` — `resolveDocKey()` in `server/mcp.js`; new tools must
+  spread `SLUG_VER` into their schema to get this. The **Software** page (`/software`, `GET /api/software`,
+  MCP `list_software`) is the software-centric view: per software, linked modules, their software manuals, releases + coverage.
 - Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…` while draft,
   own revision record, own draft branch `draft/<slug>-<manual>-a1.0` (one open draft per manual type).
   Only **Released** versions compile into simulator manuals; an assembled manual (`manuals/<slug>/manual.json`)
