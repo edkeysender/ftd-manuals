@@ -36,6 +36,8 @@ export const api = {
   softwares: () => request('/api/softwares'),
   /** Software page rows: {name, modules:[{slug, name, manuals, docs, uncovered}], releases:[{version, coveredBy}]} */
   software: () => request('/api/software'),
+  createSoftware: (body) => request('/api/software', { method: 'POST', body }),
+  linkSoftware: (slug, body) => request(`/api/modules/${slug}/software`, { method: 'POST', body }),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
   coverRelease: (slug, version, name, swVersion) =>
     request(`/api/modules/${slug}/docs/${version}/cover`, { method: 'POST', body: { name, version: swVersion } }),

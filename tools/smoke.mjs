@@ -575,6 +575,31 @@ try {
   ok(!(disc instanceof Error) && disc.ok && !(await req('GET', '/api/modules/starting-panel')).docs.some((d) => d.manual === 'software-technician'), 'MCP discard_doc removes the software technician draft');
   const discNoVer = await call(117, 'discard_doc', { slug: 'starting-panel', manual: 'technician' });
   ok(discNoVer instanceof Error, 'discard_doc requires an explicit version');
+  // create a software over MCP, link it, register a new version, open its manuals
+  const dup = await call(120, 'create_software', { name: 'STP Core' });
+  ok(dup instanceof Error && /already exists/.test(dup.message), 'create_software refuses an existing name');
+  const newSw = await call(121, 'create_software', { name: ' 2N Access Unit ', version: 'v1.0.0', modules: [{ slug: 'starting-panel' }] });
+  ok(!(newSw instanceof Error) && newSw.name === '2N Access Unit' && newSw.releases[0].version === 'v1.0.0' && newSw.modules[0].linked === true, 'MCP create_software registers the feed entry and links the module');
+  const spMod = await req('GET', '/api/modules/starting-panel');
+  ok(spMod.module.softwares.some((s) => s.name === '2N Access Unit' && s.fromVersion === 'v1.0.0'), 'module link carries the first version as from-version');
+  ok((await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).module.softwares.length === 2, 'link written on the open draft branches too');
+  const swRow = (await call(122, 'list_software', { name: '2N' }))[0];
+  ok(swRow && swRow.modules[0].slug === 'starting-panel' && swRow.releases.length === 1, 'list_software shows the new software');
+  const rel2 = await call(123, 'register_software_release', { name: '2N Access Unit', version: 'v1.1.0', manual_affecting: true });
+  ok(!(rel2 instanceof Error) && rel2['2N Access Unit'].length === 2, 'register_software_release adds a new version');
+  const relink = await call(124, 'link_software', { slug: 'starting-panel', name: '2N Access Unit', from_version: 'v1.1.0' });
+  ok(!(relink instanceof Error) && relink.linked === false && relink.softwares.find((s) => s.name === '2N Access Unit').fromVersion === 'v1.1.0', 'link_software updates the from-version of an existing link');
+  const emptySw = await call(125, 'create_software', { name: 'Orphan Tool' });
+  ok(!(emptySw instanceof Error) && emptySw.releases.length === 0 && (await req('GET', '/api/software')).some((s) => s.name === 'Orphan Tool' && s.modules.length === 0), 'a software with no version and no module still lists on the Software page');
+  const linkApi = await req('POST', '/api/modules/starting-panel/software', { name: 'Orphan Tool', fromVersion: 'v0.1' });
+  ok(linkApi.linked === true && linkApi.softwares.length === 3, 'API link endpoint');
+  const unlinkOk = await call(126, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });
+  ok(!(unlinkOk instanceof Error) && unlinkOk.softwares.length === 2, 'link_software unlink removes the link');
+  const unlinkMissing = await call(127, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });
+  ok(unlinkMissing instanceof Error && /not linked/.test(unlinkMissing.message), 'unlinking a software that is not linked is an error');
+  // cleanup: drop the 2N link so the checks below see STP Core only
+  await call(128, 'link_software', { slug: 'starting-panel', name: '2N Access Unit', unlink: true });
+  ok((await req('GET', '/api/modules/starting-panel')).module.softwares.length === 1, '2N link removed (cleanup)');
   await req('PATCH', '/api/modules/starting-panel', { code: 'SW-STP3' });
   ok((await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).module.code === 'SW-STP3' && (await req('GET', '/api/modules/starting-panel/docs/A1.1')).module.code === 'SW-STP3',
     'metadata edit written on main and on every open draft');

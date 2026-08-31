@@ -265,6 +265,17 @@ app.get('/api/software', wrap(async (req, res) => {
   res.json(await store.listSoftware());
 }));
 
+/** Create a software: {name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}]} */
+app.post('/api/software', wrap(async (req, res) => {
+  res.json(await store.createSoftware(req.body || {}));
+}));
+
+/** Link / unlink a software on a module: {name, fromVersion?} | {name, unlink: true} */
+app.post('/api/modules/:slug/software', wrap(async (req, res) => {
+  const { name, fromVersion, unlink } = req.body || {};
+  res.json(unlink ? await store.unlinkSoftware(req.params.slug, name) : await store.linkSoftware(req.params.slug, name, fromVersion));
+}));
+
 app.post('/api/softwares', wrap(async (req, res) => {
   res.json(await store.registerSoftwareRelease(req.body));
 }));

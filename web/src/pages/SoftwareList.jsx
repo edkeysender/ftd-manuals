@@ -15,6 +15,7 @@ const isOpenDoc = (d) => d.status === 'draft' || d.status === 'in-review';
 export default function SoftwareList() {
   const [rows, setRows] = useState(null);
   const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
   const toast = useToast();
 
   const load = () => api.software().then(setRows).catch((e) => toast(e.message, 'err'));
@@ -47,8 +48,22 @@ export default function SoftwareList() {
             onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
             aria-label="Search software"
           />
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            + New software
+          </button>
         </div>
       </div>
+
+      {creating && (
+        <NewSoftwareModal
+          onClose={() => setCreating(false)}
+          onCreated={(r) => {
+            setCreating(false);
+            toast(`${r.name} created${r.modules.length ? ` and linked to ${r.modules.map((m) => m.name).join(', ')}` : ''}`);
+            load();
+          }}
+        />
+      )}
 
       {rows === null ? (
         <div className="empty">Loading…</div>
@@ -119,8 +134,10 @@ function SoftwareBlock({ sw, reload }) {
         </span>
       </div>
 
+      <LinkModuleRow sw={sw} reload={reload} />
+
       {sw.modules.length === 0 ? (
-        <p className="muted small">Registered in the release feed but not linked to any module — link it from a module's <em>Software versions</em> tab.</p>
+        <p className="muted small">Not linked to any module yet — link one above to enable its software manuals.</p>
       ) : (
         <table className="table">
           <thead>
@@ -251,6 +268,139 @@ function SoftwareBlock({ sw, reload }) {
           </label>
           <button className="btn btn-primary btn-sm" disabled={!form.version.trim() || busy === 'release'} onClick={register}>
             Register release
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** "Link to module" — attach this software to a module that does not have it yet (with a from-version). */
+function LinkModuleRow({ sw, reload }) {
+  const toast = useToast();
+  const [modules, setModules] = useState(null);
+  const [slug, setSlug] = useState('');
+  const [fromVersion, setFromVersion] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.modules().then(setModules).catch(() => setModules([]));
+  }, [sw.modules.length]);
+  const linked = new Set(sw.modules.map((m) => m.slug));
+  const candidates = (modules || []).filter((m) => !linked.has(m.slug));
+  async function link() {
+    setBusy(true);
+    try {
+      const r = await api.linkSoftware(slug, { name: sw.name, fromVersion: fromVersion.trim() });
+      toast(`${sw.name} linked to ${r.name}`);
+      setSlug('');
+      setFromVersion('');
+      await reload();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="pair wrap" style={{ marginBottom: 10 }}>
+      <span className="hint">Link to module</span>
+      <select value={slug} onChange={(e) => setSlug(e.target.value)}>
+        <option value="">— pick a module —</option>
+        {candidates.map((m) => (
+          <option key={m.slug} value={m.slug}>{m.name}{m.code ? ` (${m.code})` : ''}</option>
+        ))}
+      </select>
+      <input placeholder="From version (v1.0.0)" value={fromVersion} onChange={(e) => setFromVersion(e.target.value)} style={{ width: 170 }} />
+      <button className="btn btn-sm" disabled={!slug || busy} onClick={link}>
+        {busy ? 'Linking…' : 'Link'}
+      </button>
+    </div>
+  );
+}
+
+/** Create a software: name, optional first version, optional module links. */
+function NewSoftwareModal({ onClose, onCreated }) {
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const [version, setVersion] = useState('');
+  const [manualAffecting, setManualAffecting] = useState(false);
+  const [note, setNote] = useState('');
+  const [modules, setModules] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.modules().then(setModules).catch(() => setModules([]));
+  }, []);
+  async function create() {
+    setBusy(true);
+    try {
+      onCreated(
+        await api.createSoftware({
+          name: name.trim(),
+          version: version.trim() || undefined,
+          manualAffecting,
+          note,
+          modules: selected.map((slug) => ({ slug })),
+        })
+      );
+    } catch (e) {
+      toast(e.message, 'err');
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-head">
+          <h2>New software</h2>
+          <span className="steps" />
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-grid">
+            <label>
+              Software name <span className="req">*</span>
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="2N Access Unit" />
+            </label>
+            <div className="pair">
+              <label style={{ flex: 1 }}>
+                First version (optional)
+                <input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="v1.0.0" />
+              </label>
+              <label style={{ flex: 2 }}>
+                Note
+                <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="optional" />
+              </label>
+            </div>
+            {version.trim() && (
+              <label className="check">
+                <input type="checkbox" checked={manualAffecting} onChange={(e) => setManualAffecting(e.target.checked)} />
+                first version is manual-affecting
+              </label>
+            )}
+            <div className="field">
+              <span className="field-label">Link to modules (optional) — enables their software manuals; from-version = first version</span>
+              <div className="picker-list" style={{ maxHeight: 220, overflow: 'auto' }}>
+                {modules.map((m) => (
+                  <label key={m.slug} className={`picker-item ${selected.includes(m.slug) ? 'on' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(m.slug)}
+                      onChange={() => setSelected(selected.includes(m.slug) ? selected.filter((s) => s !== m.slug) : [...selected, m.slug])}
+                    />
+                    <span className="picker-name">{m.name} {m.code && <code>{m.code}</code>}</span>
+                    <span className="chip">{m.group}</span>
+                  </label>
+                ))}
+                {modules.length === 0 && <div className="muted">No modules yet.</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!name.trim() || busy} onClick={create}>
+            {busy ? 'Creating…' : 'Create software'}
           </button>
         </div>
       </div>
