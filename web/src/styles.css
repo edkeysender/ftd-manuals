@@ -181,6 +181,7 @@ label.inline { font-weight: 400; color: var(--muted); }
 .doc-page table th, .doc-page table td { border: 1px solid #c8d1db; padding: 7px 10px; text-align: left; }
 .doc-page table th { background: #f1f4f8; }
 .doc-page figure { margin: 16px 0; text-align: center; }
+.doc-page img { max-width: 100%; height: auto; }
 .doc-page figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; min-height: 60px; background: #f6f8fb; }
 .doc-page figcaption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
 
@@ -193,6 +194,11 @@ label.inline { font-weight: 400; color: var(--muted); }
 
 .generated { position: relative; background: #fafbfc; margin: -20px -24px 24px; padding: 20px 24px 8px; border-bottom: 1px dashed var(--line); }
 .generated::after { content: 'auto-generated from module data'; position: sticky; float: right; font-size: 10.5px; color: var(--muted); background: #eef1f5; border-radius: 4px; padding: 2px 7px; }
+
+/* TODO(author) markers — CSS Custom Highlight (no DOM wrapping, never exported) */
+::highlight(todo) { background-color: #bfdbfe; color: #1e3a8a; text-decoration: underline; text-decoration-color: #2563eb; text-decoration-thickness: 2px; }
+.todo-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #93c5fd !important; background: #dbeafe !important; color: #1e3a8a; font-weight: 600; font-size: 12px; border-radius: 999px; padding: 3px 10px !important; margin-right: 8px; }
+.todo-chip:hover { background: #bfdbfe !important; }
 
 .content-edit { outline: none; min-height: 300px; }
 .content-edit:focus { outline: none; }

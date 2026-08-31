@@ -228,6 +228,7 @@ export const MANUAL_CSS = `
 .manual-doc .chapter h3::before { content: counter(chap) '.' counter(sec) '.' counter(subsec) '  '; color: #16324f; }
 .manual-doc .chapter p, .manual-doc .chapter li { line-height: 1.6; }
 .manual-doc figure { margin: 16px 0; text-align: center; }
+.manual-doc img { max-width: 100%; height: auto; }
 .manual-doc figure img { max-width: 100%; border: 1px solid #dde3ea; border-radius: 4px; }
 .manual-doc figcaption { color: #64748b; font-size: 12.5px; margin-top: 6px; }
 .manual-doc .admonition { border-left: 4px solid; border-radius: 6px; padding: 10px 14px; margin: 14px 0; }

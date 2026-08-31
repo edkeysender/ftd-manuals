@@ -31,6 +31,54 @@ const escapeAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;
 const figureHtml = (url, alt) =>
   `<figure><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}"><figcaption>TODO(author): figure caption</figcaption></figure><p></p>`;
 
+/* TODO(author) markers are highlighted with the CSS Custom Highlight API so the
+   stored HTML stays untouched — nothing is wrapped, nothing leaks into exports. */
+const TODO_RE = /\bTODO(?:\([^)]*\))?:?.*?(?:[.!?;](?=\s|$)|$)/g;
+const highlightsSupported = () => typeof CSS !== 'undefined' && 'highlights' in CSS && typeof Highlight !== 'undefined';
+function collectTodoRanges(root) {
+  const ranges = [];
+  if (!root) return ranges;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) {
+    const text = node.nodeValue || '';
+    if (!text.includes('TODO')) continue;
+    TODO_RE.lastIndex = 0;
+    let m;
+    while ((m = TODO_RE.exec(text))) {
+      if (!m[0]) { TODO_RE.lastIndex++; continue; }
+      const r = document.createRange();
+      r.setStart(node, m.index);
+      r.setEnd(node, m.index + m[0].length);
+      ranges.push(r);
+    }
+  }
+  return ranges;
+}
+
+/** Clipboard images arrive as "image.png" — give them a unique, meaningful asset name. */
+const pastedName = (file, i) => {
+  const ext = (file.name.match(/\.[a-z0-9]+$/i) || [])[0] || (file.type === 'image/jpeg' ? '.jpg' : file.type === 'image/webp' ? '.webp' : '.png');
+  if (file.name && !/^(image|clipboard|screenshot|pasted)?[-_ ]?\d*\.[a-z0-9]+$/i.test(file.name)) return file.name;
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+  return `pasted-${stamp}${i ? `-${i + 1}` : ''}${ext}`;
+};
+
+/** Pasted HTML sometimes carries the picture inline as a data: URL — turn those into files. */
+async function imagesFromHtml(html) {
+  const urls = [...(html || '').matchAll(/<img[^>]+src="(data:image\/[^"]+)"/gi)].map((m) => m[1]);
+  const files = [];
+  for (const [i, url] of urls.entries()) {
+    try {
+      const blob = await (await fetch(url)).blob();
+      files.push(new File([blob], `image-${i + 1}.${(blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, { type: blob.type }));
+    } catch {
+      /* ignore unreadable images */
+    }
+  }
+  return files;
+}
+
 /* The pre-edit snapshot survives refreshes in localStorage so Accept/Discard
    still work after a reload. */
 const snapshotKey = (slug, version) => `ftd-pending-ai:${slug}:${version}`;
@@ -75,8 +123,12 @@ export default function Editor() {
   const [styleInfo, setStyleInfo] = useState(null); // {exemplars:[…]} — whether style examples exist
   const [attachments, setAttachments] = useState([]);
   const [, forceTick] = useState(0);
+  const [todoCount, setTodoCount] = useState(0);
 
   const editorRef = useRef(null);
+  const pageRef = useRef(null); // the whole document page (generated + editable body)
+  const todoRangesRef = useRef([]);
+  const todoCursorRef = useRef(-1);
   const chatRef = useRef(null);
   const fileRef = useRef(null);
   const photoRef = useRef(null);
@@ -166,6 +218,29 @@ export default function Editor() {
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages, aiBusy, attachments]);
+
+  /* ---------- TODO markers ---------- */
+  useEffect(() => {
+    if (!highlightsSupported()) return undefined;
+    const ranges = tab === 'manual' && mode === 'rich' ? collectTodoRanges(pageRef.current) : [];
+    todoRangesRef.current = ranges;
+    if (ranges.length !== todoCount) setTodoCount(ranges.length);
+    CSS.highlights.set('todo', new Highlight(...ranges));
+    return () => CSS.highlights.delete('todo');
+  }, [html, data, mode, tab, pending]);
+
+  /** Cycle through the open TODOs, scrolling each into view and selecting it. */
+  const jumpToTodo = () => {
+    const ranges = todoRangesRef.current;
+    if (!ranges.length) return;
+    todoCursorRef.current = (todoCursorRef.current + 1) % ranges.length;
+    const r = ranges[todoCursorRef.current];
+    r.startContainer.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r.cloneRange());
+    if (editorRef.current?.contains(r.startContainer)) rememberSelection();
+  };
 
   /* ---------- editing ---------- */
   const onInput = () => {
@@ -398,6 +473,74 @@ export default function Editor() {
     if (e.dataTransfer?.files?.length) illustrateFiles(e.dataTransfer.files);
   };
 
+  /* ---------- paste images into the document ---------- */
+  /**
+   * Images pasted into the manual body are stored as assets of this draft and
+   * inserted as figures at the caret (photo as-is). Pasting into the AI pane
+   * still redraws the photo as line-art — that path is unchanged.
+   */
+  async function insertImageFiles(fileList) {
+    const files = [...fileList].filter(isImageFile);
+    if (!files.length) return;
+    if (!editable) return toast('Read-only doc — images can only be added to a draft', 'err');
+    if (pending) return toast('Accept or discard the pending AI edit first', 'err');
+    try {
+      setSaving(true);
+      const payload = await Promise.all(files.map(async (f, i) => ({ ...(await readFileAsBase64(f)), name: pastedName(f, i) })));
+      const saved = await api.uploadAssets(slug, version, payload);
+      for (const s of saved) insertAtCaret(figureHtml(s.url, s.name.replace(/\.[a-z0-9]+$/i, '').replace(/-/g, ' ')));
+      toast(
+        `${saved.length > 1 ? `${saved.length} images` : 'Image'} added as a figure — edit the caption. To redraw it as FTD line-art, paste it into the AI pane instead.`
+      );
+    } catch (e) {
+      toast(`Image paste failed: ${e.message}`, 'err');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const onEditorPaste = (e) => {
+    const cd = e.clipboardData;
+    if (!cd) return;
+    const files = [...(cd.files || [])].filter(isImageFile);
+    const htmlData = cd.getData('text/html');
+    if (files.length) {
+      e.preventDefault();
+      rememberSelection();
+      insertImageFiles(files);
+    } else if (/<img[^>]+src="data:image\//i.test(htmlData)) {
+      e.preventDefault();
+      rememberSelection();
+      imagesFromHtml(htmlData).then((imgs) => (imgs.length ? insertImageFiles(imgs) : toast('Could not read the pasted image', 'err')));
+    } else if (/<img/i.test(htmlData)) {
+      // Remote <img> pasted from a web page: let the browser insert it, then drop the
+      // intrinsic width/height/style it carries so the page CSS keeps it inside the column.
+      setTimeout(() => {
+        editorRef.current?.querySelectorAll('img[width], img[height], img[style]').forEach((img) => {
+          ['width', 'height', 'style'].forEach((a) => img.removeAttribute(a));
+        });
+        onInput();
+      }, 0);
+    }
+  };
+
+  // Ctrl+V with nothing focused (e.g. after clicking the AI pane's "drop, paste or click"
+  // strip) used to be swallowed by the browser — route it to the line-art flow.
+  useEffect(() => {
+    const onWindowPaste = (e) => {
+      if (e.defaultPrevented) return;
+      const a = document.activeElement;
+      const inField = a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+      if (inField) return;
+      const imgs = [...(e.clipboardData?.files || [])].filter(isImageFile);
+      if (!imgs.length) return;
+      e.preventDefault();
+      illustrateFiles(imgs);
+    };
+    window.addEventListener('paste', onWindowPaste);
+    return () => window.removeEventListener('paste', onWindowPaste);
+  });
+
   async function sendChat() {
     const text = chatInput.trim();
     if ((!text && attachments.length === 0) || aiBusy || pending) return;
@@ -583,6 +726,11 @@ export default function Editor() {
                   </button>
                 ))}
               <div className="toolbar-spacer" />
+              {mode === 'rich' && todoCount > 0 && (
+                <button className="todo-chip" title="Jump to the next open TODO(author) marker" onMouseDown={(e) => { e.preventDefault(); jumpToTodo(); }}>
+                  {todoCount} TODO{todoCount > 1 ? 's' : ''} ↓
+                </button>
+              )}
               <div className="mode-toggle">
                 <button className={mode === 'rich' ? 'active' : ''} onClick={() => setMode('rich')}>
                   Rich text
@@ -614,7 +762,7 @@ export default function Editor() {
           )}
 
           <div className="doc-scroll" style={tab === 'fat' ? { display: 'none' } : undefined}>
-            <div className="doc-page">
+            <div className="doc-page" ref={pageRef}>
               <div
                 className="generated"
                 title="Sections 1–3 are generated from module data and the revision record"
@@ -627,6 +775,7 @@ export default function Editor() {
                   contentEditable={editable && !pending}
                   suppressContentEditableWarning
                   onInput={onInput}
+                  onPaste={onEditorPaste}
                   onKeyUp={rememberSelection}
                   onMouseUp={rememberSelection}
                   onBlur={rememberSelection}
