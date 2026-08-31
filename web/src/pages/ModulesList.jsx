@@ -3,25 +3,26 @@ import { useNavigate } from 'react-router-dom';
 import { api, CATEGORIES, MANUAL_TYPES, timeAgo } from '../api.js';
 import Wizard from '../components/Wizard.jsx';
 import { useToast } from '../App.jsx';
+import { t, plural } from '../i18n.jsx';
 
 const catLabel = (c) => (CATEGORIES.find(([k]) => k === c) || [null, c])[1];
 
 /** One pill per manual type the module maintains: "Customer · A1.0 draft r2", coloured by status. */
 export function ManualPills({ manuals, onOpen }) {
-  const have = MANUAL_TYPES.filter((t) => manuals && manuals[t.id]);
-  if (!have.length) return <span className="manual-pill mp-missing"><span className="mp-type">no manual yet</span></span>;
+  const have = MANUAL_TYPES.filter((mt) => manuals && manuals[mt.id]);
+  if (!have.length) return <span className="manual-pill mp-missing"><span className="mp-type">{t('no manual yet')}</span></span>;
   return (
     <span className="manual-pills">
-      {have.map((t) => {
-        const m = manuals[t.id];
+      {have.map((mt) => {
+        const m = manuals[mt.id];
         return (
           <span
-            key={t.id}
+            key={mt.id}
             className={`manual-pill mp-${m.status}`}
-            title={`${t.label}: ${m.label}${m.released ? ` · released ${m.released}` : ''}${m.fat ? ' · FAT checklist' : ''}`}
-            onClick={onOpen ? (e) => { e.stopPropagation(); onOpen(t.id, m); } : undefined}
+            title={`${t(mt.label)}: ${m.label}${m.released ? t(' · released {version}', { version: m.released }) : ''}${m.fat ? t(' · FAT checklist') : ''}`}
+            onClick={onOpen ? (e) => { e.stopPropagation(); onOpen(mt.id, m); } : undefined}
           >
-            <span className="mp-type">{t.short}</span>
+            <span className="mp-type">{t(mt.short)}</span>
             <span className="mp-ver">{m.label}</span>
           </span>
         );
@@ -48,47 +49,53 @@ export default function ModulesList() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Modules</h1>
+        <h1>{t('Modules')}</h1>
         <div className="btn-row">
           <input
             type="search"
             className="search-input"
-            placeholder="Search modules by name…"
+            placeholder={t('Search modules by name…')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
-            aria-label="Search modules by name"
+            aria-label={t('Search modules by name')}
           />
           <button className="btn btn-primary" onClick={() => setWizardOpen(true)}>
-            + New module doc
+            {t('+ New module doc')}
           </button>
         </div>
       </div>
 
       {rows === null ? (
-        <div className="empty">Loading…</div>
+        <div className="empty">{t('Loading…')}</div>
       ) : rows.length === 0 ? (
         <div className="empty">
-          <p>No modules yet.</p>
+          <p>{t('No modules yet.')}</p>
           <p>
-            Create the first one with <strong>+ New module doc</strong> — it starts a draft branch and a doc version
-            A1.0 r1 for each manual you pick (customer, technician, and the same split for the linked software).
+            {t('Create the first one with {button} — it starts a draft branch and a doc version A1.0 r1 for each manual you pick (customer, technician, and the same split for the linked software).')
+              .split('{button}')
+              .map((part, i, arr) => (
+                <React.Fragment key={i}>
+                  {part}
+                  {i < arr.length - 1 && <strong>{t('+ New module doc')}</strong>}
+                </React.Fragment>
+              ))}
           </p>
         </div>
       ) : visible.length === 0 ? (
         <div className="empty">
-          <p>No modules match “{query.trim()}”.</p>
+          <p>{t('No modules match “{query}”.', { query: query.trim() })}</p>
         </div>
       ) : (
         <table className="table modules-table">
           <thead>
             <tr>
-              <th>Module</th>
-              <th>Manual group</th>
-              <th>Hardware</th>
-              <th>Software relation</th>
-              <th>Manuals</th>
-              <th>Updated</th>
+              <th>{t('Module')}</th>
+              <th>{t('Manual group')}</th>
+              <th>{t('Hardware')}</th>
+              <th>{t('Software relation')}</th>
+              <th>{t('Manuals')}</th>
+              <th>{t('Updated')}</th>
             </tr>
           </thead>
           <tbody>
@@ -101,12 +108,12 @@ export default function ModulesList() {
                       {m.needsDoc && (
                         <span
                           className="orange-dot"
-                          title="A linked software released a manual-affecting version with no doc linked yet"
+                          title={t('A linked software released a manual-affecting version with no doc linked yet')}
                         />
                       )}
                     </span>
                     <span className="module-sub">
-                      {m.code && <code>{m.code}</code>} {catLabel(m.category)}
+                      {m.code && <code>{m.code}</code>} {t(catLabel(m.category))}
                     </span>
                   </div>
                 </td>
@@ -142,8 +149,8 @@ export default function ModulesList() {
             setWizardOpen(false);
             toast(
               created.docs?.length > 1
-                ? `${created.docs.length} drafts created: ${created.docs.map((d) => d.key).join(', ')}`
-                : `Draft created: branch ${created.branch}, doc ${created.key || created.version} r1`
+                ? t('{drafts} created: {keys}', { drafts: plural(created.docs.length, 'draft'), keys: created.docs.map((d) => d.key).join(', ') })
+                : t('Draft created: branch {branch}, doc {key} r1', { branch: created.branch, key: created.key || created.version })
             );
             if (created.aiNote) toast(created.aiNote, 'err');
             navigate(`/modules/${created.slug}`);

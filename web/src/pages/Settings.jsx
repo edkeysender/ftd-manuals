@@ -1,6 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, readFileAsBase64 } from '../api.js';
 import { useToast } from '../App.jsx';
+import { t, plural } from '../i18n.jsx';
+
+/** t() for sentences with inline markup: each `{name}` placeholder is replaced by the given React node. */
+function tx(text, nodes) {
+  return t(text)
+    .split(/(\{\w+\})/)
+    .map((part, i) => {
+      const m = /^\{(\w+)\}$/.exec(part);
+      return m && nodes[m[1]] !== undefined ? <React.Fragment key={i}>{nodes[m[1]]}</React.Fragment> : part;
+    });
+}
 
 function BrandingCard() {
   const toast = useToast();
@@ -16,7 +27,7 @@ function BrandingCard() {
     try {
       await api.uploadLogo(await readFileAsBase64(file));
       setVersion(Date.now());
-      toast('Logo saved — it appears in the header box of every manual');
+      toast(t('Logo saved — it appears in the header box of every manual'));
     } catch (e) {
       toast(e.message, 'err');
     }
@@ -24,15 +35,14 @@ function BrandingCard() {
 
   return (
     <section className="settings-card">
-      <h2>Branding</h2>
+      <h2>{t('Branding')}</h2>
       <p>
-        Company logo shown in the header box of assembled manuals (cover and every printed page). Without one, a
-        built-in FTD.aero mark is used.
+        {t('Company logo shown in the header box of assembled manuals (cover and every printed page). Without one, a built-in FTD.aero mark is used.')}
       </p>
       <div className="pair">
-        {hasLogo && <img className="logo-thumb" alt="logo" src={`/api/settings/logo?v=${version}`} />}
+        {hasLogo && <img className="logo-thumb" alt={t('logo')} src={`/api/settings/logo?v=${version}`} />}
         <button className="btn" onClick={() => fileRef.current?.click()}>
-          {hasLogo ? 'Replace logo…' : 'Upload logo…'}
+          {hasLogo ? t('Replace logo…') : t('Upload logo…')}
         </button>
         <input
           ref={fileRef}
@@ -44,7 +54,7 @@ function BrandingCard() {
             e.target.value = '';
           }}
         />
-        <span className="hint">PNG or SVG with transparent background works best.</span>
+        <span className="hint">{t('PNG or SVG with transparent background works best.')}</span>
       </div>
     </section>
   );
@@ -75,7 +85,7 @@ function IllustrationStyleCard() {
     setBusy(true);
     try {
       await api.uploadStyleExemplars(await Promise.all(files.map(readFileAsBase64)));
-      toast(`${files.length} style example${files.length === 1 ? '' : 's'} saved — sent to the image model with every photo from now on`);
+      toast(t('{count} saved — sent to the image model with every photo from now on', { count: plural(files.length, 'style example') }));
       await reload();
     } catch (e) {
       toast(e.message, 'err');
@@ -85,7 +95,7 @@ function IllustrationStyleCard() {
   }
 
   async function removeExemplar(name) {
-    if (!confirm(`Remove style example ${name}?`)) return;
+    if (!confirm(t('Remove style example {name}?', { name }))) return;
     try {
       await api.deleteStyleExemplar(name);
       await reload();
@@ -102,7 +112,7 @@ function IllustrationStyleCard() {
       setInfo(s);
       setStyle(s.style);
       setDirty(false);
-      toast('Illustration style saved — every photo → line-art conversion now uses it');
+      toast(t('Illustration style saved — every photo → line-art conversion now uses it'));
     } catch (e) {
       toast(e.message, 'err');
     } finally {
@@ -112,20 +122,21 @@ function IllustrationStyleCard() {
 
   return (
     <section className="settings-card">
-      <h2>Illustration style{info && <span className="fat-chip">{info.name}</span>}</h2>
+      <h2>{t('Illustration style')}{info && <span className="fat-chip">{info.name}</span>}</h2>
       <p>
-        The house style every manual illustration is drawn in. It is applied automatically when a photo is dropped
-        on the editor's AI pane, when the AI chat or an MCP agent generates a <em>line-art</em> illustration, and by
-        the <em>Line-art</em> button on the Assets tab.
-        {info?.imageModel && <> Image model <code>{info.imageModel}</code>.</>}
+        {t('The house style every manual illustration is drawn in.')}{' '}
+        {tx("It is applied automatically when a photo is dropped on the editor's AI pane, when the AI chat or an MCP agent generates a {lineArt} illustration, and by the {lineArtButton} button on the Assets tab.", {
+          lineArt: <em>{t('line-art')}</em>,
+          lineArtButton: <em>{t('Line-art')}</em>,
+        })}
+        {info?.imageModel && <> {tx('Image model {model}.', { model: <code>{info.imageModel}</code> })}</>}
       </p>
 
-      <h3 className="settings-sub">Style examples</h3>
+      <h3 className="settings-sub">{t('Style examples')}</h3>
       <p className="muted">
-        The most reliable way to get <em>exactly</em> your look: drop 2–4 finished illustrations you already made (e.g.
-        in ChatGPT). They are sent to the image model together with every photo as "match this style" references —
-        the written definition below only fills the gaps. Best examples: single-view drawings of one device with
-        numbered callouts, on a white background.
+        {tx('The most reliable way to get {exactly} your look: drop 2–4 finished illustrations you already made (e.g. in ChatGPT).', { exactly: <em>{t('exactly')}</em> })}{' '}
+        {t('They are sent to the image model together with every photo as "match this style" references — the written definition below only fills the gaps.')}{' '}
+        {t('Best examples: single-view drawings of one device with numbered callouts, on a white background.')}
       </p>
       <div
         className={`dropzone ${drag ? 'over' : ''}`}
@@ -140,14 +151,17 @@ function IllustrationStyleCard() {
           addExemplars(e.dataTransfer.files);
         }}
       >
-        <strong>{busy ? 'Saving…' : 'Drop finished house-style illustrations here'}</strong>
+        <strong>{busy ? t('Saving…') : t('Drop finished house-style illustrations here')}</strong>
         <span className="muted">
-          {' '}— or{' '}
-          <label className="link">
-            choose files
-            <input ref={exRef} type="file" multiple accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { addExemplars(e.target.files); e.target.value = ''; }} />
-          </label>
-          . Up to 6, PNG/JPG/WEBP.
+          {' '}
+          {tx('— or {chooseFiles}. Up to 6, PNG/JPG/WEBP.', {
+            chooseFiles: (
+              <label className="link">
+                {t('choose files')}
+                <input ref={exRef} type="file" multiple accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { addExemplars(e.target.files); e.target.value = ''; }} />
+              </label>
+            ),
+          })}
         </span>
       </div>
       {info && info.exemplars.length > 0 && (
@@ -156,18 +170,21 @@ function IllustrationStyleCard() {
             <div className="asset-card" key={e.name}>
               <img src={`${e.url}?v=${encodeURIComponent(e.name)}`} alt={e.name} loading="lazy" />
               <div className="asset-name">{e.name}</div>
-              <button className="btn btn-sm btn-danger" onClick={() => removeExemplar(e.name)}>Remove</button>
+              <button className="btn btn-sm btn-danger" onClick={() => removeExemplar(e.name)}>{t('Remove')}</button>
             </div>
           ))}
         </div>
       )}
       {info && info.exemplars.length === 0 && (
-        <p className="hint">No style examples yet — conversions rely on the written definition alone, which tends to produce multi-panel sheets.</p>
+        <p className="hint">{t('No style examples yet — conversions rely on the written definition alone, which tends to produce multi-panel sheets.')}</p>
       )}
 
-      <h3 className="settings-sub">Written definition</h3>
+      <h3 className="settings-sub">{t('Written definition')}</h3>
       <p className="muted">
-        Stored in <code>settings/illustration-style.md</code>{info?.isDefault ? ' (built-in default in use)' : ''}.
+        {tx('Stored in {file}{suffix}.', {
+          file: <code>settings/illustration-style.md</code>,
+          suffix: info?.isDefault ? ` ${t('(built-in default in use)')}` : '',
+        })}
       </p>
       <textarea
         className="guidelines-edit"
@@ -180,14 +197,14 @@ function IllustrationStyleCard() {
       />
       <div className="btn-row">
         <button className="btn btn-primary" disabled={!dirty || saving} onClick={() => save(style)}>
-          {saving ? 'Saving…' : 'Save style'}
+          {saving ? t('Saving…') : t('Save style')}
         </button>
         {info && !info.isDefault && (
           <button className="btn" disabled={saving} onClick={() => save('')}>
-            Reset to built-in default
+            {t('Reset to built-in default')}
           </button>
         )}
-        {dirty && <span className="hint">unsaved changes</span>}
+        {dirty && <span className="hint">{t('unsaved changes')}</span>}
       </div>
     </section>
   );
@@ -214,7 +231,7 @@ export default function Settings() {
     try {
       await api.saveAiSettings(guidelines);
       setDirty(false);
-      toast('AI agent guidelines saved — they now apply to every AI draft and chat edit');
+      toast(t('AI agent guidelines saved — they now apply to every AI draft and chat edit'));
     } catch (e) {
       toast(e.message, 'err');
     } finally {
@@ -225,27 +242,31 @@ export default function Settings() {
   return (
     <div className="page">
       <div className="page-head">
-        <h1>Settings</h1>
+        <h1>{t('Settings')}</h1>
       </div>
 
       <section className="settings-card">
-        <h2>AI agent</h2>
+        <h2>{t('AI agent')}</h2>
         {aiSettings && (
           <p className="muted">
-            Model <code>{aiSettings.model}</code> · reasoning effort <code>{aiSettings.reasoningEffort}</code> ·{' '}
-            {aiSettings.available ? 'API key configured' : 'no API key — assistant disabled'} (set{' '}
-            <code>OPENAI_MODEL</code> / <code>OPENAI_REASONING_EFFORT</code> in <code>.env</code> to change).
+            {tx('Model {model} · reasoning effort {effort} · {status} (set {modelVar} / {effortVar} in {envFile} to change).', {
+              model: <code>{aiSettings.model}</code>,
+              effort: <code>{aiSettings.reasoningEffort}</code>,
+              status: aiSettings.available ? t('API key configured') : t('no API key — assistant disabled'),
+              modelVar: <code>OPENAI_MODEL</code>,
+              effortVar: <code>OPENAI_REASONING_EFFORT</code>,
+              envFile: <code>.env</code>,
+            })}
           </p>
         )}
         <p>
-          Basic information and guidelines the AI agent follows in <strong>every</strong> AI first draft and chat
-          edit — company facts, terminology, tone rules, things it must never invent. Stored in the document
-          repository (<code>settings/ai-guidelines.md</code>), so changes are versioned.
+          {tx('Basic information and guidelines the AI agent follows in {every} AI first draft and chat edit — company facts, terminology, tone rules, things it must never invent.', { every: <strong>{t('every')}</strong> })}{' '}
+          {tx('Stored in the document repository ({file}), so changes are versioned.', { file: <code>settings/ai-guidelines.md</code> })}
         </p>
         <textarea
           className="guidelines-edit"
           value={guidelines}
-          placeholder={`Examples:\n- We are FTD.aero, we build FNPT II flight simulation training devices.\n- Voltage in all sims is 230 V AC / 24 V DC; always warn before opening the rack.\n- Use "flight compartment", never "cockpit", in SIM manuals.\n- Part numbers always in the form FTD-XXXX-YY; never invent one.`}
+          placeholder={t('Examples:\n- We are FTD.aero, we build FNPT II flight simulation training devices.\n- Voltage in all sims is 230 V AC / 24 V DC; always warn before opening the rack.\n- Use "flight compartment", never "cockpit", in SIM manuals.\n- Part numbers always in the form FTD-XXXX-YY; never invent one.')}
           onChange={(e) => {
             setGuidelines(e.target.value);
             setDirty(true);
@@ -253,9 +274,9 @@ export default function Settings() {
         />
         <div className="btn-row">
           <button className="btn btn-primary" disabled={!dirty || saving} onClick={save}>
-            {saving ? 'Saving…' : 'Save guidelines'}
+            {saving ? t('Saving…') : t('Save guidelines')}
           </button>
-          {dirty && <span className="hint">unsaved changes</span>}
+          {dirty && <span className="hint">{t('unsaved changes')}</span>}
         </div>
       </section>
 
@@ -264,45 +285,50 @@ export default function Settings() {
       <BrandingCard />
 
       <section className="settings-card">
-        <h2>MCP connector</h2>
+        <h2>{t('MCP connector')}</h2>
         <p>
-          External agents (Claude Code, Claude.ai, any MCP client) can create and edit module docs exactly like
-          the UI — search, read, edit, upload photos, create modules, submit and release.
+          {t('External agents (Claude Code, Claude.ai, any MCP client) can create and edit module docs exactly like the UI — search, read, edit, upload photos, create modules, submit and release.')}
         </p>
         {mcp ? (
           <>
             <p>
-              Endpoint: <code>{mcp.endpoint}</code> · transport <code>{mcp.transport}</code>
+              {tx('Endpoint: {endpoint} · transport {transport}', { endpoint: <code>{mcp.endpoint}</code>, transport: <code>{mcp.transport}</code> })}
             </p>
-            <p className="muted">Add it to Claude Code with:</p>
+            <p className="muted">{t('Add it to Claude Code with:')}</p>
             <pre className="code-block">claude mcp add --transport http ftd-docs {mcp.endpoint}</pre>
             <p className="muted">
-              To test from outside this machine, run <code>npm run tunnel</code> — it prints a public{' '}
-              <code>https://….trycloudflare.com</code> URL forwarding to this console (use{' '}
-              <code>&lt;that URL&gt;/mcp</code> as the endpoint). While a tunnel is up, anyone with the URL can
-              read <em>and edit</em> your docs{mcp.authRequired ? ' (bearer token required — MCP_TOKEN is set)' : ''};
-              set <code>MCP_TOKEN=&lt;secret&gt;</code> in <code>.env</code> to require{' '}
-              <code>Authorization: Bearer &lt;secret&gt;</code> on MCP calls, and stop the tunnel when done.
+              {tx('To test from outside this machine, run {cmd} — it prints a public {url} URL forwarding to this console (use {mcpUrl} as the endpoint).', {
+                cmd: <code>npm run tunnel</code>,
+                url: <code>https://….trycloudflare.com</code>,
+                mcpUrl: <code>&lt;that URL&gt;/mcp</code>,
+              })}{' '}
+              {tx('While a tunnel is up, anyone with the URL can read {andEdit} your docs{auth}; set {tokenVar} in {envFile} to require {header} on MCP calls, and stop the tunnel when done.', {
+                andEdit: <em>{t('and edit')}</em>,
+                auth: mcp.authRequired ? ` ${t('(bearer token required — MCP_TOKEN is set)')}` : '',
+                tokenVar: <code>MCP_TOKEN=&lt;secret&gt;</code>,
+                envFile: <code>.env</code>,
+                header: <code>Authorization: Bearer &lt;secret&gt;</code>,
+              })}
             </p>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Tool</th>
-                  <th>Description</th>
+                  <th>{t('Tool')}</th>
+                  <th>{t('Description')}</th>
                 </tr>
               </thead>
               <tbody>
-                {mcp.tools.map((t) => (
-                  <tr key={t.name}>
-                    <td><code>{t.name}</code></td>
-                    <td>{t.description}</td>
+                {mcp.tools.map((tool) => (
+                  <tr key={tool.name}>
+                    <td><code>{tool.name}</code></td>
+                    <td>{tool.description}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </>
         ) : (
-          <p className="muted">Loading…</p>
+          <p className="muted">{t('Loading…')}</p>
         )}
       </section>
     </div>

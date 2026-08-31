@@ -1,3 +1,5 @@
+import { t } from './i18n.jsx';
+
 async function request(url, opts = {}) {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -130,8 +132,8 @@ export function readFileAsBase64(file) {
 export function timeAgo(iso) {
   if (!iso) return '—';
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (s < 60) return `${Math.max(1, Math.round(s))} s ago`;
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  if (s < 60) return t('{n} s ago', { n: Math.max(1, Math.round(s)) });
+  if (s < 3600) return t('{n} min ago', { n: Math.round(s / 60) });
+  if (s < 86400) return t('{n} h ago', { n: Math.round(s / 3600) });
   return new Date(iso).toISOString().slice(0, 10);
 }

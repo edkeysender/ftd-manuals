@@ -34,6 +34,10 @@ The functional spec lives in this file's history and in the Modules spec provide
   basedOnHash}` — `stale` is computed on read when the English hash moved. `?lang=` / `lang` on doc GET/PUT, the
   chat and MCP (`get_doc`, edit tools, `translate_doc`); manuals compile with `?lang=` (English fallback flagged).
   Generated sections and the manual frame have PL strings in `docgen.js` `STRINGS`.
+- UI language: `web/src/i18n.jsx` — `t('English text', vars)` / `plural(n, 'unit')`, dictionary `i18n.pl.js`
+  keyed by the English string (missing key → English). Locale = top-right EN|PL switch, stored in
+  localStorage `ftd-ui-lang`, else browser language. Wrap every new user-visible string in `t()` and add its
+  Polish entry; the doc-body language (EN|PL in the editor / manual view) defaults to the UI locale.
 - Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…` while draft,
   own revision record, own draft branch `draft/<slug>-<manual>-a1.0` (one open draft per manual type).
   Only **Released** versions compile into simulator manuals; an assembled manual (`manuals/<slug>/manual.json`)
