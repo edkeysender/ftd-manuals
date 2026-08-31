@@ -260,6 +260,11 @@ app.get('/api/softwares', wrap(async (req, res) => {
   res.json(await store.getSoftwareFeed());
 }));
 
+/** Software page: every software with its linked modules, their software manuals and release coverage. */
+app.get('/api/software', wrap(async (req, res) => {
+  res.json(await store.listSoftware());
+}));
+
 app.post('/api/softwares', wrap(async (req, res) => {
   res.json(await store.registerSoftwareRelease(req.body));
 }));

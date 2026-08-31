@@ -57,7 +57,12 @@ branch and section template:
 
 A doc is addressed by its key `<manual>:<version>` — `technician:A1.0` — in URLs, the API and MCP.
 A bare `A1.0` means the customer manual; docs created before the split (`modules/<slug>/docs/A1.0/`)
-are read as customer manuals and never moved.
+are read as customer manuals and never moved. Over MCP every doc tool (edit, assets, illustrations,
+checklist, review/release) takes `manual` + `version` (or just `manual` for its latest open draft).
+
+The **Software** page lists every linked software with its modules, their software customer / technician
+manuals (create, edit, new version) and the release feed with coverage; `list_software`,
+`register_software_release` and `cover_release` expose the same over MCP.
 
 - Drafts live on `draft/<slug>-<manual>-a1.0` branches (one open draft per manual type); every save is a
   commit; accepted changes bump `r1 → r2 …`.

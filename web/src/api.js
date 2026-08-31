@@ -34,6 +34,8 @@ export const api = {
   release: (slug, version) => request(`/api/modules/${slug}/docs/${version}/release`, { method: 'POST' }),
   discard: (slug, version) => request(`/api/modules/${slug}/docs/${version}/discard`, { method: 'POST' }),
   softwares: () => request('/api/softwares'),
+  /** Software page rows: {name, modules:[{slug, name, manuals, docs, uncovered}], releases:[{version, coveredBy}]} */
+  software: () => request('/api/software'),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
   coverRelease: (slug, version, name, swVersion) =>
     request(`/api/modules/${slug}/docs/${version}/cover`, { method: 'POST', body: { name, version: swVersion } }),

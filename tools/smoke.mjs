@@ -531,13 +531,58 @@ try {
     params: { name: 'insert_into_section', arguments: { slug: 'starting-panel', version: 'technician:A1.0', section: 'Configuration', html: '<p>Set the static IP.</p>' } },
   });
   ok(!techIns.isError && (await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).content.includes('Set the static IP.'), 'MCP edits address docs by key');
+  // MCP addresses any manual by {manual, version} or by manual alone (latest open draft)
+  const call = async (id, name, args) => {
+    const r = await mcpCall({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
+    return r.isError ? new Error(r.content[0].text) : JSON.parse(r.content[0].text);
+  };
+  const byManual = await call(100, 'insert_into_section', { slug: 'starting-panel', manual: 'technician', section: 'Maintenance', html: '<p>Replace the fuse.</p>' });
+  ok(!(byManual instanceof Error) && byManual.manual === 'technician' && byManual.revision >= 2, 'MCP {manual} without version edits the open technician draft');
+  const bareVer = await call(101, 'replace_in_doc', { slug: 'starting-panel', manual: 'software-customer', version: 'A1.0', find: 'Replace the fuse.', replace: 'x' });
+  ok(bareVer instanceof Error && /not found in the current body/.test(bareVer.message), 'MCP {manual, bare version} targets that manual (text lives in the technician doc)');
+  const swEdit = await call(102, 'insert_into_section', { slug: 'starting-panel', manual: 'software-customer', version: 'A1.0', section: 'Operation', html: '<p>Add a user.</p>' });
+  ok(!(swEdit instanceof Error) && swEdit.manual === 'software-customer' && (await req('GET', '/api/modules/starting-panel/docs/software-customer:A1.0')).content.includes('Add a user.'), 'MCP edits the software customer manual by {manual, version}');
+  const conflict = await call(103, 'get_doc', { slug: 'starting-panel', manual: 'customer', version: 'technician:A1.0' });
+  ok(conflict instanceof Error && /give one or the other/.test(conflict.message), 'MCP rejects a key that contradicts manual');
+  const noType = await call(104, 'get_doc', { slug: 'starting-panel', manual: 'software-technician' });
+  ok(noType instanceof Error && /create_doc_version/.test(noType.message), 'MCP names the missing manual type and how to create it');
+  const techPhoto = await call(105, 'upload_photo', { slug: 'starting-panel', manual: 'technician', name: 'wiring.png', data_base64: png1x1 });
+  ok(!(techPhoto instanceof Error) && techPhoto[0].name === 'wiring.png', 'MCP upload_photo lands on the technician draft');
+  const techAssets = await call(106, 'get_doc', { slug: 'starting-panel', manual: 'technician', include_assets: true });
+  ok(techAssets.assets.some((a) => a.name === 'wiring.png' && a.meta?.addedIn === 'A1.0') && techAssets.doc.key === 'technician:A1.0', 'asset stamped from the technician doc, visible module-wide');
+  const techFig = await call(107, 'insert_into_section', { slug: 'starting-panel', manual: 'technician', section: 'Installation', html: `<figure><img src="${techAssets.assets.find((a) => a.name === 'wiring.png').url}" alt="Wiring"><figcaption>Wiring</figcaption></figure>` });
+  ok(!(techFig instanceof Error), 'figure inserted into the technician manual');
+  const stampT = await call(108, 'update_asset', { slug: 'starting-panel', manual: 'technician', name: 'wiring.png', applies_to: ['starting-panel'] });
+  ok(!(stampT instanceof Error) && stampT.meta.appliesTo[0] === 'starting-panel', 'MCP update_asset by manual');
+  const mt = await call(109, 'list_manual_types', {});
+  ok(mt.length === 4 && mt[1].id === 'technician' && mt[1].sections.includes('Configuration'), 'MCP list_manual_types');
+  const swList = await call(110, 'list_software', {});
+  const stp = swList.find((s) => s.name === 'STP Core');
+  ok(stp && stp.modules[0].slug === 'starting-panel' && stp.modules[0].manuals['software-customer']?.status === 'draft' && stp.releases.length >= 3, 'MCP list_software lists modules, software manuals and releases');
+  ok(stp.releases.find((r) => r.version === 'v2.1.1').coveredBy.some((c) => c.key === 'customer:A1.1' && c.status === 'released'), 'list_software shows which doc covers a release');
+  ok(techAssets.assets.find((a) => a.name === 'wiring.png').meta.addedManual === 'technician', 'stamp records which manual the asset was added from');
+  ok((await req('GET', '/api/software')).find((s) => s.name === 'STP Core').manualCount === 1, 'GET /api/software serves the Software page');
+  const reg = await call(111, 'register_software_release', { name: 'STP Core', version: 'v2.2.1', manual_affecting: false, note: 'hotfix' });
+  ok(!(reg instanceof Error) && reg['STP Core'].some((r) => r.version === 'v2.2.1'), 'MCP register_software_release');
+  const covMcp = await call(112, 'cover_release', { slug: 'starting-panel', manual: 'software-customer', software: 'STP Core', release: 'v2.2.1' });
+  ok(!(covMcp instanceof Error) && covMcp.covers[0].to === 'v2.2.1', 'MCP cover_release on the software customer draft');
+  const swTech = await call(113, 'create_doc_version', { slug: 'starting-panel', manual: 'software-technician', checklist: 'none' });
+  ok(!(swTech instanceof Error) && swTech.key === 'software-technician:A1.0', 'MCP creates the software technician manual');
+  ok(!((await call(114, 'submit_for_review', { slug: 'starting-panel', manual: 'software-technician' })) instanceof Error), 'MCP submit_for_review by manual');
+  const back = await call(115, 'back_to_draft', { slug: 'starting-panel', manual: 'software-technician' });
+  ok(!(back instanceof Error) && back.status === 'draft', 'MCP back_to_draft');
+  const disc = await call(116, 'discard_doc', { slug: 'starting-panel', manual: 'software-technician', version: 'A1.0' });
+  ok(!(disc instanceof Error) && disc.ok && !(await req('GET', '/api/modules/starting-panel')).docs.some((d) => d.manual === 'software-technician'), 'MCP discard_doc removes the software technician draft');
+  const discNoVer = await call(117, 'discard_doc', { slug: 'starting-panel', manual: 'technician' });
+  ok(discNoVer instanceof Error, 'discard_doc requires an explicit version');
   await req('PATCH', '/api/modules/starting-panel', { code: 'SW-STP3' });
   ok((await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).module.code === 'SW-STP3' && (await req('GET', '/api/modules/starting-panel/docs/A1.1')).module.code === 'SW-STP3',
     'metadata edit written on main and on every open draft');
   // orange dot is per manual type: a manual-affecting release uncovered by the new technician manual
   await req('POST', '/api/softwares', { name: 'STP Core', version: 'v2.2.0', manualAffecting: true });
   detail = await req('GET', '/api/modules/starting-panel');
-  ok(detail.uncovered.filter((u) => u.version === 'v2.2.0').map((u) => u.manual).sort().join(',') === 'customer,software-customer,technician', 'uncovered release listed per manual type');
+  // software-customer already spans v2.0.0–v2.2.1 (cover_release above), so only the other two types miss v2.2.0
+  ok(detail.uncovered.filter((u) => u.version === 'v2.2.0').map((u) => u.manual).sort().join(',') === 'customer,technician', 'uncovered release listed per manual type');
   ok(detail.needsDoc === true, 'customer manual has no open draft → orange dot');
   await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/cover', { name: 'STP Core', version: 'v2.2.0' });
   await req('POST', '/api/modules/starting-panel/docs/software-customer:A1.0/cover', { name: 'STP Core', version: 'v2.2.0' });
