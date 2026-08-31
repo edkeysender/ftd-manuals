@@ -430,20 +430,57 @@ export const TOOLS = [
     annotations: { title: 'FAT checklist template', ...RO },
   },
   {
-    name: 'register_software_release',
+    name: 'create_software',
     description:
-      'Register a release of a software in the release feed (softwares.json on main). manual_affecting: true means every manual type of every module linked to that software needs a new doc version covering it (orange dot until each has one); false means the released docs can simply extend their covered range with cover_release.',
+      'Create a NEW software: adds it to the release feed (softwares.json on main), optionally with its first version and linked to modules right away (each link uses from_version or the first version). A module\'s software-customer / software-technician manuals become available once it is linked — create them with create_doc_version. Fails if the name already exists: then use register_software_release (new version) or link_software.',
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', description: 'Software name exactly as linked to modules (see list_software)' },
+        name: { type: 'string', description: 'Software name, e.g. "2N Access Unit"' },
+        version: { type: 'string', description: 'Optional first version, e.g. v1.0.0' },
+        manual_affecting: { type: 'boolean', description: 'Whether the first version needs manuals (default false)' },
+        note: { type: 'string' },
+        modules: {
+          type: 'array',
+          description: 'Modules to link now: [{slug, from_version?}]',
+          items: { type: 'object', properties: { slug: { type: 'string' }, from_version: { type: 'string' } }, required: ['slug'] },
+        },
+      },
+      required: ['name'],
+    },
+    annotations: { title: 'Create software', ...RW },
+  },
+  {
+    name: 'register_software_release',
+    description:
+      'Register a NEW VERSION (release) of an existing software in the release feed. manual_affecting: true means every manual type of every module linked to that software needs a new doc version covering it (orange dot until each has one — create it with create_doc_version, then cover_release); false means the released docs can simply extend their covered range with cover_release.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Software name exactly as in list_software' },
         version: { type: 'string', description: 'Release version, e.g. v2.1.0' },
         manual_affecting: { type: 'boolean' },
         note: { type: 'string' },
       },
       required: ['name', 'version'],
     },
-    annotations: { title: 'Register software release', ...RW },
+    annotations: { title: 'Register software release (new version)', ...RW },
+  },
+  {
+    name: 'link_software',
+    description:
+      'Link an existing software to a module (or update the from-version of an existing link) — the "software relation" that enables the module\'s software manuals and puts the software\'s releases on its watch list. Set unlink: true to remove the link instead.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'Module slug' },
+        name: { type: 'string', description: 'Software name (see list_software / create_software)' },
+        from_version: { type: 'string', description: 'First version this module ships with, e.g. v2.0.0' },
+        unlink: { type: 'boolean', description: 'Remove the link instead of adding it' },
+      },
+      required: ['slug', 'name'],
+    },
+    annotations: { title: 'Link software to module', ...RW },
   },
   {
     name: 'cover_release',
@@ -560,6 +597,16 @@ async function callTool(name, args) {
       const q = (args.name || '').toLowerCase().trim();
       return q ? rows.filter((r) => r.name.toLowerCase().includes(q)) : rows;
     }
+    case 'create_software':
+      return await store.createSoftware({
+        name: args.name,
+        version: args.version,
+        manualAffecting: !!args.manual_affecting,
+        note: args.note,
+        modules: (args.modules || []).map((m) => ({ slug: m.slug, fromVersion: m.from_version })),
+      });
+    case 'link_software':
+      return args.unlink ? await store.unlinkSoftware(args.slug, args.name) : await store.linkSoftware(args.slug, args.name, args.from_version);
     case 'register_software_release':
       return await store.registerSoftwareRelease({ name: args.name, version: args.version, manualAffecting: !!args.manual_affecting, note: args.note });
     case 'cover_release':

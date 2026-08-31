@@ -1187,7 +1187,70 @@ export async function listAssets(slug) {
 /* Software release feed                                               */
 /* ------------------------------------------------------------------ */
 
+const cleanSwName = (name) => String(name || '').trim();
+
+/**
+ * Create a software: a new name in the release feed (softwares.json on main), optionally with
+ * its first release and linked to modules right away. Software manuals of a module become
+ * available once the module is linked to a software.
+ * { name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}] }
+ */
+export async function createSoftware({ name, version, manualAffecting, note, modules = [] }) {
+  name = cleanSwName(name);
+  if (!name) throw new Error('Software name is required');
+  const feed = await getSoftwareFeed();
+  const linked = (await collectAll()).modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name));
+  if (feed[name] || linked.length) {
+    throw new Error(`Software "${name}" already exists${linked.length ? ` (linked to ${linked.map((m) => m.module.slug).join(', ')})` : ''} — register a release or link it to a module instead`);
+  }
+  const releases = version ? [{ version: String(version).trim(), date: now(), manualAffecting: !!manualAffecting, note: note || '' }] : [];
+  feed[name] = releases;
+  await mutate(async () => {
+    await repo.checkout('main');
+    await repo.writeFile('softwares.json', JSON.stringify(feed, null, 2) + '\n');
+    await repo.commitAll(`softwares: add ${name}${version ? ` ${version}` : ''}`);
+  });
+  const links = [];
+  for (const m of modules || []) {
+    if (!m || !m.slug) continue;
+    links.push(await linkSoftware(m.slug, name, m.fromVersion || version || ''));
+  }
+  return { name, releases, modules: links };
+}
+
+/** Link a software to a module (appends to module.softwares; updates from-version when already linked).
+ *  Written like any metadata edit: on main and on every open draft branch. */
+export async function linkSoftware(slug, name, fromVersion = '') {
+  name = cleanSwName(name);
+  if (!name) throw new Error('Software name is required');
+  const entry = await moduleOf(slug);
+  if (!entry) throw new Error(`Module "${slug}" not found`);
+  const softwares = (entry.module.softwares || []).map((s) => ({ ...s }));
+  const existing = softwares.find((s) => s.name === name);
+  if (existing) existing.fromVersion = String(fromVersion || existing.fromVersion || '').trim();
+  else softwares.push({ name, fromVersion: String(fromVersion || '').trim() });
+  const updated = await updateModule(slug, { softwares });
+  return { slug, name: entry.module.name, softwares: updated.softwares, linked: !existing };
+}
+
+/** Remove a software link from a module. Its docs keep their covered ranges. */
+export async function unlinkSoftware(slug, name) {
+  name = cleanSwName(name);
+  const entry = await moduleOf(slug);
+  if (!entry) throw new Error(`Module "${slug}" not found`);
+  if (!(entry.module.softwares || []).some((s) => s.name === name)) throw new Error(`${name} is not linked to ${slug}`);
+  const open = entry.docs.filter((d) => isOpen(d) && MANUAL_TYPES[d.manual].kind === 'software');
+  if (open.length && (entry.module.softwares || []).length === 1) {
+    throw new Error(`${slug} has an open software manual draft (${open.map((d) => d.key).join(', ')}) — discard or release it before unlinking its only software`);
+  }
+  const updated = await updateModule(slug, { softwares: entry.module.softwares.filter((s) => s.name !== name) });
+  return { slug, name: entry.module.name, softwares: updated.softwares };
+}
+
+/** Register a new version (release) of a software in the feed. */
 export async function registerSoftwareRelease({ name, version, manualAffecting, note }) {
+  name = cleanSwName(name);
+  version = String(version || '').trim();
   if (!name || !version) throw new Error('Software name and version are required');
   const feed = await getSoftwareFeed();
   const releases = feed[name] || [];
