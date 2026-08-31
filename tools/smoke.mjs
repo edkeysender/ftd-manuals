@@ -385,18 +385,39 @@ try {
   list = await req('GET', '/api/modules');
   ok(list[0].needsDoc === true, 'manual-affecting release raises the orange dot');
 
-  // next doc version clears the dot (draft exists), then release supersedes A1.0
+  detail = await req('GET', '/api/modules/starting-panel');
+  ok(detail.uncovered.length === 1 && detail.uncovered[0].version === 'v2.1.0', 'module detail lists the uncovered release');
+
+  // next doc version becomes the manual for the uncovered release and clears the dot; later it supersedes A1.0
   const next = await req('POST', '/api/modules/starting-panel/docs', { bump: 'minor' });
   ok(next.version === 'A1.1', 'next version is A1.1');
+  ok(next.covers.length === 1 && next.covers[0].name === 'STP Core' && next.covers[0].from === 'v2.1.0' && next.covers[0].to === 'v2.1.0',
+    'new version is seeded to cover STP Core v2.1.0');
+  detail = await req('GET', '/api/modules/starting-panel');
+  ok(detail.docs.find((d) => d.version === 'A1.1').covers[0].from === 'v2.1.0', 'A1.1 draft carries the covered release');
+  ok(detail.uncovered.length === 0, 'nothing uncovered once the draft claims the release');
   list = await req('GET', '/api/modules');
   ok(list[0].needsDoc === false, 'dot clears once a draft exists');
   ok(list[0].latestDoc === 'A1.1 draft r1', 'A1.1 draft listed');
+
+  // a second manual-affecting release while A1.1 is still a draft: assign it to the draft
+  await req('POST', '/api/softwares', { name: 'STP Core', version: 'v2.1.1', manualAffecting: true });
+  ok((await req('GET', '/api/modules/starting-panel')).uncovered.some((u) => u.version === 'v2.1.1'), 'v2.1.1 is uncovered');
+  const assigned = await req('POST', '/api/modules/starting-panel/docs/A1.1/cover', { name: 'STP Core', version: 'v2.1.1' });
+  ok(assigned.covers[0].from === 'v2.1.0' && assigned.covers[0].to === 'v2.1.1', 'draft A1.1 now covers STP Core v2.1.0 – v2.1.1');
+  ok((await req('GET', '/api/modules/starting-panel')).uncovered.length === 0, 'assigning to the draft clears the uncovered list');
+  const badSw = await req('POST', '/api/modules/starting-panel/docs/A1.1/cover', { name: 'Other Soft', version: 'v1' }).catch((e) => e);
+  ok(badSw instanceof Error && /not linked to this module/.test(badSw.message), 'cannot cover a software the module is not linked to');
 
   await req('POST', '/api/modules/starting-panel/docs/A1.1/submit-review');
   await req('POST', '/api/modules/starting-panel/docs/A1.1/release');
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.docs.find((d) => d.version === 'A1.0').status === 'superseded', 'A1.0 superseded by A1.1');
   ok(detail.docs.find((d) => d.version === 'A1.1').status === 'released', 'A1.1 released');
+  ok(detail.docs.find((d) => d.version === 'A1.1').covers[0].to === 'v2.1.1' && detail.needsDoc === false,
+    'released A1.1 keeps its covered range; no orange dot');
+  const superseded = await req('POST', '/api/modules/starting-panel/docs/A1.0/cover', { name: 'STP Core', version: 'v2.1.1' }).catch((e) => e);
+  ok(superseded instanceof Error && /superseded/.test(superseded.message), 'a superseded doc cannot take new releases');
   ok(detail.docs.find((d) => d.version === 'A1.1').fat === true && (await req('GET', '/api/modules/starting-panel/docs/A1.1/checklist')).checklist,
     'next doc version inherits the FAT checklist');
   ok((await req('GET', '/api/modules')).find((m) => m.slug === 'starting-panel').fat === true, 'modules list flags FAT');

@@ -386,19 +386,36 @@ function moduleStatus(docs) {
 /** Orange dot: a linked software has a manual-affecting release not covered by
  *  any doc version, and no draft/in-review doc exists yet. */
 function needsDoc(module, docs, softwareFeed) {
-  if (!module.softwares || module.softwares.length === 0) return false;
   const hasOpenDraft = docs.some((d) => d.status === 'draft' || d.status === 'in-review');
   if (hasOpenDraft) return false;
-  for (const sw of module.softwares) {
-    const releases = softwareFeed[sw.name] || [];
-    for (const rel of releases) {
+  return uncoveredReleases(module, docs, softwareFeed).length > 0;
+}
+
+/** Manual-affecting releases of the module's softwares (at/after the linked from-version)
+ *  that no doc version covers yet — each one needs its own doc version. */
+function uncoveredReleases(module, docs, softwareFeed) {
+  const out = [];
+  for (const sw of module.softwares || []) {
+    for (const rel of softwareFeed[sw.name] || []) {
       if (!rel.manualAffecting) continue;
       if (sw.fromVersion && compareSwVersions(rel.version, sw.fromVersion) < 0) continue;
       const covered = docs.some((d) => (d.covers || []).some((c) => c.name === sw.name && versionCovered(rel.version, c)));
-      if (!covered) return true;
+      if (!covered) out.push({ name: sw.name, version: rel.version });
     }
   }
-  return false;
+  return out;
+}
+
+/** Fold a release into a covers list: new row, or widen the existing range. */
+function addCover(covers, swName, swVersion) {
+  const cov = covers.find((c) => c.name === swName);
+  if (!cov) {
+    covers.push({ name: swName, from: swVersion, to: swVersion });
+  } else {
+    if (compareSwVersions(swVersion, cov.from) < 0) cov.from = swVersion;
+    if (compareSwVersions(swVersion, cov.to || cov.from) > 0) cov.to = swVersion;
+  }
+  return covers;
 }
 
 export async function getSoftwareFeed() {
@@ -462,6 +479,7 @@ export async function getModule(slug) {
     docs: entry.docs,
     status: moduleStatus(entry.docs),
     needsDoc: needsDoc(entry.module, entry.docs, feed),
+    uncovered: uncoveredReleases(entry.module, entry.docs, feed),
     history: history.slice(0, 50),
     softwareFeed: Object.fromEntries(
       (entry.module.softwares || []).map((s) => [s.name, feed[s.name] || []])
@@ -571,6 +589,14 @@ export async function createNextDocVersion(slug, bump = 'minor') {
 
   const content = (await repo.show('main', contentFile(slug, latest.version))) || blankContent(entry.module.name);
   const checklist = latest.fat ? await repo.show('main', checklistFile(slug, latest.version)) : null;
+  // The new version is the manual for every manual-affecting release nobody covers yet.
+  const covers = uncoveredReleases(entry.module, entry.docs, await getSoftwareFeed()).reduce(
+    (acc, r) => addCover(acc, r.name, r.version),
+    []
+  );
+  const coversLabel = covers
+    .map((c) => `${c.name} ${c.to && c.to !== c.from ? `${c.from}–${c.to}` : c.from}`)
+    .join(', ');
   const doc = {
     version,
     revision: 1,
@@ -579,10 +605,10 @@ export async function createNextDocVersion(slug, bump = 'minor') {
     createdAt: created,
     updatedAt: created,
     releasedAt: null,
-    covers: [],
+    covers,
     revisionRecord: [
       ...latest.revisionRecord.map((r) => ({ ...r, inherited: true })),
-      { rev: 'r1', date: created, summary: `Draft based on ${latest.version}` },
+      { rev: 'r1', date: created, summary: `Draft based on ${latest.version}${coversLabel ? ` for ${coversLabel}` : ''}` },
     ],
     copiedFrom: { slug, version: latest.version },
     fat: !!checklist,
@@ -594,11 +620,11 @@ export async function createNextDocVersion(slug, bump = 'minor') {
     await repo.writeFile(docFile(slug, version), JSON.stringify(doc, null, 2) + '\n');
     await repo.writeFile(contentFile(slug, version), content);
     if (checklist) await repo.writeFile(checklistFile(slug, version), checklist);
-    await repo.commitAll(`${slug}: create doc ${version} r1 (draft)`);
+    await repo.commitAll(`${slug}: create doc ${version} r1 (draft)${coversLabel ? ` for ${coversLabel}` : ''}`);
     await repo.checkout('main');
   });
 
-  return { slug, version, branch, fat: doc.fat };
+  return { slug, version, branch, fat: doc.fat, covers };
 }
 
 async function loadDraftDoc(slug, version) {
@@ -848,27 +874,30 @@ export async function registerSoftwareRelease({ name, version, manualAffecting, 
   return feed;
 }
 
-/** Extend a released doc's covered range to include a (non-manual-affecting) software release. */
+/** Make a doc version the manual for a software release: widen a Released doc's covered
+ *  range (non-manual-affecting releases), or assign the release to an open draft /
+ *  in-review doc (a manual-affecting release that got its own doc version). */
 export async function linkReleaseToDoc(slug, docVersion, swName, swVersion) {
-  const file = docFile(slug, docVersion);
-  const meta = await readJson('main', file);
-  if (!meta) throw new Error('Doc version not found on main');
-  if (meta.status !== 'released') throw new Error('Releases can only be linked to a Released doc version');
-  const covers = meta.covers || [];
-  let cov = covers.find((c) => c.name === swName);
-  if (!cov) {
-    cov = { name: swName, from: swVersion, to: swVersion };
-    covers.push(cov);
-  } else {
-    if (compareSwVersions(swVersion, cov.from) < 0) cov.from = swVersion;
-    if (compareSwVersions(swVersion, cov.to || cov.from) > 0) cov.to = swVersion;
+  const { modules } = await collectAll();
+  const entry = modules.find((m) => m.module.slug === slug);
+  if (!entry) throw new Error('Module not found');
+  if (!(entry.module.softwares || []).some((s) => s.name === swName)) {
+    throw new Error(`${swName} is not linked to this module`);
   }
-  meta.covers = covers;
+  const doc = entry.docs.find((d) => d.version === docVersion);
+  if (!doc) throw new Error('Doc version not found');
+  if (doc.status === 'superseded') throw new Error('A superseded doc version cannot take new releases');
+  const ref = doc.status === 'released' ? 'main' : docBranchName(slug, docVersion);
+  const file = docFile(slug, docVersion);
+  const meta = await readJson(ref, file);
+  if (!meta) throw new Error('Doc version not found');
+  meta.covers = addCover(meta.covers || [], swName, swVersion);
   meta.updatedAt = now();
   await mutate(async () => {
-    await repo.checkout('main');
+    await repo.checkout(ref);
     await repo.writeFile(file, JSON.stringify(meta, null, 2) + '\n');
     await repo.commitAll(`${slug} ${docVersion}: cover ${swName} ${swVersion}`);
+    await repo.checkout('main');
   });
   return meta;
 }

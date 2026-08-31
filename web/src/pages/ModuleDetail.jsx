@@ -68,19 +68,26 @@ export default function ModuleDetail() {
           </div>
         </div>
         {!hasOpenDraft && docs.length > 0 && (
-          <div className="btn-row">
-            <button
-              className="btn"
-              onClick={() => act(() => api.nextDocVersion(slug, 'minor'), 'New minor doc draft created')}
-            >
-              New doc version (minor)
-            </button>
-            <button
-              className="btn"
-              onClick={() => act(() => api.nextDocVersion(slug, 'major'), 'New major doc draft created')}
-            >
-              New doc version (major)
-            </button>
+          <div className="btn-col">
+            <div className="btn-row">
+              <button
+                className="btn"
+                onClick={() => act(() => api.nextDocVersion(slug, 'minor'), 'New minor doc draft created')}
+              >
+                New doc version (minor)
+              </button>
+              <button
+                className="btn"
+                onClick={() => act(() => api.nextDocVersion(slug, 'major'), 'New major doc draft created')}
+              >
+                New doc version (major)
+              </button>
+            </div>
+            {(data.uncovered || []).length > 0 && (
+              <span className="hint">
+                The new version becomes the manual for {data.uncovered.map((u) => `${u.name} ${u.version}`).join(', ')}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -620,7 +627,8 @@ function SoftwareTab({ data, slug, reload }) {
   const toast = useToast();
   const { module, docs, softwareFeed } = data;
   const [form, setForm] = useState({ name: module.softwares[0]?.name || '', version: '', manualAffecting: false, note: '' });
-  const releasedDocs = docs.filter((d) => d.status === 'released' || d.status === 'superseded');
+  const releasedDoc = docs.find((d) => d.status === 'released');
+  const openDraft = docs.find((d) => d.status === 'draft' || d.status === 'in-review');
 
   const coveredBy = (swName, version) =>
     docs.find((d) => (d.covers || []).some((c) => c.name === swName && covered(version, c)));
@@ -636,6 +644,13 @@ function SoftwareTab({ data, slug, reload }) {
       return 0;
     };
     return cmp(v, cov.from) >= 0 && cmp(v, cov.to || cov.from) <= 0;
+  }
+
+  function link(doc, swName, swVersion) {
+    api
+      .coverRelease(slug, doc.version, swName, swVersion)
+      .then(() => { toast(`${doc.version} now covers ${swName} ${swVersion}`); reload(); })
+      .catch((e) => toast(e.message, 'err'));
   }
 
   async function register() {
@@ -676,21 +691,25 @@ function SoftwareTab({ data, slug, reload }) {
                     <td>{rel.manualAffecting ? <span className="badge badge-in-review">Yes</span> : 'No'}</td>
                     <td>{doc ? doc.version : <span className="muted">not linked</span>}</td>
                     <td>
-                      {!doc && !rel.manualAffecting && releasedDocs[0] && (
+                      {!doc && !rel.manualAffecting && releasedDoc && (
                         <button
                           className="btn btn-sm"
-                          title="Extend the latest released doc's covered range to this release"
-                          onClick={() =>
-                            api
-                              .coverRelease(slug, releasedDocs[0].version, sw.name, rel.version)
-                              .then(() => { toast(`${releasedDocs[0].version} now covers ${sw.name} ${rel.version}`); reload(); })
-                              .catch((e) => toast(e.message, 'err'))
-                          }
+                          title="Extend the released doc's covered range to this release"
+                          onClick={() => link(releasedDoc, sw.name, rel.version)}
                         >
-                          Link to {releasedDocs[0].version}
+                          Link to {releasedDoc.version}
                         </button>
                       )}
-                      {!doc && rel.manualAffecting && (
+                      {!doc && openDraft && (
+                        <button
+                          className="btn btn-sm"
+                          title={`Make ${openDraft.version} the manual for ${sw.name} ${rel.version}`}
+                          onClick={() => link(openDraft, sw.name, rel.version)}
+                        >
+                          Assign to {openDraft.version} ({openDraft.status})
+                        </button>
+                      )}
+                      {!doc && rel.manualAffecting && !openDraft && (
                         <span className="hint">needs a new doc version</span>
                       )}
                     </td>
