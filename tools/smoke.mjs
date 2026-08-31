@@ -339,6 +339,34 @@ try {
   ok((await req('GET', '/api/inbox')).files.length === 1, 'imported file left the inbox');
   const impApi = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets/import', { names: ['CBW Operation-2.png'] });
   ok(impApi[0].name === 'cbw-operation-2.png' && (await req('GET', '/api/inbox')).files.length === 0, 'API import from inbox empties it');
+
+  // chunked base64 upload → inbox: parts in any order, per-part re-encoding caught, corrupt assembly discarded
+  const partsOf = (b64, n) => {
+    const len = Math.ceil(b64.length / n / 4) * 4;
+    const out = [];
+    for (let i = 0; i < b64.length; i += len) out.push(b64.slice(i, i + len));
+    return out;
+  };
+  const chunks = partsOf(png1x1, 3);
+  const partCall = (id, i, data, extra = {}) =>
+    mcpCall({
+      jsonrpc: '2.0', id: 850 + i, method: 'tools/call',
+      params: { name: 'upload_photo_part', arguments: { upload_id: id, name: 'Chunked Photo.png', part: i, parts: chunks.length, data_base64: data, ...extra } },
+    });
+  const p2 = JSON.parse((await partCall('smoke-chunk', 2, chunks[1])).content[0].text);
+  ok(p2.complete === false && p2.missing.join() === '1,3', 'upload_photo_part accepts parts out of order and reports the missing ones');
+  const p3 = await partCall('smoke-chunk', 3, chunks[2]);
+  const p1 = JSON.parse((await partCall('smoke-chunk', 1, chunks[0])).content[0].text);
+  ok(!p3.isError && p1.complete === true && p1.inbox === 'Chunked Photo.png' && p1.width === 1 && /import_local_files/.test(p1.next), 'last part assembles, validates and lands the file in the inbox');
+  ok((await req('GET', '/api/inbox')).files.some((f) => f.name === 'Chunked Photo.png' && f.complete === true), 'assembled file is listed in the inbox');
+  await req('DELETE', '/api/inbox/Chunked%20Photo.png');
+  const padded = await partCall('smoke-pad', 1, `${chunks[0].slice(0, -2)}==`);
+  ok(padded.isError === true && /padding/.test(padded.content[0].text), 'upload_photo_part rejects parts that were base64-encoded separately');
+  const truncChunks = partsOf(truncated, 2);
+  await mcpCall({ jsonrpc: '2.0', id: 860, method: 'tools/call', params: { name: 'upload_photo_part', arguments: { upload_id: 'smoke-trunc', name: 'cut.png', part: 1, parts: 2, data_base64: truncChunks[0] } } });
+  const truncDone = await mcpCall({ jsonrpc: '2.0', id: 861, method: 'tools/call', params: { name: 'upload_photo_part', arguments: { upload_id: 'smoke-trunc', name: 'cut.png', part: 2, parts: 2, data_base64: truncChunks[1] } } });
+  ok(truncDone.isError === true && /truncated/.test(truncDone.content[0].text) && /discarded/.test(truncDone.content[0].text), 'a truncated assembly is rejected and its parts discarded');
+  ok((await req('GET', '/api/inbox')).files.length === 0, 'nothing from the failed chunked uploads reached the inbox');
   ok((await req('GET', '/api/modules/starting-panel/assets')).some((a) => a.name === 'cbw-operation.png'), 'imported inbox file is a module asset');
   const del = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'delete_asset', arguments: { slug: 'starting-panel', version: 'A1.0', name: 'cbw-operation.png' } } });
   ok(!del.isError && JSON.parse(del.content[0].text).removed === true, 'MCP delete_asset');

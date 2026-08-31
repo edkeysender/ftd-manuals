@@ -99,6 +99,72 @@ export async function deleteInbox(name) {
   await fs.rm(p, { force: true });
 }
 
+/* ---------- chunked uploads: base64 in parts, assembled into the inbox ---------- */
+const PARTS_DIR = path.join(INBOX_DIR, '.parts');
+const partDir = (id) => path.join(PARTS_DIR, inboxName(id).replace(/\s+/g, '_'));
+export const PART_MAX_CHARS = 12000;
+
+/**
+ * Store one base64 part of a file (MCP upload_photo_part). Parts may arrive in
+ * any order; when every part is present the string is decoded, validated like
+ * any other asset and dropped into the inbox under `name` — from there the
+ * normal import_local_files path takes over. A failed validation discards the
+ * parts so a corrupt file never lingers.
+ */
+export async function putPart({ id, name, part, parts, data, abort }) {
+  if (!id) throw new Error('upload_id is required');
+  const dir = partDir(id);
+  if (abort) {
+    await fs.rm(dir, { recursive: true, force: true });
+    return { upload_id: id, aborted: true };
+  }
+  if (!name) throw new Error('name (file name with extension) is required');
+  part = Number(part);
+  parts = Number(parts);
+  if (!Number.isInteger(parts) || parts < 1 || parts > 500) throw new Error('parts must be an integer between 1 and 500');
+  if (!Number.isInteger(part) || part < 1 || part > parts) throw new Error(`part must be between 1 and ${parts}`);
+  const chunk = String(data || '').replace(/\s+/g, '');
+  if (!chunk) throw new Error(`part ${part} is empty`);
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(chunk)) throw new Error(`part ${part} is not valid base64 (only A–Z a–z 0–9 + / and trailing =)`);
+  if (chunk.length > PART_MAX_CHARS) {
+    throw new Error(`part ${part} is ${chunk.length} characters — keep parts to about 6000 characters so each one arrives intact`);
+  }
+  if (part < parts && chunk.includes('=')) {
+    throw new Error(
+      `part ${part} carries '=' padding but is not the last part — encode the WHOLE file once and split that one base64 string; do not encode each part separately`
+    );
+  }
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, `${part}.b64`), chunk);
+  const have = (await fs.readdir(dir))
+    .map((f) => /^(\d+)\.b64$/.exec(f))
+    .filter(Boolean)
+    .map((m) => Number(m[1]))
+    .sort((a, b) => a - b);
+  const missing = [];
+  for (let i = 1; i <= parts; i++) if (!have.includes(i)) missing.push(i);
+  if (missing.length) return { upload_id: id, complete: false, received: have, missing };
+  let b64 = '';
+  for (let i = 1; i <= parts; i++) b64 += await fs.readFile(path.join(dir, `${i}.b64`), 'utf8');
+  const buffer = Buffer.from(b64, 'base64');
+  try {
+    const [saved] = await saveToInbox([{ name, buffer }]);
+    await fs.rm(dir, { recursive: true, force: true });
+    const info = sniff(buffer);
+    return {
+      upload_id: id,
+      complete: true,
+      inbox: saved.name,
+      size: buffer.length,
+      ...(info ? { type: info.type, width: info.width, height: info.height } : {}),
+      next: `import_local_files with paths: ["${saved.name}"]`,
+    };
+  } catch (e) {
+    await fs.rm(dir, { recursive: true, force: true });
+    throw new Error(`${e.message} — all ${parts} parts (${b64.length} base64 characters) were discarded; check every part is complete and resend them`);
+  }
+}
+
 async function exists(p) {
   return fs
     .access(p)

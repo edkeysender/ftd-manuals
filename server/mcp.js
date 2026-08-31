@@ -277,7 +277,7 @@ export const TOOLS = [
   {
     name: 'upload_photo',
     description:
-      "Upload a SMALL image (a few KB) from base64 data into the module draft's assets folder. Do not use it for real photos — tens of thousands of base64 characters cannot be emitted reliably in one call, and the server now REJECTS truncated or mislabelled files. Use the inbox + import_local_files (no bytes through the model), upload_photo_from_url (public URL) or generate_illustration instead. Returns the served URL.",
+      "Upload a SMALL image (a few KB) from base64 data into the module draft's assets folder. Do not use it for real photos — tens of thousands of base64 characters cannot be emitted reliably in one call, and the server now REJECTS truncated or mislabelled files. Use the inbox + import_local_files (no bytes through the model), upload_photo_from_url (public URL), upload_photo_part (base64 split into ~6000-character parts) or generate_illustration instead. Returns the served URL.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -288,6 +288,24 @@ export const TOOLS = [
       required: ['slug', 'version', 'name', 'data_base64'],
     },
     annotations: { title: 'Upload photo (base64)', ...RW },
+  },
+  {
+    name: 'upload_photo_part',
+    description:
+      "Upload a bigger image (tens of KB) in base64 PARTS when it cannot come from the inbox or a public URL. Encode the WHOLE file once, split that single base64 string into pieces of about 6000 characters (never encode each piece separately), and call this once per piece with the same upload_id and part = 1…parts. Parts may arrive in any order; each call reports which are still missing. When the last one lands, the file is decoded, validated (complete PNG/JPEG/…) and placed in the console INBOX under `name` — then call import_local_files with that name. A failed validation discards every part. Pass abort: true to drop a half-sent upload.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        upload_id: { type: 'string', description: 'Any label unique to this file, e.g. "cb-panel-1"' },
+        name: { type: 'string', description: 'File name with extension, e.g. "circuit-breaker-panel.png"' },
+        part: { type: 'integer', description: 'This part number, 1-based' },
+        parts: { type: 'integer', description: 'Total number of parts' },
+        data_base64: { type: 'string', description: 'This slice of the base64 string (about 6000 characters)' },
+        abort: { type: 'boolean', description: 'Discard the parts received so far for this upload_id' },
+      },
+      required: ['upload_id', 'name'],
+    },
+    annotations: { title: 'Upload photo in parts', ...RW },
   },
   {
     name: 'upload_photo_from_url',
@@ -512,6 +530,8 @@ async function callTool(name, args) {
       if (!buffer.length) throw new Error('data_base64 is empty or invalid');
       return await store.saveAssets(args.slug, args.version, [{ name: args.name, buffer }]);
     }
+    case 'upload_photo_part':
+      return await inbox.putPart({ id: args.upload_id, name: args.name, part: args.part, parts: args.parts, data: args.data_base64, abort: args.abort });
     case 'import_local_files': {
       const files = [];
       const fromInbox = [];
