@@ -121,13 +121,14 @@ function colorInfo(str, cs) {
   if (/^\/DeviceRGB$|^\/CalRGB$/.test(cs)) return { n: 3 };
   if (/^\/DeviceGray$|^\/CalGray$/.test(cs)) return { n: 1 };
   if (/^\/DeviceCMYK$/.test(cs)) return { n: 4 };
-  let m = /^\[\s*\/ICCBased\s+(\d+\s+\d+\s+R)/.exec(cs);
+  let m = /^\[\s*\/ICCBased\s*(\d+\s+\d+\s+R)/.exec(cs);
   if (m) {
     const obj = resolveObj(str, m[1]) || '';
-    const n = +(/\/N\s+(\d)/.exec(obj) || [])[1] || 3;
+    const n = +(/\/N\s*(\d)/.exec(obj) || [])[1] || 3;
     return { n };
   }
-  m = /^\[\s*\/Indexed\s+(\/[A-Za-z]+|\[[^\]]*\]|\d+\s+\d+\s+R)\s+(\d+)\s+(<[0-9A-Fa-f\s]*>|\([^)]*\)|\d+\s+\d+\s+R)/.exec(cs);
+  // names may follow each other without whitespace: [/Indexed/DeviceRGB 234 38 0 R]
+  m = /^\[\s*\/Indexed\s*(\/[A-Za-z]+|\[[^\]]*\]|\d+\s+\d+\s+R)\s*(\d+)\s*(<[0-9A-Fa-f\s]*>|\([^)]*\)|\d+\s+\d+\s+R)/.exec(cs);
   if (m) {
     const base = colorInfo(str, m[1]);
     if (!base) return null;

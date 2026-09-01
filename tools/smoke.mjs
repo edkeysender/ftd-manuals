@@ -431,21 +431,26 @@ try {
   pdfParts.push(Buffer.from(`2 0 obj << /Type /XObject /Subtype /Image /Width 64 /Height 64 /ColorSpace 4 0 R /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors 3 /Columns 64 >> /Length 5 0 R >> stream\n`), flate, Buffer.from('\nendstream endobj\n'));
   pdfParts.push(Buffer.from(`3 0 obj << /Type /XObject /Subtype /Image /Width 80 /Height 60 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg80.length} >> stream\n`), jpg80, Buffer.from('\nendstream endobj\n')); // duplicate → deduplicated
   pdfParts.push(Buffer.from('4 0 obj /DeviceRGB endobj\n'), Buffer.from(`5 0 obj ${flate.length} endobj\n`));
-  pdfParts.push(Buffer.from('6 0 obj << /Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 256 >> stream\n'), Buffer.alloc(256), Buffer.from('\nendstream endobj\n%%EOF\n')); // tiny → skipped
+  pdfParts.push(Buffer.from('6 0 obj << /Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 256 >> stream\n'), Buffer.alloc(256), Buffer.from('\nendstream endobj\n')); // tiny → skipped
+  const idxFlate = zlib.deflateSync(Buffer.alloc(64 * 64, 1)); // every pixel = palette entry 1
+  pdfParts.push(Buffer.from(`7 0 obj\n<<\n/Type/XObject\n/Subtype/Image\n/Length ${idxFlate.length}\n/Filter/FlateDecode\n/Width 64\n/Height 64\n/BitsPerComponent 8\n/ColorSpace[/Indexed/DeviceRGB 1 8 0 R]\n>>\nstream\n`), idxFlate, Buffer.from('\nendstream\nendobj\n')); // PDFsharp style: no spaces between names, palette in a stream
+  pdfParts.push(Buffer.from('8 0 obj << /Length 6 >> stream\n'), Buffer.from([0, 0, 0, 0x12, 0x34, 0x56]), Buffer.from('\nendstream endobj\n%%EOF\n'));
   const pdf = Buffer.concat(pdfParts);
   const dropPdf = await req('POST', '/api/inbox', { files: [{ name: 'Assembly spec.pdf', dataBase64: pdf.toString('base64') }] });
   const pdfNames = dropPdf.map((f) => f.name);
-  ok(pdfNames.includes('Assembly spec.pdf') && pdfNames.includes('assembly-spec-1.jpg') && pdfNames.includes('assembly-spec-2.png') && pdfNames.length === 3,
-    `dropping a PDF keeps it and extracts its pictures (JPEG as-is, Flate+predictor → PNG, duplicates and icons skipped): ${pdfNames.join(', ')}`);
+  ok(pdfNames.includes('Assembly spec.pdf') && pdfNames.includes('assembly-spec-1.jpg') && pdfNames.includes('assembly-spec-2.png') && pdfNames.includes('assembly-spec-4.png') && pdfNames.length === 4,
+    `dropping a PDF keeps it and extracts its pictures (JPEG as-is, Flate+predictor → PNG, Indexed palette → PNG, duplicates and icons skipped): ${pdfNames.join(', ')}`);
   const inbNow = (await req('GET', '/api/inbox')).files;
   ok(inbNow.find((f) => f.name === 'assembly-spec-1.jpg')?.width === 80 && inbNow.find((f) => f.name === 'assembly-spec-2.png')?.width === 64 && inbNow.find((f) => f.name === 'fcom-chapter-3-image1.png')?.complete === true, 'extracted pictures are complete and correctly sized');
+  const idxPng = await sharp(Buffer.from(await (await fetch(BASE + '/api/inbox/assembly-spec-4.png')).arrayBuffer())).raw().toBuffer({ resolveWithObject: true });
+  ok(idxPng.info.width === 64 && idxPng.data[0] === 0x12 && idxPng.data[1] === 0x34 && idxPng.data[2] === 0x56, 'Indexed palette (no-space names, palette stream) expanded to the right colours');
   const impDoc = await mcpTool(871, 'import_local_files', { slug: 'starting-panel', version: 'A1.0', paths: ['fcom-chapter-3-image1.png', 'assembly-spec-2.png'] });
   ok(!(impDoc instanceof Error) && impDoc.length === 2 && impDoc[1].url.endsWith('/assembly-spec-2.png'), 'extracted pictures import like any inbox file');
   const viaAssets = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', { files: [{ name: 'Wiring notes.docx', dataBase64: docx.toString('base64') }] });
   ok(viaAssets.length === 1 && viaAssets[0].name === 'wiring-notes-image1.png', 'a Word file dropped on the Assets tab lands as its pictures (no text sidecar in assets)');
   const emptyDoc = await req('POST', '/api/inbox', { files: [{ name: 'empty.docx', dataBase64: storeZip([['word/document.xml', Buffer.from('<w:document/>')]]).toString('base64') }] }).catch((e) => e);
   ok(emptyDoc instanceof Error && /no pictures found/.test(emptyDoc.message), 'a document without pictures is reported');
-  for (const n of ['fcom-chapter-3.txt', 'Assembly spec.pdf', 'assembly-spec-1.jpg']) await req('DELETE', `/api/inbox/${encodeURIComponent(n)}`);
+  for (const n of ['fcom-chapter-3.txt', 'Assembly spec.pdf', 'assembly-spec-1.jpg', 'assembly-spec-4.png']) await req('DELETE', `/api/inbox/${encodeURIComponent(n)}`);
   ok((await req('GET', '/api/inbox')).files.length === 0, 'inbox cleaned up after the document tests');
   ok((await req('GET', '/api/modules/starting-panel/assets')).some((a) => a.name === 'cbw-operation.png'), 'imported inbox file is a module asset');
   const del = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'delete_asset', arguments: { slug: 'starting-panel', version: 'A1.0', name: 'cbw-operation.png' } } });
