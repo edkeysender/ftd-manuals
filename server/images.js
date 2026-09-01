@@ -167,7 +167,9 @@ export async function resizeSameFormat(buffer, width) {
   const out = await sharp(buffer, { animated: false })
     .rotate()
     .resize({ width: Math.max(16, Math.min(2000, width)), withoutEnlargement: true })
-    .toFormat(fmt, fmt === 'jpeg' ? { quality: 82, mozjpeg: true } : {})
+    .toFormat(fmt, fmt === 'jpeg' ? { quality: 82, mozjpeg: true } : fmt === 'png' ? { palette: true, quality: 90, compressionLevel: 9 } : {})
     .toBuffer();
+  // a resized thumbnail must never weigh more than the original
+  if (out.length >= buffer.length) return null;
   return { buffer: out, mimeType: fmt === 'jpeg' ? 'image/jpeg' : `image/${fmt}` };
 }
