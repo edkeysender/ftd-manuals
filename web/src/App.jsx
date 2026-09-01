@@ -40,12 +40,11 @@ export default function App() {
             <span className="brand-name">{t('Documentation Console')}</span>
           </div>
           <nav>
+            <NavLink to="/manuals">{t('Manuals')}</NavLink>
             <NavLink to="/" end>
               {t('Modules')}
             </NavLink>
             <NavLink to="/software">{t('Software')}</NavLink>
-            <NavLink to="/manuals">{t('Manuals')}</NavLink>
-            <NavLink to="/settings">{t('Settings')}</NavLink>
           </nav>
           <div className="sync-state">
             {status ? (
@@ -59,6 +58,9 @@ export default function App() {
               t('connecting…')
             )}
           </div>
+          <nav className="topbar-tools">
+            <NavLink to="/settings">{t('Settings')}</NavLink>
+          </nav>
           <LanguageSwitch />
         </header>
         {/* key: remount the page on a language switch so every string re-renders */}
