@@ -20,6 +20,8 @@ import {
 import { handleMcpRequest, TOOLS as MCP_TOOLS } from './mcp.js';
 import { GitTransientError } from './git.js';
 import * as inbox from './inbox.js';
+import * as images from './images.js';
+import * as sources from './sources.js';
 import { templateChecklist, checklistBodyHtml, fatProtocolBodyHtml, checklistExportHtml, CHECKLIST_CSS } from './checklist.js';
 
 const PORT = process.env.PORT || 5179;
@@ -362,6 +364,20 @@ app.get('/api/modules/:slug/assets/:file', async (req, res) => {
   }
   if (!buf) return res.status(404).json({ error: 'Asset not found' });
   const ext = path.extname(req.params.file).toLowerCase();
+  // ?w=320 → resized variant (same format); falls back to the original for SVG/PDF
+  const w = parseInt(req.query.w, 10);
+  if (w > 0) {
+    try {
+      const r = await images.resizeSameFormat(buf, w);
+      if (r) {
+        res.set('Content-Type', r.mimeType);
+        res.set('Cache-Control', 'private, max-age=300');
+        return res.send(r.buffer);
+      }
+    } catch (e) {
+      console.error('asset resize failed:', e.message);
+    }
+  }
   res.set('Content-Type', MIME[ext] || 'application/octet-stream');
   res.set('Cache-Control', 'no-cache');
   res.send(buf);
@@ -477,12 +493,21 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
   const lastUser = [...(messages || [])].reverse().find((m) => m.role === 'user');
   for (const url of ai.extractUrls(lastUser?.content || '')) {
     try {
-      const page = await ai.fetchPage(url);
+      let page;
+      if (sources.isConfluenceUrl(url)) {
+        // Confluence pages are fetched with the console's Atlassian credentials — text and attachments
+        const cp = await sources.fetchConfluencePage(url);
+        page = { url: cp.url, title: cp.title, text: cp.text, images: cp.figures.filter((f) => f.url).map((f) => ({ url: f.url, alt: f.alt || f.filename || '', name: f.filename })) };
+      } else {
+        page = await ai.fetchPage(url);
+      }
       ctx.pages.push(page);
-      const downloads = await Promise.allSettled(page.images.slice(0, 8).map((img) => ai.downloadImage(img.url)));
+      const downloads = await Promise.allSettled(
+        page.images.slice(0, 12).map((img) => ai.downloadImage(img.url, { headers: sources.authHeadersFor(img.url), minBytes: img.name ? 1 : 4096 }))
+      );
       downloads.forEach((r, i) => {
         if (r.status === 'fulfilled' && r.value) {
-          uploads.push({ ...r.value, alt: page.images[i].alt, from: url });
+          uploads.push({ ...r.value, name: page.images[i].name || r.value.name, alt: page.images[i].alt, from: url });
         }
       });
     } catch (e) {

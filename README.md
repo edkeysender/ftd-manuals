@@ -21,8 +21,12 @@ npm start          # serves UI + API on :5179
 `.env` (kept out of git):
 
 ```
-OPENAI_API_KEY=…   # enables the AI assistant + AI first drafts
+OPENAI_API_KEY=…   # enables the AI assistant, AI first drafts, translations, describe_asset (vision)
 OPENAI_MODEL=gpt-5 # optional override
+ATLASSIAN_EMAIL=you@ftd.aero           # + token: Confluence pages/attachments fetched server-side
+ATLASSIAN_API_TOKEN=…                  # https://id.atlassian.com/manage-profile/security/api-tokens
+FTD_URL_CREDENTIALS=host=basic:user:pass;other.host=bearer:TOKEN   # optional, other protected image hosts
+FTD_PUBLIC_URL=https://…trycloudflare.com   # optional: base of links handed to users (request_upload)
 ```
 
 ## How documents are stored
@@ -69,6 +73,20 @@ tagged `(PL)`, AI chat answers in Polish). When the English body changes the tra
 until re-translated. Sections 1–3 and the assembled-manual frame render in the chosen language; a manual can
 be viewed/exported in PL (`?lang=pl`) with untranslated chapters falling back to English and flagged. MCP:
 `lang` on `get_doc` and the edit tools, `translate_doc`.
+
+### Images over MCP — bytes never pass through the model
+
+Agents **see** assets (`get_asset` returns a downscaled JPEG as image content, `list_assets {thumbnails}`
+a strip of thumbnails, assets are also MCP resources `ftd://modules/<slug>/assets/<file>`) and **fetch**
+them server-side: `import_from_confluence` reads a Confluence page (text with `[figure N]` markers) and
+downloads its pictures straight into a draft using `ATLASSIAN_EMAIL` / `ATLASSIAN_API_TOKEN` from `.env`;
+`upload_photo_from_url` uses the same credentials for `*.atlassian.net` and `FTD_URL_CREDENTIALS`
+(`host=basic:user:pass;host=bearer:TOKEN`) for other protected hosts; `request_upload` hands the user the
+Assets-tab drop link for files on their own device (then `list_inbox` + `import_local_files`).
+`attach_figure` inserts a proper `<figure>` after a phrase in a section and stamps `applies_to`;
+`describe_asset` asks the vision model for caption / alt / visible text / which unit is shown. The asset
+route serves `?w=<px>` resized variants (thumbnails in the Assets tab). Pasting a Confluence URL into the
+editor's AI chat fetches it the same way.
 
 ### Review comments
 

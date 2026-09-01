@@ -5,6 +5,8 @@
  * message that says what is wrong.
  */
 
+import sharp from 'sharp';
+
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|pdf)$/i;
 
 function pngInfo(b) {
@@ -124,3 +126,46 @@ export function validateAsset(name, buffer) {
 }
 
 export const isImageName = (name) => /\.(png|jpe?g|gif|webp|svg)$/i.test(String(name));
+
+/* ------------------------------------------------------------------ */
+/* Resizing (sharp) — previews the model can look at, thumbnails for   */
+/* the UI, and the ?w= variant of the asset route.                     */
+/* ------------------------------------------------------------------ */
+
+const RASTERISABLE = new Set(['png', 'jpeg', 'gif', 'webp', 'svg']);
+
+/**
+ * Downscaled JPEG of an asset for the model / thumbnails. Returns
+ * {buffer, mimeType, width, height, original:{type,width,height,bytes}} or null
+ * when the file cannot be rasterised (PDF, unknown bytes).
+ */
+export async function preview(buffer, { max = 768, quality = 78 } = {}) {
+  const info = sniff(buffer);
+  if (!info || !RASTERISABLE.has(info.type)) return null;
+  const out = await sharp(buffer, { animated: false, density: 144 })
+    .rotate()
+    .resize({ width: max, height: max, fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality, mozjpeg: true })
+    .toBuffer({ resolveWithObject: true });
+  return {
+    buffer: out.data,
+    mimeType: 'image/jpeg',
+    width: out.info.width,
+    height: out.info.height,
+    original: { type: info.type, width: info.width, height: info.height, bytes: buffer.length },
+  };
+}
+
+/** Same-format (PNG keeps transparency) resize to `width` px for the asset route; null when not resizable. */
+export async function resizeSameFormat(buffer, width) {
+  const info = sniff(buffer);
+  if (!info || !['png', 'jpeg', 'webp', 'gif'].includes(info.type)) return null;
+  const fmt = info.type === 'gif' ? 'png' : info.type;
+  const out = await sharp(buffer, { animated: false })
+    .rotate()
+    .resize({ width: Math.max(16, Math.min(2000, width)), withoutEnlargement: true })
+    .toFormat(fmt, fmt === 'jpeg' ? { quality: 82, mozjpeg: true } : {})
+    .toBuffer();
+  return { buffer: out, mimeType: fmt === 'jpeg' ? 'image/jpeg' : `image/${fmt}` };
+}

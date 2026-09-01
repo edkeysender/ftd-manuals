@@ -328,9 +328,39 @@ const EXT_BY_TYPE = {
   'image/svg+xml': '.svg',
 };
 
-/** Download one image; returns {name, buffer} or null (non-image, icon-sized, or oversized). */
-export async function downloadImage(url, { minBytes = 4096 } = {}) {
-  const res = await fetch(url, { headers: FETCH_HEADERS, redirect: 'follow', signal: AbortSignal.timeout(20000) });
+/**
+ * Describe a picture with the vision model so the agent (and the Assets tab) get a
+ * caption, alt text and which hardware unit it shows — without the picture ever
+ * passing through the MCP client. Returns {kind, caption, alt, description, shows, suggestedName}.
+ */
+export async function describeImage({ buffer, mimeType = 'image/jpeg', module, name = '' }) {
+  const units = (module?.hardwareItems || []).map((h) => `${h.id}: ${h.name}${h.model ? ` (${[h.manufacturer, h.model].filter(Boolean).join(' ')})` : ''}`);
+  const prompt = `You describe pictures for an FTD.aero flight-simulator maintenance/operation manual. Module: "${module?.name || '?'}"${
+    units.length ? `. Hardware units of this module (id: name): ${units.join('; ')}` : ''
+  }. File name: ${name || '—'}.
+Return JSON: {"kind": "photo"|"screenshot"|"drawing"|"diagram"|"other", "caption": "<figure caption in operating-manual English, one sentence, no marketing>", "alt": "<short alt text>", "description": "<what is visible: components, labels, connectors, on-screen text — 2-4 sentences, facts only>", "shows": [<ids of the hardware units visible, from the list, or empty>], "suggestedName": "<kebab-case file name with extension>", "text": "<any readable on-screen or label text, verbatim, or empty>"}.`;
+  const raw = await callOpenAI(
+    [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${buffer.toString('base64')}`, detail: 'high' } },
+        ],
+      },
+    ],
+    { json: true }
+  );
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { kind: 'other', caption: '', alt: '', description: raw, shows: [], suggestedName: name, text: '' };
+  }
+}
+
+/** Download one image; returns {name, buffer} or null (non-image, icon-sized, or oversized). `headers` adds credentials for protected hosts. */
+export async function downloadImage(url, { minBytes = 4096, headers = {} } = {}) {
+  const res = await fetch(url, { headers: { ...FETCH_HEADERS, ...headers }, redirect: 'follow', signal: AbortSignal.timeout(20000) });
   if (!res.ok) return null;
   const type = (res.headers.get('content-type') || '').split(';')[0].trim();
   if (!type.startsWith('image/')) return null;
