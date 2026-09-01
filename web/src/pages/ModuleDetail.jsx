@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64 } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast } from '../App.jsx';
@@ -15,7 +15,8 @@ const docLabel = (d) => `${t(manualType(d.manual).short)} ${d.version}`;
 export default function ModuleDetail() {
   const { slug } = useParams();
   const [data, setData] = useState(null);
-  const [tab, setTab] = useState('docs');
+  const [params] = useSearchParams(); // ?tab=assets — the drop link MCP agents hand to users
+  const [tab, setTab] = useState(['docs', 'hardware', 'assets', 'history', 'software'].includes(params.get('tab')) ? params.get('tab') : 'docs');
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -795,7 +796,7 @@ function AssetsTab({ slug, docs, module, onChanged }) {
           {assets.map((a) => (
             <div className={`asset-card ${a.stale?.length ? 'stale' : ''}`} key={a.name}>
               {/\.(png|jpe?g|gif|webp|svg)$/i.test(a.name) ? (
-                <img src={a.url} alt={a.name} loading="lazy" />
+                <img src={`${a.url}?w=360`} alt={a.name} loading="lazy" />
               ) : (
                 <div className="asset-file">{a.name.split('.').pop().toUpperCase()}</div>
               )}

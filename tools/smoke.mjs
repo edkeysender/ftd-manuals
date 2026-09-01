@@ -334,11 +334,29 @@ try {
 
   // asset validation: truncated / mislabelled files are rejected everywhere
   const truncated = Buffer.from(png1x1, 'base64').subarray(0, 40).toString('base64');
-  const badUp = await mcpCall({
-    jsonrpc: '2.0', id: 80, method: 'tools/call',
-    params: { name: 'upload_photo', arguments: { slug: 'starting-panel', version: 'A1.0', name: 'broken.png', data_base64: truncated } },
-  });
-  ok(badUp.isError === true && /truncated/.test(badUp.content[0].text), 'MCP upload_photo rejects a truncated PNG');
+  const toolNames = (await mcpCall({ jsonrpc: '2.0', id: 80, method: 'tools/list' })).tools.map((t) => t.name);
+  ok(!toolNames.includes('upload_photo') && !toolNames.includes('upload_photo_part') && ['get_asset', 'describe_asset', 'attach_figure', 'request_upload'].every((n) => toolNames.includes(n)),
+    'MCP: base64 upload tools are gone, image tools are there');
+  // the agent can LOOK at assets: image content blocks
+  const ga = await mcpCall({ jsonrpc: '2.0', id: 81, method: 'tools/call', params: { name: 'get_asset', arguments: { slug: 'starting-panel', name: 'panel-photo.png' } } });
+  const gaImg = ga.content.find((c) => c.type === 'image');
+  const gaMeta = JSON.parse(ga.content.find((c) => c.type === 'text').text);
+  ok(!ga.isError && gaImg && gaImg.mimeType === 'image/jpeg' && gaImg.data.length > 100 && gaMeta.name === 'panel-photo.png' && gaMeta.original?.type === 'png', 'MCP get_asset returns a JPEG preview + metadata');
+  const gaFull = await mcpCall({ jsonrpc: '2.0', id: 82, method: 'tools/call', params: { name: 'get_asset', arguments: { slug: 'starting-panel', name: 'panel-photo.png', size: 'full' } } });
+  ok(gaFull.content.find((c) => c.type === 'image')?.mimeType === 'image/png' && gaFull.content.find((c) => c.type === 'image').data === png1x1, 'get_asset size=full returns the original bytes');
+  const laThumbs = await mcpCall({ jsonrpc: '2.0', id: 83, method: 'tools/call', params: { name: 'list_assets', arguments: { slug: 'starting-panel', thumbnails: true } } });
+  ok(!laThumbs.isError && laThumbs.content.filter((c) => c.type === 'image').length >= 1 && JSON.parse(laThumbs.content[0].text).some((a) => a.name === 'panel-photo.png'), 'list_assets thumbnails=true carries a picture per asset');
+  const resized = await fetch(BASE + uploaded[0].url + '?w=64');
+  ok(resized.status === 200 && resized.headers.get('content-type') === 'image/png', 'asset route serves a resized same-format variant with ?w=');
+  const resList = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'resources/list', params: {} });
+  const resUri = 'ftd://modules/starting-panel/assets/panel-photo.png';
+  ok(resList.resources.some((r) => r.uri === resUri && r.mimeType === 'image/png'), 'assets are listed as MCP resources');
+  const resRead = await mcpCall({ jsonrpc: '2.0', id: 85, method: 'resources/read', params: { uri: resUri } });
+  ok(resRead.contents?.[0]?.blob === png1x1 && resRead.contents[0].mimeType === 'image/png', 'resources/read returns the asset bytes');
+  const noVision = await mcpCall({ jsonrpc: '2.0', id: 86, method: 'tools/call', params: { name: 'describe_asset', arguments: { slug: 'starting-panel', name: 'panel-photo.png' } } });
+  ok(noVision.isError === true && /OPENAI_API_KEY/.test(noVision.content[0].text), 'describe_asset needs the vision model (clean error without a key)');
+  const upLink = JSON.parse((await mcpCall({ jsonrpc: '2.0', id: 89, method: 'tools/call', params: { name: 'request_upload', arguments: { slug: 'starting-panel' } } })).content[0].text);
+  ok(/\/#\/modules\/starting-panel\?tab=assets$/.test(upLink.url) && upLink.url.startsWith('http://localhost:' + PORT) && /list_inbox/.test(upLink.instructions), `request_upload hands out the Assets-tab link: ${upLink.url}`);
   const badApi = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', { files: [{ name: 'notreally.png', dataBase64: Buffer.from('hello world, not a png').toString('base64') }] }).catch((e) => e);
   ok(badApi instanceof Error && /not a PNG/.test(badApi.message), 'API upload rejects non-image bytes under an image name');
   const misnamed = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', { files: [{ name: 'photo.jpg', dataBase64: png1x1 }] }).catch((e) => e);
@@ -369,32 +387,7 @@ try {
   ok(impApi[0].name === 'cbw-operation-2.png' && (await req('GET', '/api/inbox')).files.length === 0, 'API import from inbox empties it');
 
   // chunked base64 upload → inbox: parts in any order, per-part re-encoding caught, corrupt assembly discarded
-  const partsOf = (b64, n) => {
-    const len = Math.ceil(b64.length / n / 4) * 4;
-    const out = [];
-    for (let i = 0; i < b64.length; i += len) out.push(b64.slice(i, i + len));
-    return out;
-  };
-  const chunks = partsOf(png1x1, 3);
-  const partCall = (id, i, data, extra = {}) =>
-    mcpCall({
-      jsonrpc: '2.0', id: 850 + i, method: 'tools/call',
-      params: { name: 'upload_photo_part', arguments: { upload_id: id, name: 'Chunked Photo.png', part: i, parts: chunks.length, data_base64: data, ...extra } },
-    });
-  const p2 = JSON.parse((await partCall('smoke-chunk', 2, chunks[1])).content[0].text);
-  ok(p2.complete === false && p2.missing.join() === '1,3', 'upload_photo_part accepts parts out of order and reports the missing ones');
-  const p3 = await partCall('smoke-chunk', 3, chunks[2]);
-  const p1 = JSON.parse((await partCall('smoke-chunk', 1, chunks[0])).content[0].text);
-  ok(!p3.isError && p1.complete === true && p1.inbox === 'Chunked Photo.png' && p1.width === 1 && /import_local_files/.test(p1.next), 'last part assembles, validates and lands the file in the inbox');
-  ok((await req('GET', '/api/inbox')).files.some((f) => f.name === 'Chunked Photo.png' && f.complete === true), 'assembled file is listed in the inbox');
-  await req('DELETE', '/api/inbox/Chunked%20Photo.png');
-  const padded = await partCall('smoke-pad', 1, `${chunks[0].slice(0, -2)}==`);
-  ok(padded.isError === true && /padding/.test(padded.content[0].text), 'upload_photo_part rejects parts that were base64-encoded separately');
-  const truncChunks = partsOf(truncated, 2);
-  await mcpCall({ jsonrpc: '2.0', id: 860, method: 'tools/call', params: { name: 'upload_photo_part', arguments: { upload_id: 'smoke-trunc', name: 'cut.png', part: 1, parts: 2, data_base64: truncChunks[0] } } });
-  const truncDone = await mcpCall({ jsonrpc: '2.0', id: 861, method: 'tools/call', params: { name: 'upload_photo_part', arguments: { upload_id: 'smoke-trunc', name: 'cut.png', part: 2, parts: 2, data_base64: truncChunks[1] } } });
-  ok(truncDone.isError === true && /truncated/.test(truncDone.content[0].text) && /discarded/.test(truncDone.content[0].text), 'a truncated assembly is rejected and its parts discarded');
-  ok((await req('GET', '/api/inbox')).files.length === 0, 'nothing from the failed chunked uploads reached the inbox');
+  ok((await req('GET', '/api/inbox')).files.length === 0, 'inbox is empty after the imports');
   ok((await req('GET', '/api/modules/starting-panel/assets')).some((a) => a.name === 'cbw-operation.png'), 'imported inbox file is a module asset');
   const del = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'delete_asset', arguments: { slug: 'starting-panel', version: 'A1.0', name: 'cbw-operation.png' } } });
   ok(!del.isError && JSON.parse(del.content[0].text).removed === true, 'MCP delete_asset');
@@ -546,8 +539,18 @@ try {
   ok(conflict instanceof Error && /give one or the other/.test(conflict.message), 'MCP rejects a key that contradicts manual');
   const noType = await call(104, 'get_doc', { slug: 'starting-panel', manual: 'software-technician' });
   ok(noType instanceof Error && /create_doc_version/.test(noType.message), 'MCP names the missing manual type and how to create it');
-  const techPhoto = await call(105, 'upload_photo', { slug: 'starting-panel', manual: 'technician', name: 'wiring.png', data_base64: png1x1 });
-  ok(!(techPhoto instanceof Error) && techPhoto[0].name === 'wiring.png', 'MCP upload_photo lands on the technician draft');
+  const techPhoto = await call(105, 'upload_photo_from_url', { slug: 'starting-panel', manual: 'technician', name: 'wiring.png', url: BASE + uploaded[0].url });
+  ok(!(techPhoto instanceof Error) && techPhoto[0].name === 'wiring.png', 'MCP upload_photo_from_url lands on the technician draft (by manual, no version)');
+  const att = await call(1050, 'attach_figure', { slug: 'starting-panel', manual: 'technician', asset: 'wiring.png', section: 'Configuration', after_text: 'Set the static IP.', caption: 'Wiring of the panel', applies_to: ['starting-panel'] });
+  ok(!(att instanceof Error) && att.doc.revision >= 2 && /<figure><img src="[^"]*wiring\.png" alt="Wiring of the panel"><figcaption>Wiring of the panel<\/figcaption><\/figure>/.test(att.figure), 'MCP attach_figure builds the figure');
+  const attBody = (await req('GET', '/api/modules/starting-panel/docs/technician:A1.0')).content;
+  const ipIdx = attBody.indexOf('Set the static IP.');
+  const figIdx = attBody.indexOf('<figure><img src="/api/modules/starting-panel/assets/wiring.png"');
+  const nextH2 = attBody.indexOf('<h2>', ipIdx);
+  ok(ipIdx > 0 && figIdx > ipIdx && figIdx < nextH2, 'attach_figure placed the figure right after the paragraph with after_text, inside the section');
+  ok((await req('GET', '/api/modules/starting-panel/assets')).find((a) => a.name === 'wiring.png').meta.appliesTo.join() === 'starting-panel', 'attach_figure stamped applies_to');
+  const attBad = await call(1051, 'attach_figure', { slug: 'starting-panel', manual: 'technician', asset: 'wiring.png', section: 'Configuration', after_text: 'no such phrase', caption: 'x' });
+  ok(attBad instanceof Error && /not found in section/.test(attBad.message), 'attach_figure reports an after_text that is not in the section');
   const techAssets = await call(106, 'get_doc', { slug: 'starting-panel', manual: 'technician', include_assets: true });
   ok(techAssets.assets.some((a) => a.name === 'wiring.png' && a.meta?.addedIn === 'A1.0') && techAssets.doc.key === 'technician:A1.0', 'asset stamped from the technician doc, visible module-wide');
   const techFig = await call(107, 'insert_into_section', { slug: 'starting-panel', manual: 'technician', section: 'Installation', html: `<figure><img src="${techAssets.assets.find((a) => a.name === 'wiring.png').url}" alt="Wiring"><figcaption>Wiring</figcaption></figure>` });

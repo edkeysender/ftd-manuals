@@ -62,6 +62,14 @@ The functional spec lives in this file's history and in the Modules spec provide
   doc version is released for it (orange dot on the modules list).
 - Manual tone: operating-manual English, present tense, numbered procedures with expected indication,
   warnings/notes as admonitions, no invented facts — use `TODO(author): …` markers.
+- Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
+  `list_assets {thumbnails}`, MCP resources `ftd://modules/<slug>/assets/<file>`), fetch server-side
+  (`upload_photo_from_url`; optional per-host credentials `FTD_URL_CREDENTIALS` in `server/sources.js`), or
+  hand the user the Assets-tab drop link (`request_upload` → inbox → `import_local_files`). The console never
+  logs into Confluence/Jira itself — the agent reads those through its own connector and pictures come via
+  the inbox. `attach_figure` places `<figure>`s; `describe_asset` is the vision model. Resizing is `sharp`
+  (`server/images.js` `preview`/`resizeSameFormat`, asset route `?w=`). There is no base64 upload tool any
+  more — do not add one.
 - Illustrations: one house style, **Technical Aviation Manual Line-Art** (`server/illustrate.js`, editable in
   Settings → `settings/illustration-style.md`, plus **style exemplar images** in `settings/illustration-style/`
   that are sent to the image model with every photo — they, not the text, define the look). Default output is

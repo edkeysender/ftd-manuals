@@ -6,12 +6,14 @@
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema, ListResourcesRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import * as store from './store.js';
 import * as ai from './ai.js';
 import * as illustrate from './illustrate.js';
+import * as images from './images.js';
+import * as sources from './sources.js';
 import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf, parseDocKey, docKey, LANGUAGES, DEFAULT_LANG, langOf } from './docgen.js';
 import { templateChecklist } from './checklist.js';
 import * as inbox from './inbox.js';
@@ -110,8 +112,8 @@ export const TOOLS = [
   {
     name: 'list_assets',
     description:
-      "List the files in a module's assets folder with their served URLs (use these URLs in <img src>). Each entry carries `meta` — the version stamp taken when the file was added (doc version, newest software release per linked software, hardware unit versions, appliesTo hardware ids; null for files added before stamping) — and `stale`: reasons the picture may be out of date (a newer manual-affecting software release or a changed hardware version). Do not embed stale assets for new content without telling the user; fix stamps with update_asset.",
-    inputSchema: { type: 'object', properties: { slug: SLUG_VER.slug }, required: ['slug'] },
+      "List the files in a module's assets folder with their served URLs (use these URLs in <img src>). Each entry carries `meta` — the version stamp taken when the file was added (doc version, newest software release per linked software, hardware unit versions, appliesTo hardware ids; null for files added before stamping) — and `stale`: reasons the picture may be out of date (a newer manual-affecting software release or a changed hardware version). Do not embed stale assets for new content without telling the user; fix stamps with update_asset. With thumbnails: true the result also carries a small picture of every raster asset (in list order) so you can see what is there; get_asset gives one picture at a larger size.",
+    inputSchema: { type: 'object', properties: { slug: SLUG_VER.slug, thumbnails: { type: 'boolean', description: 'Also return a ≤160 px thumbnail of each image (about 100 tokens each)' } }, required: ['slug'] },
     annotations: { title: 'List assets', ...RO },
   },
   {
@@ -354,52 +356,70 @@ export const TOOLS = [
     annotations: { title: 'Update asset stamp', ...RW },
   },
   {
-    name: 'upload_photo',
+    name: 'get_asset',
     description:
-      "Upload a SMALL image (a few KB) from base64 data into the module draft's assets folder. Do not use it for real photos — tens of thousands of base64 characters cannot be emitted reliably in one call, and the server now REJECTS truncated or mislabelled files. Use the inbox + import_local_files (no bytes through the model), upload_photo_from_url (public URL), upload_photo_part (base64 split into ~6000-character parts) or generate_illustration instead. Returns the served URL.",
+      'LOOK at a module asset: returns the picture itself as image content (a downscaled JPEG preview, ~300–600 tokens) plus its metadata (pixel size, bytes, version stamp, stale reasons). Use it to pick the right photo for a figure, to write a factual caption, to check a line-art result, or to verify a figure still matches the hardware. size: "preview" (default, ≤768 px), "thumb" (≤256 px), "full" (original bytes — large; only when detail matters).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: SLUG_VER.slug,
+        name: { type: 'string', description: 'Asset file name (see list_assets)' },
+        size: { type: 'string', enum: ['thumb', 'preview', 'full'] },
+      },
+      required: ['slug', 'name'],
+    },
+    annotations: { title: 'Get asset (image)', ...RO },
+  },
+  {
+    name: 'describe_asset',
+    description:
+      "Have the console's vision model describe an asset: kind (photo / screenshot / drawing), a manual-style caption, alt text, what is visible, readable on-screen or label text, which of the module's hardware units it shows, and a suggested file name. Cheaper than get_asset when you only need words; use the `shows` ids with update_asset applies_to.",
+    inputSchema: { type: 'object', properties: { slug: SLUG_VER.slug, name: { type: 'string', description: 'Asset file name' } }, required: ['slug', 'name'] },
+    annotations: { title: 'Describe asset (vision)', ...RO, openWorldHint: true },
+  },
+  {
+    name: 'attach_figure',
+    description:
+      'Insert an asset as a proper <figure> into a section of the doc body — no hand-written HTML. Placement: right after the block (paragraph / list / table) that contains `after_text` inside `section`, else at the end of `section` (or its start with position "start"). Sets alt, caption and optionally the applies_to hardware stamp. Commits a revision. For translations pass lang and the section title in that language.',
     inputSchema: {
       type: 'object',
       properties: {
         ...SLUG_VER,
-        name: { type: 'string', description: 'File name including extension' },
-        data_base64: { type: 'string', description: 'File content, base64-encoded' },
+        lang: LANG_PROP,
+        asset: { type: 'string', description: 'Asset file name (see list_assets)' },
+        section: { type: 'string', description: '<h2> title of the target section' },
+        after_text: { type: 'string', description: 'A short unique phrase inside the section; the figure goes after the block containing it' },
+        position: { type: 'string', enum: ['start', 'end'], description: 'Where in the section when after_text is not given (default end)' },
+        caption: { type: 'string', description: 'Figure caption (operating-manual English / the doc language)' },
+        alt: { type: 'string', description: 'Alt text (defaults to the caption)' },
+        applies_to: { type: 'array', items: { type: 'string' }, description: 'Hardware unit ids the picture shows (stamps the asset)' },
+        summary: { type: 'string', description: 'Revision record entry' },
       },
-      required: ['slug', 'version', 'name', 'data_base64'],
+      required: ['slug', 'asset', 'section', 'caption'],
     },
-    annotations: { title: 'Upload photo (base64)', ...RW },
-  },
-  {
-    name: 'upload_photo_part',
-    description:
-      "Upload a bigger image (tens of KB) in base64 PARTS when it cannot come from the inbox or a public URL. Encode the WHOLE file once, split that single base64 string into pieces of about 6000 characters (never encode each piece separately), and call this once per piece with the same upload_id and part = 1…parts. Parts may arrive in any order; each call reports which are still missing. When the last one lands, the file is decoded, validated (complete PNG/JPEG/…) and placed in the console INBOX under `name` — then call import_local_files with that name. A failed validation discards every part. Pass abort: true to drop a half-sent upload.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        upload_id: { type: 'string', description: 'Any label unique to this file, e.g. "cb-panel-1"' },
-        name: { type: 'string', description: 'File name with extension, e.g. "circuit-breaker-panel.png"' },
-        part: { type: 'integer', description: 'This part number, 1-based' },
-        parts: { type: 'integer', description: 'Total number of parts' },
-        data_base64: { type: 'string', description: 'This slice of the base64 string (about 6000 characters)' },
-        abort: { type: 'boolean', description: 'Discard the parts received so far for this upload_id' },
-      },
-      required: ['upload_id', 'name'],
-    },
-    annotations: { title: 'Upload photo in parts', ...RW },
+    annotations: { title: 'Attach figure', ...RW },
   },
   {
     name: 'upload_photo_from_url',
     description:
-      "Download an image from a public URL into the module draft's assets folder (the console fetches it — no need to pass bytes). Returns the served URL to use in <img src=\"…\">.",
+      "Download an image from a URL into the module draft's assets folder (the console fetches it — no bytes through you). Public URLs work as-is; hosts configured in .env FTD_URL_CREDENTIALS (\"host=basic:user:pass;host=bearer:TOKEN\") are fetched with credentials. For pictures behind a login you cannot link to (e.g. wiki attachments), use request_upload so the user drops them into the inbox. Returns the served URL to use in <img src=\"…\">.",
     inputSchema: {
       type: 'object',
       properties: {
         ...SLUG_VER,
-        url: { type: 'string', description: 'Public http(s) URL of the image' },
+        url: { type: 'string', description: 'http(s) URL of the image' },
         name: { type: 'string', description: 'Optional file name; defaults to the URL file name' },
       },
-      required: ['slug', 'version', 'url'],
+      required: ['slug', 'url'],
     },
     annotations: { title: 'Upload photo from URL', ...RW, openWorldHint: true },
+  },
+  {
+    name: 'request_upload',
+    description:
+      'When a picture exists only on the user\'s computer or phone: returns the link to the module\'s Assets tab (the drop area / inbox). Tell the user to open it and drop the files, then call list_inbox and import_local_files (bare names) — the bytes go browser → console, never through the chat.',
+    inputSchema: { type: 'object', properties: { slug: SLUG_VER.slug }, required: ['slug'] },
+    annotations: { title: 'Request upload link', ...RO },
   },
   {
     name: 'generate_illustration',
@@ -632,6 +652,41 @@ function replaceOnce(body, find, replace) {
   return body.replace(find, () => replace);
 }
 
+const escapeHtml = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const escapeAttr = (s) => escapeHtml(s).replace(/"/g, '&quot;');
+
+/**
+ * Put `figure` into `section`: after the block containing `afterText` when given
+ * (paragraph, list, table, heading or admonition), else at the start/end of the section.
+ */
+function insertFigure(content, section, figure, { afterText = '', position = 'end' } = {}) {
+  const re = new RegExp(`<h2[^>]*>\\s*${escapeRe(String(section).trim())}\\s*</h2>`, 'i');
+  const m = re.exec(content);
+  if (!m) throw new Error(`Section "${section}" not found — the body has: ${[...content.matchAll(/<h2[^>]*>(.*?)<\/h2>/gi)].map((x) => x[1]).join(', ')}`);
+  const start = m.index + m[0].length;
+  const nextH2 = content.slice(start).search(/<h2[\s>]/i);
+  const end = nextH2 < 0 ? content.length : start + nextH2;
+  const needle = String(afterText || '').trim();
+  if (needle) {
+    const slice = content.slice(start, end);
+    const plainIdx = slice.indexOf(needle);
+    if (plainIdx < 0) throw new Error(`"${needle}" not found in section "${section}" — pick a phrase that appears verbatim in that section`);
+    const closer = /<\/(p|ol|ul|table|figure|h3|div)>/gi;
+    closer.lastIndex = plainIdx;
+    let close = closer.exec(slice);
+    // an inner </p> inside a list item or admonition: keep looking for the enclosing block when nested
+    while (close && close[1] === 'p') {
+      const open = slice.lastIndexOf('<', plainIdx);
+      const inList = /<li[\s>]/i.test(slice.slice(Math.max(0, open - 200), open)) && !/<\/li>/i.test(slice.slice(open, plainIdx));
+      if (!inList) break;
+      close = closer.exec(slice);
+    }
+    const at = close ? start + close.index + close[0].length : end;
+    return `${content.slice(0, at)}\n${figure}${content.slice(at)}`;
+  }
+  return position === 'start' ? `${content.slice(0, start)}\n${figure}${content.slice(start)}` : `${content.slice(0, end).replace(/\s+$/, '')}\n${figure}\n${content.slice(end)}`;
+}
+
 function insertIntoSection(content, section, html, position = 'end') {
   const re = new RegExp(`<h2[^>]*>\\s*${escapeRe(section.trim())}\\s*</h2>`, 'i');
   const m = re.exec(content);
@@ -723,8 +778,18 @@ async function callTool(name, args) {
       if (args.include_assets) out.assets = await store.listAssets(args.slug);
       return out;
     }
-    case 'list_assets':
-      return await store.listAssets(args.slug);
+    case 'list_assets': {
+      const list = await store.listAssets(args.slug);
+      if (!args.thumbnails) return list;
+      const blocks = [{ type: 'text', text: JSON.stringify(list, null, 2) }];
+      for (const a of list) {
+        const buf = await store.getAsset(args.slug, a.name);
+        const p = buf ? await images.preview(buf, { max: 160, quality: 60 }).catch(() => null) : null;
+        if (!p) continue;
+        blocks.push({ type: 'text', text: `↓ ${a.name}` }, { type: 'image', data: p.buffer.toString('base64'), mimeType: p.mimeType });
+      }
+      return richContent(blocks);
+    }
     case 'update_asset':
       return await store.setAssetMeta(args.slug, args.version, args.name, { appliesTo: args.applies_to, verify: !!args.verify });
     case 'list_hardware':
@@ -818,13 +883,55 @@ async function callTool(name, args) {
         lang,
       });
     }
-    case 'upload_photo': {
-      const buffer = Buffer.from(args.data_base64, 'base64');
-      if (!buffer.length) throw new Error('data_base64 is empty or invalid');
-      return await store.saveAssets(args.slug, args.version, [{ name: args.name, buffer }]);
+    case 'get_asset': {
+      const buf = await store.getAsset(args.slug, args.name);
+      if (!buf) throw new Error(`Asset "${args.name}" not found — see list_assets`);
+      const meta = (await store.listAssets(args.slug)).find((a) => a.name === args.name) || { name: args.name };
+      const size = args.size || 'preview';
+      const info = images.sniff(buf);
+      if (size === 'full') {
+        const mime = info ? `image/${info.type === 'svg' ? 'svg+xml' : info.type}` : 'application/octet-stream';
+        return richContent([{ type: 'image', data: buf.toString('base64'), mimeType: mime }, { type: 'text', text: JSON.stringify({ ...meta, bytes: buf.length, width: info?.width, height: info?.height }, null, 2) }]);
+      }
+      const p = await images.preview(buf, { max: size === 'thumb' ? 256 : 768 });
+      if (!p) return richContent([{ type: 'text', text: JSON.stringify({ ...meta, bytes: buf.length, note: 'not a raster image — no preview (PDF?)' }, null, 2) }]);
+      return richContent([
+        { type: 'image', data: p.buffer.toString('base64'), mimeType: p.mimeType },
+        { type: 'text', text: JSON.stringify({ ...meta, preview: { width: p.width, height: p.height }, original: p.original }, null, 2) },
+      ]);
     }
-    case 'upload_photo_part':
-      return await inbox.putPart({ id: args.upload_id, name: args.name, part: args.part, parts: args.parts, data: args.data_base64, abort: args.abort });
+    case 'describe_asset': {
+      const buf = await store.getAsset(args.slug, args.name);
+      if (!buf) throw new Error(`Asset "${args.name}" not found — see list_assets`);
+      const m = await store.getModule(args.slug);
+      const p = await images.preview(buf, { max: 1024, quality: 85 });
+      if (!p) throw new Error(`"${args.name}" is not a raster image — nothing to describe`);
+      return await ai.describeImage({ buffer: p.buffer, mimeType: p.mimeType, module: m?.module, name: args.name });
+    }
+    case 'attach_figure': {
+      const lang = langOf(args.lang || DEFAULT_LANG);
+      const assets = await store.listAssets(args.slug);
+      const asset = assets.find((a) => a.name === args.asset);
+      if (!asset) throw new Error(`Asset "${args.asset}" not found — see list_assets or import it first`);
+      const body = await currentBody(args.slug, args.version, lang);
+      const caption = String(args.caption || '').trim();
+      const figure = `<figure><img src="${asset.url}" alt="${escapeAttr(args.alt || caption)}"><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+      const html = insertFigure(body, args.section, figure, { afterText: args.after_text, position: args.position || 'end' });
+      const meta = await store.saveDraftContent(args.slug, args.version, html, {
+        bump: true,
+        summary: args.summary || `Figure ${args.asset} in ${args.section}`,
+        lang,
+      });
+      if (Array.isArray(args.applies_to)) await store.setAssetMeta(args.slug, args.version, args.asset, { appliesTo: args.applies_to, verify: false });
+      return { doc: meta, figure, section: args.section };
+    }
+    case 'request_upload': {
+      const base = currentBaseUrl || `http://localhost:${process.env.PORT || 5179}`;
+      return {
+        url: `${base}/#/modules/${args.slug}?tab=assets`,
+        instructions: 'Ask the user to open this link and drop the pictures on the "Drop files for the inbox" area (or drag them onto the Assets tab to attach them directly). Then call list_inbox and import_local_files with the bare file names.',
+      };
+    }
     case 'import_local_files': {
       const files = [];
       const fromInbox = [];
@@ -869,8 +976,8 @@ async function callTool(name, args) {
     case 'delete_asset':
       return await store.deleteAsset(args.slug, args.version, args.name);
     case 'upload_photo_from_url': {
-      const dl = await ai.downloadImage(args.url, { minBytes: 1 });
-      if (!dl) throw new Error('URL did not return an image (or it is larger than 6 MB)');
+      const dl = await ai.downloadImage(args.url, { minBytes: 1, headers: sources.authHeadersFor(args.url) });
+      if (!dl) throw new Error('URL did not return an image (or it is larger than 6 MB) — for a protected host configure credentials in .env, or use request_upload');
       return await store.saveAssets(args.slug, args.version, [{ name: args.name || dl.name, buffer: dl.buffer }]);
     }
     case 'generate_illustration': {
@@ -912,22 +1019,55 @@ async function callTool(name, args) {
   }
 }
 
+/** Tool results that carry images: callTool returns richContent([...blocks]) instead of JSON. */
+const RICH = Symbol('rich-content');
+const richContent = (blocks) => ({ [RICH]: blocks });
+
+/** Base URL of the console as the current MCP client reached it (for links handed to users). */
+let currentBaseUrl = '';
+
+const ASSET_URI = /^ftd:\/\/modules\/([^/]+)\/assets\/(.+)$/;
+const mimeOf = (name) => {
+  const ext = path.extname(name).toLowerCase();
+  return { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.pdf': 'application/pdf' }[ext] || 'application/octet-stream';
+};
+
 function buildServer() {
-  const server = new Server({ name: 'ftd-docs-console', version: '0.2.0' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'ftd-docs-console', version: '0.3.0' }, { capabilities: { tools: {}, resources: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     try {
       const result = await callTool(req.params.name, req.params.arguments || {});
+      if (result && result[RICH]) return { content: result[RICH] };
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     } catch (e) {
       return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };
     }
+  });
+  // Assets as MCP resources: ftd://modules/<slug>/assets/<file> — clients can show them inline.
+  server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    const resources = [];
+    for (const m of await store.listModules()) {
+      for (const a of await store.listAssets(m.slug)) {
+        resources.push({ uri: `ftd://modules/${m.slug}/assets/${a.name}`, name: `${m.name} — ${a.name}`, mimeType: mimeOf(a.name), description: store.describeAssetVersion(a) });
+      }
+    }
+    return { resources };
+  });
+  server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
+    const m = ASSET_URI.exec(req.params.uri || '');
+    if (!m) throw new Error(`Unknown resource ${req.params.uri}`);
+    const buf = await store.getAsset(m[1], decodeURIComponent(m[2]));
+    if (!buf) throw new Error(`Asset not found: ${req.params.uri}`);
+    return { contents: [{ uri: req.params.uri, mimeType: mimeOf(m[2]), blob: buf.toString('base64') }] };
   });
   return server;
 }
 
 /** Stateless Streamable HTTP handler for POST /mcp. */
 export async function handleMcpRequest(req, res) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  currentBaseUrl = process.env.FTD_PUBLIC_URL || `${proto}://${req.headers['x-forwarded-host'] || req.headers.host}`;
   const server = buildServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => {
