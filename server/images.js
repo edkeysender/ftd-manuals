@@ -161,6 +161,8 @@ export async function preview(buffer, { max = 768, quality = 78 } = {}) {
 export async function resizeSameFormat(buffer, width) {
   const info = sniff(buffer);
   if (!info || !['png', 'jpeg', 'webp', 'gif'].includes(info.type)) return null;
+  // no upscaling: a request wider than the picture gets the original bytes (re-encoding would only grow them)
+  if (info.width && width >= info.width) return null;
   const fmt = info.type === 'gif' ? 'png' : info.type;
   const out = await sharp(buffer, { animated: false })
     .rotate()
