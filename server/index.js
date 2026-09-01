@@ -23,6 +23,7 @@ import * as inbox from './inbox.js';
 import * as images from './images.js';
 import * as sources from './sources.js';
 import { templateChecklist, checklistBodyHtml, fatProtocolBodyHtml, checklistExportHtml, CHECKLIST_CSS } from './checklist.js';
+import * as auth from './auth.js';
 
 const PORT = process.env.PORT || 5179;
 const app = express();
@@ -34,6 +35,42 @@ const wrap = (fn) => (req, res) =>
     if (e instanceof GitTransientError) res.set('Retry-After', '1');
     res.status(e instanceof GitTransientError ? 503 : 400).json({ error: e.message || String(e) });
   });
+
+/* ---------- login ----------
+ * Every /api route needs a signed-in user (session cookie); DELETE requests and draft
+ * discards additionally need the admin role. /mcp is separate (MCP_TOKEN, see below). */
+app.use('/api', auth.attachUser);
+
+app.post('/api/auth/login', wrap(async (req, res) => {
+  const { email, password } = req.body || {};
+  const user = auth.authenticate(email, password);
+  if (!user) return res.status(401).json({ error: 'Wrong e-mail or password', code: 'bad-credentials' });
+  res.cookie(auth.COOKIE, auth.createSession(user), auth.cookieOptions());
+  res.json({ user: auth.publicUser(user) });
+}));
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie(auth.COOKIE, { path: '/' });
+  res.json({ ok: true });
+});
+
+/** Who am I — 401 when not signed in (the UI shows the login page on that). */
+app.get('/api/auth/me', auth.requireAuth, (req, res) => res.json({ user: auth.publicUser(req.user) }));
+
+app.use('/api', auth.requireAuth);
+app.delete('/api/*', auth.requireAdmin);
+app.post('/api/modules/:slug/docs/:version/discard', auth.requireAdmin);
+
+app.post('/api/auth/password', wrap(async (req, res) => {
+  const { current, next } = req.body || {};
+  res.json(await auth.changePassword(req.user, current, next));
+}));
+
+/* ---------- users (admin) ---------- */
+app.get('/api/users', auth.requireAdmin, (req, res) => res.json(auth.listUsers()));
+app.post('/api/users', auth.requireAdmin, wrap(async (req, res) => res.json(await auth.createUser(req.body || {}))));
+app.put('/api/users/:id', auth.requireAdmin, wrap(async (req, res) => res.json(await auth.updateUser(req.params.id, req.body || {}))));
+app.delete('/api/users/:id', wrap(async (req, res) => res.json(await auth.deleteUser(req.params.id, req.user))));
 
 /* ---------- status ---------- */
 app.get('/api/status', wrap(async (req, res) => {
@@ -764,6 +801,7 @@ if (fs.existsSync(dist)) {
 
 await store.initStore();
 await inbox.ensureInbox();
+await auth.initAuth();
 app.listen(PORT, () => {
   console.log(`FTD Documentation Console API on http://localhost:${PORT}`);
   if (!ai.aiAvailable()) console.log('Note: OPENAI_API_KEY not set — AI assistant disabled.');

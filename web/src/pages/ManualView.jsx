@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, GROUPS, MANUAL_TYPES, manualType, readFileAsBase64, LANGUAGES, language } from '../api.js';
 import ModulePicker from '../components/ModulePicker.jsx';
-import { useToast } from '../App.jsx';
+import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
 
 export default function ManualView() {
@@ -11,6 +11,7 @@ export default function ManualView() {
   const [editing, setEditing] = useState(false);
   const [lang, setLang] = useState(() => (LANGUAGES.some((L) => L.code === locale()) ? locale() : 'en')); // follows the console language
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
   const load = useCallback(() => api.manual(slug, lang).then(setData).catch((e) => toast(e.message, 'err')), [slug, lang]);
@@ -80,16 +81,18 @@ export default function ManualView() {
           <a className="btn" href={`/api/manuals/${slug}/fat.html`} target="_blank" rel="noreferrer" title={t('FAT protocol: the checklists of all modules in this manual as one document')}>
             {t('FAT protocol')}
           </a>
-          <button
-            className="btn btn-danger"
-            onClick={() => {
-              if (confirm(t('Delete manual "{name}"? Module docs are not affected.', { name: manual.name }))) {
-                api.deleteManual(slug).then(() => navigate('/manuals')).catch((e) => toast(e.message, 'err'));
-              }
-            }}
-          >
-            {t('Delete')}
-          </button>
+          {isAdmin && (
+            <button
+              className="btn btn-danger"
+              onClick={() => {
+                if (confirm(t('Delete manual "{name}"? Module docs are not affected.', { name: manual.name }))) {
+                  api.deleteManual(slug).then(() => navigate('/manuals')).catch((e) => toast(e.message, 'err'));
+                }
+              }}
+            >
+              {t('Delete')}
+            </button>
+          )}
         </div>
       </div>
 

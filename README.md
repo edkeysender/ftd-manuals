@@ -25,7 +25,25 @@ OPENAI_API_KEY=…   # enables the AI assistant, AI first drafts, translations, 
 OPENAI_MODEL=gpt-5 # optional override
 FTD_URL_CREDENTIALS=host=basic:user:pass;other.host=bearer:TOKEN   # optional: protected image hosts (NAS share links)
 FTD_PUBLIC_URL=https://…trycloudflare.com   # optional: base of links handed to users (request_upload)
+FTD_ADMIN_EMAIL=… / FTD_ADMIN_PASSWORD=…     # optional: the administrator seeded on first start (defaults below)
+FTD_SECURE_COOKIE=1                          # optional: mark the session cookie Secure (HTTPS only)
 ```
+
+## Login
+
+The console requires a sign-in. Users live in `data/users.json` (scrypt-hashed passwords, next to the
+document repo — not inside it) and sessions are an HMAC-signed cookie (`data/auth-secret`, 30 days).
+On first start, when there are no users yet, the default administrator is created:
+
+```
+l.wicenciak@ftd.aero / Simulation01
+```
+
+Change that password in Settings → *Your password*. Two roles: **administrator** — everything, including
+deleting (manuals, drafts, assets, inbox files, comment threads, users); **editor** — everything except
+deleting. Every `DELETE` route and the draft *discard* answer `403` for editors, and the UI hides those buttons.
+Administrators manage accounts in Settings → *Users* (add, change role, reset password, delete; the last
+administrator cannot be removed). The MCP endpoint is unaffected — agents keep using `MCP_TOKEN`.
 
 ## How documents are stored
 

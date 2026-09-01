@@ -5,11 +5,23 @@
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 
-const PORT = 5197;
+const PORT = Number(process.env.SMOKE_PORT) || 5197; // SMOKE_PORT=… when another smoke run holds :5197
 const BASE = `http://localhost:${PORT}`;
+
+/** Test-only photo host for upload_photo_from_url: the console fetches URLs server-side and its own
+ *  asset routes are behind the login, so the picture comes from here instead. */
+let photoBytes = Buffer.alloc(0);
+const photoHost = http
+  .createServer((req, res) => {
+    res.setHeader('Content-Type', 'image/png');
+    res.end(photoBytes);
+  })
+  .listen(PORT + 1);
+const PHOTO_URL = `http://localhost:${PORT + 1}/panel-photo.png`;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ftd-smoke-'));
 
 const server = spawn(process.execPath, ['server/index.js'], {
@@ -31,15 +43,40 @@ const ok = (cond, label) => {
   if (!cond) failed = true;
 };
 
-async function req(method, url, body) {
+/** Session cookie of the signed-in user (set by login()); the API refuses everything without it.
+ *  Every fetch() in this file sends it unless the call sets its own Cookie header. */
+let cookie = '';
+const rawFetch = globalThis.fetch;
+globalThis.fetch = (url, init = {}) => {
+  const headers = { ...(init.headers || {}) };
+  if (cookie && !headers.Cookie) headers.Cookie = cookie;
+  return rawFetch(url, { ...init, headers });
+};
+
+async function req(method, url, body, opts = {}) {
   const res = await fetch(BASE + url, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(opts.cookie ?? cookie ? { Cookie: opts.cookie ?? cookie } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`${method} ${url} -> ${res.status}: ${data.error}`);
+  if (!res.ok) {
+    const err = new Error(`${method} ${url} -> ${res.status}: ${data.error}`);
+    err.status = res.status;
+    throw err;
+  }
   return data;
+}
+
+/** Sign in and return that user's session cookie (does not change the default one). */
+async function login(email, password) {
+  const res = await fetch(`${BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error(`login ${email} -> ${res.status}`);
+  return (res.headers.get('set-cookie') || '').split(';')[0];
 }
 
 async function waitUp() {
@@ -47,7 +84,8 @@ async function waitUp() {
     try {
       await req('GET', '/api/status');
       return;
-    } catch {
+    } catch (e) {
+      if (e.status === 401) return; // up, just not signed in yet
       await new Promise((r) => setTimeout(r, 200));
     }
   }
@@ -56,6 +94,28 @@ async function waitUp() {
 
 try {
   await waitUp();
+
+  // login: nothing works anonymously, the seeded admin signs in, editors cannot delete
+  const anon = await req('GET', '/api/modules').catch((e) => e);
+  ok(anon instanceof Error && anon.status === 401, 'API refuses anonymous requests with 401');
+  const badLogin = await login('l.wicenciak@ftd.aero', 'wrong').catch((e) => e);
+  ok(badLogin instanceof Error, 'wrong password is refused');
+  cookie = await login('l.wicenciak@ftd.aero', 'Simulation01');
+  const me = await req('GET', '/api/auth/me');
+  ok(me.user.email === 'l.wicenciak@ftd.aero' && me.user.role === 'admin', 'default administrator l.wicenciak@ftd.aero signs in');
+  const editor = await req('POST', '/api/users', { email: 'editor@ftd.aero', name: 'Ed', password: 'editorpass1', role: 'editor' });
+  ok(editor.role === 'editor' && !('passwordHash' in editor), 'admin creates an editor (no hash in the response)');
+  const editorCookie = await login('editor@ftd.aero', 'editorpass1');
+  const editorDel = await req('DELETE', `/api/users/${editor.id}`, undefined, { cookie: editorCookie }).catch((e) => e);
+  ok(editorDel instanceof Error && editorDel.status === 403, 'editor cannot delete (403)');
+  const editorUsers = await req('GET', '/api/users', undefined, { cookie: editorCookie }).catch((e) => e);
+  ok(editorUsers instanceof Error && editorUsers.status === 403, 'editor cannot list users (403)');
+  ok((await req('GET', '/api/modules', undefined, { cookie: editorCookie })).length === 0, 'editor can read modules');
+  const selfDel = await req('DELETE', `/api/users/${me.user.id}`).catch((e) => e);
+  ok(selfDel instanceof Error && /own account/.test(selfDel.message), 'admin cannot delete own account');
+  ok((await req('DELETE', `/api/users/${editor.id}`)).ok === true, 'admin deletes the editor');
+  const deadSession = await req('GET', '/api/auth/me', undefined, { cookie: editorCookie }).catch((e) => e);
+  ok(deadSession instanceof Error && deadSession.status === 401, 'deleted user session is invalid');
 
   // empty list
   ok((await req('GET', '/api/modules')).length === 0, 'starts with no modules');
@@ -149,6 +209,7 @@ try {
   // assets: upload, list, serve
   const png1x1 =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  photoBytes = Buffer.from(png1x1, 'base64');
   const uploaded = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', {
     files: [{ name: 'Panel Photo.PNG', dataBase64: png1x1 }],
   });
@@ -317,7 +378,7 @@ try {
   ok(badCl instanceof Error && /title is required/.test(badCl.message), 'invalid checklist rejected');
   const fromUrl = await mcpCall({
     jsonrpc: '2.0', id: 7, method: 'tools/call',
-    params: { name: 'upload_photo_from_url', arguments: { slug: 'starting-panel', version: 'A1.0', url: BASE + uploaded[0].url, name: 'copy-of-photo.png' } },
+    params: { name: 'upload_photo_from_url', arguments: { slug: 'starting-panel', version: 'A1.0', url: PHOTO_URL, name: 'copy-of-photo.png' } },
   });
   ok(!fromUrl.isError && JSON.parse(fromUrl.content[0].text)[0].name === 'copy-of-photo.png', 'MCP upload_photo_from_url');
   const localDir = path.join(dataDir, 'imports', 'imgs');
@@ -603,7 +664,7 @@ try {
   ok(conflict instanceof Error && /give one or the other/.test(conflict.message), 'MCP rejects a key that contradicts manual');
   const noType = await call(104, 'get_doc', { slug: 'starting-panel', manual: 'software-technician' });
   ok(noType instanceof Error && /create_doc_version/.test(noType.message), 'MCP names the missing manual type and how to create it');
-  const techPhoto = await call(105, 'upload_photo_from_url', { slug: 'starting-panel', manual: 'technician', name: 'wiring.png', url: BASE + uploaded[0].url });
+  const techPhoto = await call(105, 'upload_photo_from_url', { slug: 'starting-panel', manual: 'technician', name: 'wiring.png', url: PHOTO_URL });
   ok(!(techPhoto instanceof Error) && techPhoto[0].name === 'wiring.png', 'MCP upload_photo_from_url lands on the technician draft (by manual, no version)');
   const att = await call(1050, 'attach_figure', { slug: 'starting-panel', manual: 'technician', asset: 'wiring.png', section: 'Configuration', after_text: 'Set the static IP.', caption: 'Wiring of the panel', applies_to: ['starting-panel'] });
   ok(!(att instanceof Error) && att.doc.revision >= 2 && /<figure><img src="[^"]*wiring\.png" alt="Wiring of the panel"><figcaption>Wiring of the panel<\/figcaption><\/figure>/.test(att.figure), 'MCP attach_figure builds the figure');
@@ -850,6 +911,7 @@ try {
   failed = true;
 } finally {
   server.kill();
+  photoHost.close();
   try {
     fs.rmSync(dataDir, { recursive: true, force: true });
   } catch {}
