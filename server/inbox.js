@@ -10,6 +10,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { sniff, validateAsset } from './images.js';
+import { expandDocuments } from './extract.js';
 
 export const INBOX_DIR = path.resolve(process.env.FTD_INBOX_DIR || path.join('data', 'inbox'));
 export const IMPORT_ROOTS = [
@@ -68,21 +69,32 @@ export async function listInbox() {
   return out;
 }
 
-/** Write files into the inbox after validation; a name that exists gets a numeric suffix. files: [{name, buffer}] */
+/** Write files into the inbox after validation; a name that exists gets a numeric suffix. files: [{name, buffer}].
+ *  Word / PowerPoint / PDF / zip files are replaced by the pictures inside them (and a .txt with the Word text). */
 export async function saveToInbox(files) {
   await ensureInbox();
   const saved = [];
-  for (const f of files) {
-    validateAsset(f.name, f.buffer);
+  const expanded = await expandDocuments(files);
+  for (const f of expanded) {
+    if (!f.text) validateAsset(f.name, f.buffer);
     let name = inboxName(f.name);
     const dot = name.lastIndexOf('.');
     const stem = dot > 0 ? name.slice(0, dot) : name;
     const ext = dot > 0 ? name.slice(dot) : '';
     for (let i = 2; await exists(path.join(INBOX_DIR, name)); i++) name = `${stem}-${i}${ext}`;
     await fs.writeFile(path.join(INBOX_DIR, name), f.buffer);
-    saved.push({ name, size: f.buffer.length });
+    saved.push({ name, size: f.buffer.length, ...(f.from ? { from: f.from } : {}), ...(f.text ? { text: true } : {}) });
   }
+  if (expanded.notes) saved.notes = expanded.notes;
   return saved;
+}
+
+/** Plain text of a .txt/.md inbox entry (e.g. the text extracted from a Word file). */
+export async function readInboxText(name) {
+  if (!/\.(txt|md)$/i.test(name)) throw new Error('Only .txt / .md inbox entries can be read as text');
+  const f = await readInbox(name);
+  if (!f) return null;
+  return f.buffer.toString('utf8').slice(0, 200000);
 }
 
 export async function readInbox(name) {
