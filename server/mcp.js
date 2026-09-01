@@ -386,7 +386,7 @@ export const TOOLS = [
       properties: {
         ...SLUG_VER,
         lang: LANG_PROP,
-        asset: { type: 'string', description: 'Asset file name (see list_assets / import_from_confluence)' },
+        asset: { type: 'string', description: 'Asset file name (see list_assets)' },
         section: { type: 'string', description: '<h2> title of the target section' },
         after_text: { type: 'string', description: 'A short unique phrase inside the section; the figure goes after the block containing it' },
         position: { type: 'string', enum: ['start', 'end'], description: 'Where in the section when after_text is not given (default end)' },
@@ -400,27 +400,9 @@ export const TOOLS = [
     annotations: { title: 'Attach figure', ...RW },
   },
   {
-    name: 'import_from_confluence',
-    description:
-      'Read a Confluence Cloud page with the console\'s Atlassian credentials (ATLASSIAN_EMAIL / ATLASSIAN_API_TOKEN in .env) — the page text with "## headings", lists, tables and "[figure N: file — alt]" markers in reading order — and, when slug + manual are given, download its pictures straight into that draft\'s assets (nothing passes through you). Returns the text and the figures with their served URLs, ready for attach_figure. Use it instead of fetching the URL yourself: Confluence pages are auth-walled.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        url: { type: 'string', description: 'Confluence page URL (…/wiki/spaces/X/pages/<id>/… or /wiki/x/<short>)' },
-        slug: { ...SLUG_VER.slug, description: 'Module whose draft receives the pictures (omit to only read the page)' },
-        manual: SLUG_VER.manual,
-        version: SLUG_VER.version,
-        import_images: { type: 'boolean', description: 'Download the figures into the draft assets (default true when slug is given)' },
-        name_prefix: { type: 'string', description: 'Prefix for imported file names, e.g. "intercom-" → intercom-login.png' },
-      },
-      required: ['url'],
-    },
-    annotations: { title: 'Import from Confluence', ...RW, openWorldHint: true },
-  },
-  {
     name: 'upload_photo_from_url',
     description:
-      "Download an image from a URL into the module draft's assets folder (the console fetches it — no bytes through you). Public URLs work as-is; hosts configured in .env (any *.atlassian.net with the Atlassian token, or FTD_URL_CREDENTIALS \"host=basic:user:pass;host=bearer:TOKEN\") are fetched with credentials. Returns the served URL to use in <img src=\"…\">.",
+      "Download an image from a URL into the module draft's assets folder (the console fetches it — no bytes through you). Public URLs work as-is; hosts configured in .env FTD_URL_CREDENTIALS (\"host=basic:user:pass;host=bearer:TOKEN\") are fetched with credentials. For pictures behind a login you cannot link to (e.g. wiki attachments), use request_upload so the user drops them into the inbox. Returns the served URL to use in <img src=\"…\">.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -724,7 +706,7 @@ async function callTool(name, args) {
   if (name === 'discard_doc' && !String(args.version || '').trim()) {
     throw new Error('discard_doc needs an explicit version (e.g. "A1.0" with manual, or "technician:A1.0") — it is irreversible');
   }
-  if (DOC_SCOPED.has(name) && (args.slug || name !== 'import_from_confluence')) args = { ...args, version: await resolveDocKey(args) };
+  if (DOC_SCOPED.has(name)) args = { ...args, version: await resolveDocKey(args) };
   switch (name) {
     case 'list_manual_types':
       return MANUAL_ORDER.map((id) => MANUAL_TYPES[id]);
@@ -942,35 +924,6 @@ async function callTool(name, args) {
       });
       if (Array.isArray(args.applies_to)) await store.setAssetMeta(args.slug, args.version, args.asset, { appliesTo: args.applies_to, verify: false });
       return { doc: meta, figure, section: args.section };
-    }
-    case 'import_from_confluence': {
-      const page = await sources.fetchConfluencePage(args.url);
-      const wantImages = args.slug && args.import_images !== false;
-      const result = { url: page.url, title: page.title, text: page.text, figures: page.figures.map((f) => ({ ...f })), imported: [] };
-      if (wantImages) {
-        const files = [];
-        const prefix = String(args.name_prefix || '');
-        for (const f of page.figures) {
-          if (!f.url || !f.filename || files.some((x) => x.figure === f.index)) continue;
-          if (f.mediaType && !f.mediaType.startsWith('image/')) continue;
-          const dl = await sources.downloadWithAuth(f.url, prefix + f.filename);
-          if (dl) files.push({ name: dl.name, buffer: dl.buffer, figure: f.index, alt: f.alt });
-        }
-        if (files.length) {
-          const saved = await store.saveAssets(args.slug, args.version, files.map(({ name, buffer }) => ({ name, buffer })));
-          saved.forEach((s, i) => {
-            const fig = result.figures.find((x) => x.index === files[i].figure);
-            if (fig) fig.asset = s.name, (fig.assetUrl = s.url);
-            result.imported.push({ figure: files[i].figure, name: s.name, url: s.url, alt: files[i].alt });
-          });
-          result.text = result.text.replace(/\[figure (\d+): ([^\]]*)\]/g, (m, n) => {
-            const imp = result.imported.find((x) => x.figure === Number(n));
-            return imp ? `[figure ${n}: asset ${imp.name} → ${imp.url}${imp.alt ? ` — ${imp.alt}` : ''}]` : m;
-          });
-        }
-        result.next = 'Write the sections from the text, then attach_figure each imported asset where its [figure N] marker sits.';
-      }
-      return result;
     }
     case 'request_upload': {
       const base = currentBaseUrl || `http://localhost:${process.env.PORT || 5179}`;

@@ -23,9 +23,7 @@ npm start          # serves UI + API on :5179
 ```
 OPENAI_API_KEY=…   # enables the AI assistant, AI first drafts, translations, describe_asset (vision)
 OPENAI_MODEL=gpt-5 # optional override
-ATLASSIAN_EMAIL=you@ftd.aero           # + token: Confluence pages/attachments fetched server-side
-ATLASSIAN_API_TOKEN=…                  # https://id.atlassian.com/manage-profile/security/api-tokens
-FTD_URL_CREDENTIALS=host=basic:user:pass;other.host=bearer:TOKEN   # optional, other protected image hosts
+FTD_URL_CREDENTIALS=host=basic:user:pass;other.host=bearer:TOKEN   # optional: protected image hosts (NAS share links)
 FTD_PUBLIC_URL=https://…trycloudflare.com   # optional: base of links handed to users (request_upload)
 ```
 
@@ -77,16 +75,14 @@ be viewed/exported in PL (`?lang=pl`) with untranslated chapters falling back to
 ### Images over MCP — bytes never pass through the model
 
 Agents **see** assets (`get_asset` returns a downscaled JPEG as image content, `list_assets {thumbnails}`
-a strip of thumbnails, assets are also MCP resources `ftd://modules/<slug>/assets/<file>`) and **fetch**
-them server-side: `import_from_confluence` reads a Confluence page (text with `[figure N]` markers) and
-downloads its pictures straight into a draft using `ATLASSIAN_EMAIL` / `ATLASSIAN_API_TOKEN` from `.env`;
-`upload_photo_from_url` uses the same credentials for `*.atlassian.net` and `FTD_URL_CREDENTIALS`
-(`host=basic:user:pass;host=bearer:TOKEN`) for other protected hosts; `request_upload` hands the user the
-Assets-tab drop link for files on their own device (then `list_inbox` + `import_local_files`).
-`attach_figure` inserts a proper `<figure>` after a phrase in a section and stamps `applies_to`;
-`describe_asset` asks the vision model for caption / alt / visible text / which unit is shown. The asset
-route serves `?w=<px>` resized variants (thumbnails in the Assets tab). Pasting a Confluence URL into the
-editor's AI chat fetches it the same way.
+a strip of thumbnails, assets are also MCP resources `ftd://modules/<slug>/assets/<file>`) and get pictures
+in without bytes in the chat: `upload_photo_from_url` (public links; hosts in `FTD_URL_CREDENTIALS`
+`host=basic:user:pass;host=bearer:TOKEN` are fetched with credentials), `request_upload` hands the user
+the Assets-tab drop link for files on their own device or behind a login (then `list_inbox` +
+`import_local_files`), `generate_illustration` / `convert_to_line_art` draw them. `attach_figure` inserts a
+proper `<figure>` after a phrase in a section and stamps `applies_to`; `describe_asset` asks the vision
+model for caption / alt / visible text / which unit is shown. The asset route serves `?w=<px>` resized
+variants (thumbnails in the Assets tab).
 
 ### Review comments
 

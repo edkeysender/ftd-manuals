@@ -335,7 +335,7 @@ try {
   // asset validation: truncated / mislabelled files are rejected everywhere
   const truncated = Buffer.from(png1x1, 'base64').subarray(0, 40).toString('base64');
   const toolNames = (await mcpCall({ jsonrpc: '2.0', id: 80, method: 'tools/list' })).tools.map((t) => t.name);
-  ok(!toolNames.includes('upload_photo') && !toolNames.includes('upload_photo_part') && ['get_asset', 'describe_asset', 'attach_figure', 'import_from_confluence', 'request_upload'].every((n) => toolNames.includes(n)),
+  ok(!toolNames.includes('upload_photo') && !toolNames.includes('upload_photo_part') && ['get_asset', 'describe_asset', 'attach_figure', 'request_upload'].every((n) => toolNames.includes(n)),
     'MCP: base64 upload tools are gone, image tools are there');
   // the agent can LOOK at assets: image content blocks
   const ga = await mcpCall({ jsonrpc: '2.0', id: 81, method: 'tools/call', params: { name: 'get_asset', arguments: { slug: 'starting-panel', name: 'panel-photo.png' } } });
@@ -355,10 +355,6 @@ try {
   ok(resRead.contents?.[0]?.blob === png1x1 && resRead.contents[0].mimeType === 'image/png', 'resources/read returns the asset bytes');
   const noVision = await mcpCall({ jsonrpc: '2.0', id: 86, method: 'tools/call', params: { name: 'describe_asset', arguments: { slug: 'starting-panel', name: 'panel-photo.png' } } });
   ok(noVision.isError === true && /OPENAI_API_KEY/.test(noVision.content[0].text), 'describe_asset needs the vision model (clean error without a key)');
-  const noConf = await mcpCall({ jsonrpc: '2.0', id: 87, method: 'tools/call', params: { name: 'import_from_confluence', arguments: { url: 'https://example.atlassian.net/wiki/spaces/X/pages/123/Page' } } });
-  ok(noConf.isError === true && /ATLASSIAN_EMAIL/.test(noConf.content[0].text), 'import_from_confluence explains the missing Atlassian credentials');
-  const badConf = await mcpCall({ jsonrpc: '2.0', id: 88, method: 'tools/call', params: { name: 'import_from_confluence', arguments: { url: 'https://example.com/not-confluence' } } });
-  ok(badConf.isError === true, 'import_from_confluence rejects a non-Confluence URL');
   const upLink = JSON.parse((await mcpCall({ jsonrpc: '2.0', id: 89, method: 'tools/call', params: { name: 'request_upload', arguments: { slug: 'starting-panel' } } })).content[0].text);
   ok(/\/#\/modules\/starting-panel\?tab=assets$/.test(upLink.url) && upLink.url.startsWith('http://localhost:' + PORT) && /list_inbox/.test(upLink.instructions), `request_upload hands out the Assets-tab link: ${upLink.url}`);
   const badApi = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', { files: [{ name: 'notreally.png', dataBase64: Buffer.from('hello world, not a png').toString('base64') }] }).catch((e) => e);

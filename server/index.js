@@ -493,21 +493,12 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
   const lastUser = [...(messages || [])].reverse().find((m) => m.role === 'user');
   for (const url of ai.extractUrls(lastUser?.content || '')) {
     try {
-      let page;
-      if (sources.isConfluenceUrl(url)) {
-        // Confluence pages are fetched with the console's Atlassian credentials — text and attachments
-        const cp = await sources.fetchConfluencePage(url);
-        page = { url: cp.url, title: cp.title, text: cp.text, images: cp.figures.filter((f) => f.url).map((f) => ({ url: f.url, alt: f.alt || f.filename || '', name: f.filename })) };
-      } else {
-        page = await ai.fetchPage(url);
-      }
+      const page = await ai.fetchPage(url);
       ctx.pages.push(page);
-      const downloads = await Promise.allSettled(
-        page.images.slice(0, 12).map((img) => ai.downloadImage(img.url, { headers: sources.authHeadersFor(img.url), minBytes: img.name ? 1 : 4096 }))
-      );
+      const downloads = await Promise.allSettled(page.images.slice(0, 8).map((img) => ai.downloadImage(img.url, { headers: sources.authHeadersFor(img.url) })));
       downloads.forEach((r, i) => {
         if (r.status === 'fulfilled' && r.value) {
-          uploads.push({ ...r.value, name: page.images[i].name || r.value.name, alt: page.images[i].alt, from: url });
+          uploads.push({ ...r.value, alt: page.images[i].alt, from: url });
         }
       });
     } catch (e) {
