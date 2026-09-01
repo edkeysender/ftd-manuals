@@ -525,6 +525,7 @@ export async function listSoftware() {
           code: module.code || null,
           group: module.group,
           fromVersion: link.fromVersion || '',
+          softwareCount: (module.softwares || []).length,
           manuals,
           allManuals: Object.keys(summary),
           docs: docs
@@ -1469,6 +1470,44 @@ export async function unlinkSoftware(slug, name) {
   return { slug, name: entry.module.name, softwares: updated.softwares };
 }
 
+/**
+ * Delete a software: unlink it from every module and drop it, with its releases, from the feed
+ * (softwares.json on main). Existing docs keep their covered ranges as history. A software
+ * manual draft cannot outlive its module's only software relation, so open software manual
+ * drafts on such modules are **released** first (their work is kept, not discarded).
+ */
+export async function deleteSoftware(name) {
+  name = cleanSwName(name);
+  if (!name) throw new Error('Software name is required');
+  const feed = await getSoftwareFeed();
+  const linked = (await collectAll()).modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name));
+  if (!feed[name] && !linked.length) throw new Error(`Software "${name}" not found`);
+  const released = [];
+  for (const { module, docs } of linked) {
+    if ((module.softwares || []).length !== 1) continue;
+    for (const d of docs.filter((d) => isOpen(d) && MANUAL_TYPES[d.manual].kind === 'software')) {
+      await releaseDoc(module.slug, d.key);
+      released.push(`${module.slug} ${d.key}`);
+    }
+  }
+  const unlinked = [];
+  for (const { module } of linked) {
+    await unlinkSoftware(module.slug, name);
+    unlinked.push(module.slug);
+  }
+  const releases = (feed[name] || []).length;
+  if (feed[name]) {
+    await mutate(async () => {
+      const fresh = (await readJson('main', 'softwares.json')) || {};
+      delete fresh[name];
+      await repo.checkout('main');
+      await repo.writeFile('softwares.json', JSON.stringify(fresh, null, 2) + '\n');
+      await repo.commitAll(`softwares: delete ${name}${unlinked.length ? ` (unlinked from ${unlinked.join(', ')})` : ''}`);
+    });
+  }
+  return { name, unlinked, released, releases };
+}
+
 /** Register a new version (release) of a software in the feed. */
 export async function registerSoftwareRelease({ name, version, manualAffecting, note }) {
   name = cleanSwName(name);
@@ -1640,6 +1679,33 @@ export async function updateManual(slug, patch) {
     await repo.commitAll(`manuals: update ${slug}`);
   });
   return manual;
+}
+
+/**
+ * Delete a module: every draft branch of its docs, its folder on main (module.json, docs,
+ * assets) and its chapter in every assembled manual. The hardware catalog and the software
+ * release feed are untouched. Irreversible from the API — the commits remain in git history.
+ */
+export async function deleteModule(slug) {
+  const entry = await moduleOf(slug);
+  if (!entry) throw new Error(`Module "${slug}" not found`);
+  const branches = [...new Set(entry.docs.map((d) => d.branch).filter(Boolean))];
+  const onMain = !!(await readJson('main', moduleFile(slug)));
+  const inManuals = (await listManuals()).filter((m) => (m.modules || []).includes(slug));
+  await mutate(async () => {
+    await repo.checkout('main');
+    const existing = await repo.branches();
+    for (const b of branches) if (existing.includes(b)) await repo.deleteBranch(b);
+    if (onMain) await repo.removePath(`modules/${slug}`);
+    for (const m of inManuals) {
+      const manual = { ...m, modules: m.modules.filter((s) => s !== slug), updatedAt: now() };
+      await repo.writeFile(manualFile(m.slug), JSON.stringify(manual, null, 2) + '\n');
+    }
+    if (onMain || inManuals.length) {
+      await repo.commitAll(`modules: delete ${slug}${inManuals.length ? ` (removed from ${inManuals.map((m) => m.slug).join(', ')})` : ''}`);
+    }
+  });
+  return { slug, name: entry.module.name, docs: entry.docs.length, branchesDeleted: branches, manualsUpdated: inManuals.map((m) => m.slug) };
 }
 
 export async function deleteManual(slug) {

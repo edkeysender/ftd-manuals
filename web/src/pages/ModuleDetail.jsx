@@ -75,6 +75,31 @@ export default function ModuleDetail() {
             <ManualPills manuals={data.manuals} />
           </div>
         </div>
+        <div className="btn-row">
+          <button
+            className="btn btn-sm btn-danger"
+            title={t('Delete the module with all its doc versions, drafts and assets')}
+            onClick={async () => {
+              const open = data.docs.filter((d) => d.status === 'draft' || d.status === 'in-review');
+              const msg =
+                t('Delete module "{name}"? Its {docs} doc versions ({open} open drafts) and assets are deleted and it is removed from every assembled manual. This cannot be undone.', {
+                  name: module.name,
+                  docs: data.docs.length,
+                  open: open.length,
+                });
+              if (!confirm(msg)) return;
+              try {
+                await api.deleteModule(slug);
+                toast(t('Module {name} deleted', { name: module.name }));
+                navigate('/');
+              } catch (e) {
+                toast(e.message, 'err');
+              }
+            }}
+          >
+            {t('Delete module')}
+          </button>
+        </div>
       </div>
 
       <div className="tabs">

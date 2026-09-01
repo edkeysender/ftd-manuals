@@ -42,6 +42,10 @@ export const api = {
   /** Software page rows: {name, modules:[{slug, name, manuals, docs, uncovered}], releases:[{version, coveredBy}]} */
   software: () => request('/api/software'),
   createSoftware: (body) => request('/api/software', { method: 'POST', body }),
+  /** Deletes the module: draft branches, folder on main, chapter in every manual. */
+  deleteModule: (slug) => request(`/api/modules/${slug}`, { method: 'DELETE' }),
+  /** Unlinks the software from every module and drops it (with its releases) from the feed. */
+  deleteSoftware: (name) => request(`/api/software/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   linkSoftware: (slug, body) => request(`/api/modules/${slug}/software`, { method: 'POST', body }),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
   coverRelease: (slug, version, name, swVersion) =>

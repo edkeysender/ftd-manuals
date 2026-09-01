@@ -325,6 +325,16 @@ app.post('/api/software', wrap(async (req, res) => {
   res.json(await store.createSoftware(req.body || {}));
 }));
 
+/** Delete a module: its draft branches, its folder on main and its chapter in every manual. */
+app.delete('/api/modules/:slug', wrap(async (req, res) => {
+  res.json(await store.deleteModule(req.params.slug));
+}));
+
+/** Delete a software: unlinked from every module, dropped from the feed with its releases. */
+app.delete('/api/software/:name', wrap(async (req, res) => {
+  res.json(await store.deleteSoftware(req.params.name));
+}));
+
 /** Link / unlink a software on a module: {name, fromVersion?} | {name, unlink: true} */
 app.post('/api/modules/:slug/software', wrap(async (req, res) => {
   const { name, fromVersion, unlink } = req.body || {};
