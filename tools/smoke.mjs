@@ -837,9 +837,33 @@ try {
   await req('DELETE', '/api/manuals/b737-simulator-manual');
   ok((await req('GET', '/api/manuals')).length === 0, 'manual deleted');
 
+  // software delete: unlinks from modules, drops the feed entry; the module keeps its other software
+  await req('POST', '/api/software', { name: 'Tmp Tool', version: 'v0.1', modules: [{ slug: 'starting-panel' }] });
+  ok((await req('GET', '/api/software')).some((r) => r.name === 'Tmp Tool' && r.modules.length === 1 && r.releases.length === 1), 'software created, linked and versioned');
+  const delSw = await req('DELETE', '/api/software/' + encodeURIComponent('Tmp Tool'));
+  ok(delSw.unlinked.includes('starting-panel') && delSw.releases === 1, 'delete reports unlinked modules and dropped releases');
+  ok(!(await req('GET', '/api/software')).some((r) => r.name === 'Tmp Tool'), 'deleted software gone from the Software page');
+  const spRow = (await req('GET', '/api/modules')).find((m) => m.slug === 'starting-panel');
+  ok(spRow.softwares.some((s) => s.name === 'STP Core') && !spRow.softwares.some((s) => s.name === 'Tmp Tool'), 'module keeps STP Core, loses Tmp Tool');
+  const delUnknownSw = await req('DELETE', '/api/software/Nope').catch((e) => e);
+  ok(delUnknownSw instanceof Error && /not found/.test(delUnknownSw.message), 'deleting an unknown software is refused');
+
   // history exists
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.history.length >= 5, `history has ${detail.history.length} commits`);
+
+  // module delete: a released module with an open draft — folder on main and the draft branch go
+  const before = (await req('GET', '/api/modules')).length;
+  const tmpMod = await req('POST', '/api/modules', { name: 'Tmp Module', group: 'SIM', category: 'peripherals', hardware: { type: 'none' }, softwares: [], start: { mode: 'blank' }, checklist: { mode: 'none' } });
+  await req('POST', `/api/modules/${tmpMod.slug}/docs/${tmpMod.key}/release`);
+  const tmpNext = await req('POST', `/api/modules/${tmpMod.slug}/docs`, { manual: 'customer', bump: 'minor' });
+  const delMod = await req('DELETE', `/api/modules/${tmpMod.slug}`);
+  ok(delMod.slug === tmpMod.slug && delMod.docs === 2 && delMod.branchesDeleted.length === 1 && delMod.branchesDeleted[0] === tmpNext.branch, `delete_module reports ${delMod.docs} docs, branch ${delMod.branchesDeleted[0]}`);
+  ok((await req('GET', '/api/modules')).length === before, 'deleted module gone from the list');
+  const tmpGone = await req('GET', `/api/modules/${tmpMod.slug}`).catch((e) => e);
+  ok(tmpGone instanceof Error, 'deleted module detail is 404');
+  const delUnknownMod = await req('DELETE', `/api/modules/${tmpMod.slug}`).catch((e) => e);
+  ok(delUnknownMod instanceof Error && /not found/.test(delUnknownMod.message), 'deleting an unknown module is refused');
 } catch (e) {
   console.error('SMOKE ERROR:', e);
   failed = true;

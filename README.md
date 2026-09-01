@@ -99,8 +99,13 @@ accepting it commits a revision and resolves the thread with a note. MCP agents 
 `list_comments` and close them with `resolve_comment` after editing the quoted passage.
 
 The **Software** page lists every linked software with its modules, their software customer / technician
-manuals (create, edit, new version) and the release feed with coverage; `list_software`,
-`register_software_release` and `cover_release` expose the same over MCP.
+manuals (create, edit, new version), the release feed with coverage and a **Delete** per software
+(unlinks it from every module and drops it with its releases from the feed; docs keep their covered
+ranges; open software-manual drafts on a module with no other software are released first);
+`list_software`, `register_software_release`, `cover_release` and `delete_software` expose the same
+over MCP. A module can be deleted from its detail page (`DELETE /api/modules/:slug`, MCP
+`delete_module`): draft branches, folder on main and its chapter in every manual go; the hardware
+catalog and the release feed stay. Both deletes are meant for administrators once login lands.
 
 - Drafts live on `draft/<slug>-<manual>-a1.0` branches (one open draft per manual type); every save is a
   commit; accepted changes bump `r1 → r2 …`.
