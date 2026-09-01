@@ -388,6 +388,65 @@ try {
 
   // chunked base64 upload → inbox: parts in any order, per-part re-encoding caught, corrupt assembly discarded
   ok((await req('GET', '/api/inbox')).files.length === 0, 'inbox is empty after the imports');
+
+  // documents as a source of pictures: Word (zip) and PDF are expanded on drop
+  const mcpTool = async (id, name, args) => {
+    const r = await mcpCall({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
+    return r.isError ? new Error(r.content[0].text) : JSON.parse(r.content[0].text);
+  };
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc32 = (b) => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const storeZip = (entries) => {
+    const locals = []; const centrals = []; let off = 0;
+    for (const [name, data] of entries) {
+      const n = Buffer.from(name); const crc = crc32(data);
+      const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0, 8); lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(n.length, 26);
+      const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(0, 10); ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(n.length, 28); ch.writeUInt32LE(off, 42);
+      locals.push(lh, n, data); centrals.push(ch, n); off += 30 + n.length + data.length;
+    }
+    const cd = Buffer.concat(centrals); const eocd = Buffer.alloc(22); eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(entries.length, 8); eocd.writeUInt16LE(entries.length, 10); eocd.writeUInt32LE(cd.length, 12); eocd.writeUInt32LE(off, 16);
+    return Buffer.concat([...locals, cd, eocd]);
+  };
+  const sharp = (await import('sharp')).default;
+  const png64 = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#3366cc' } }).png().toBuffer();
+  const jpg80 = await sharp({ create: { width: 80, height: 60, channels: 3, background: '#cc6633' } }).jpeg().toBuffer();
+  const docx = storeZip([
+    ['[Content_Types].xml', Buffer.from('<Types/>')],
+    ['word/_rels/document.xml.rels', Buffer.from('<Relationships><Relationship Id="rId5" Type="image" Target="media/image1.png"/></Relationships>')],
+    ['word/document.xml', Buffer.from('<w:document><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Installation</w:t></w:r></w:p><w:p><w:r><w:t xml:space="preserve">Mount the panel &amp; connect it.</w:t></w:r></w:p><w:p><w:pPr><w:numPr/></w:pPr><w:r><w:t>Check the LED</w:t></w:r></w:p><w:p><w:r><w:drawing><a:blip r:embed="rId5"/></w:drawing></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Pin</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Signal</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>')],
+    ['word/media/image1.png', png64],
+    ['word/media/image2.png', Buffer.from(png1x1, 'base64')], // icon-sized → skipped
+  ]);
+  const dropDoc = await req('POST', '/api/inbox', { files: [{ name: 'FCOM chapter 3.docx', dataBase64: docx.toString('base64') }] });
+  ok(dropDoc.some((f) => f.name === 'fcom-chapter-3-image1.png' && f.from === 'FCOM chapter 3.docx') && dropDoc.some((f) => f.name === 'fcom-chapter-3.txt' && f.text) && !dropDoc.some((f) => /image2/.test(f.name)),
+    `dropping a Word file leaves its pictures and text in the inbox: ${dropDoc.map((f) => f.name).join(', ')}`);
+  const docText = await mcpTool(870, 'read_inbox_text', { name: 'fcom-chapter-3.txt' });
+  ok(!(docText instanceof Error) && /^## Installation\nMount the panel & connect it\.\n- Check the LED\n\[figure: image1\.png\]\nPin \| Signal/.test(docText.text), `Word text extracted with headings, lists, figure markers and tables:\n${docText.text}`);
+  const zlib = await import('node:zlib');
+  const rgbRaw = Buffer.alloc(64 * 64 * 3, 0x40);
+  const rows = []; for (let y = 0; y < 64; y++) rows.push(Buffer.from([0]), rgbRaw.subarray(y * 192, (y + 1) * 192));
+  const flate = zlib.deflateSync(Buffer.concat(rows));
+  const pdfParts = [Buffer.from('%PDF-1.4\n')];
+  pdfParts.push(Buffer.from(`1 0 obj << /Type /XObject /Subtype /Image /Width 80 /Height 60 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg80.length} >> stream\n`), jpg80, Buffer.from('\nendstream endobj\n'));
+  pdfParts.push(Buffer.from(`2 0 obj << /Type /XObject /Subtype /Image /Width 64 /Height 64 /ColorSpace 4 0 R /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors 3 /Columns 64 >> /Length 5 0 R >> stream\n`), flate, Buffer.from('\nendstream endobj\n'));
+  pdfParts.push(Buffer.from(`3 0 obj << /Type /XObject /Subtype /Image /Width 80 /Height 60 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg80.length} >> stream\n`), jpg80, Buffer.from('\nendstream endobj\n')); // duplicate → deduplicated
+  pdfParts.push(Buffer.from('4 0 obj /DeviceRGB endobj\n'), Buffer.from(`5 0 obj ${flate.length} endobj\n`));
+  pdfParts.push(Buffer.from('6 0 obj << /Type /XObject /Subtype /Image /Width 16 /Height 16 /ColorSpace /DeviceGray /BitsPerComponent 8 /Length 256 >> stream\n'), Buffer.alloc(256), Buffer.from('\nendstream endobj\n%%EOF\n')); // tiny → skipped
+  const pdf = Buffer.concat(pdfParts);
+  const dropPdf = await req('POST', '/api/inbox', { files: [{ name: 'Assembly spec.pdf', dataBase64: pdf.toString('base64') }] });
+  const pdfNames = dropPdf.map((f) => f.name);
+  ok(pdfNames.includes('Assembly spec.pdf') && pdfNames.includes('assembly-spec-1.jpg') && pdfNames.includes('assembly-spec-2.png') && pdfNames.length === 3,
+    `dropping a PDF keeps it and extracts its pictures (JPEG as-is, Flate+predictor → PNG, duplicates and icons skipped): ${pdfNames.join(', ')}`);
+  const inbNow = (await req('GET', '/api/inbox')).files;
+  ok(inbNow.find((f) => f.name === 'assembly-spec-1.jpg')?.width === 80 && inbNow.find((f) => f.name === 'assembly-spec-2.png')?.width === 64 && inbNow.find((f) => f.name === 'fcom-chapter-3-image1.png')?.complete === true, 'extracted pictures are complete and correctly sized');
+  const impDoc = await mcpTool(871, 'import_local_files', { slug: 'starting-panel', version: 'A1.0', paths: ['fcom-chapter-3-image1.png', 'assembly-spec-2.png'] });
+  ok(!(impDoc instanceof Error) && impDoc.length === 2 && impDoc[1].url.endsWith('/assembly-spec-2.png'), 'extracted pictures import like any inbox file');
+  const viaAssets = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', { files: [{ name: 'Wiring notes.docx', dataBase64: docx.toString('base64') }] });
+  ok(viaAssets.length === 1 && viaAssets[0].name === 'wiring-notes-image1.png', 'a Word file dropped on the Assets tab lands as its pictures (no text sidecar in assets)');
+  const emptyDoc = await req('POST', '/api/inbox', { files: [{ name: 'empty.docx', dataBase64: storeZip([['word/document.xml', Buffer.from('<w:document/>')]]).toString('base64') }] }).catch((e) => e);
+  ok(emptyDoc instanceof Error && /no pictures found/.test(emptyDoc.message), 'a document without pictures is reported');
+  for (const n of ['fcom-chapter-3.txt', 'Assembly spec.pdf', 'assembly-spec-1.jpg']) await req('DELETE', `/api/inbox/${encodeURIComponent(n)}`);
+  ok((await req('GET', '/api/inbox')).files.length === 0, 'inbox cleaned up after the document tests');
   ok((await req('GET', '/api/modules/starting-panel/assets')).some((a) => a.name === 'cbw-operation.png'), 'imported inbox file is a module asset');
   const del = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'delete_asset', arguments: { slug: 'starting-panel', version: 'A1.0', name: 'cbw-operation.png' } } });
   ok(!del.isError && JSON.parse(del.content[0].text).removed === true, 'MCP delete_asset');

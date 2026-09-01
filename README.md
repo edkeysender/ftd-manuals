@@ -79,7 +79,12 @@ a strip of thumbnails, assets are also MCP resources `ftd://modules/<slug>/asset
 in without bytes in the chat: `upload_photo_from_url` (public links; hosts in `FTD_URL_CREDENTIALS`
 `host=basic:user:pass;host=bearer:TOKEN` are fetched with credentials), `request_upload` hands the user
 the Assets-tab drop link for files on their own device or behind a login (then `list_inbox` +
-`import_local_files`), `generate_illustration` / `convert_to_line_art` draw them. `attach_figure` inserts a
+`import_local_files`), `generate_illustration` / `convert_to_line_art` draw them. **Documents are a source
+of pictures:** a Word / PowerPoint / PDF / zip file dropped anywhere (inbox, Assets tab, chat attachment,
+`import_local_files` path) is expanded into the pictures inside it (`server/extract.js` — OOXML media,
+PDF image XObjects: JPEG as-is, Flate + PNG predictor, Indexed palettes) and a Word file also leaves
+`<doc>.txt` with its text and `[figure: …]` markers (`read_inbox_text`). Point `FTD_IMPORT_ROOTS` at the
+document share and no dropping is needed at all. `attach_figure` inserts a
 proper `<figure>` after a phrase in a section and stamps `applies_to`; `describe_asset` asks the vision
 model for caption / alt / visible text / which unit is shown. The asset route serves `?w=<px>` resized
 variants (thumbnails in the Assets tab).

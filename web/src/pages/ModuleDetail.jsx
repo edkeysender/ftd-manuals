@@ -470,7 +470,7 @@ function InboxPanel({ slug, draft, onImported }) {
           {open ? '▾' : '▸'} {t('Inbox')} <span className="muted">— {t('{files} waiting', { files: plural(files.length, 'file') })}</span>
         </button>
         <span className="muted small" title={info?.dir}>
-          {t('Drop artwork here, then attach it yourself or tell the assistant which figure goes where (it imports by name — no image bytes through the chat).')}
+          {t('Drop artwork — or Word, PowerPoint, PDF and zip files: the pictures inside are extracted (a Word file also leaves its text). Then attach them yourself or tell the assistant which figure goes where (it imports by name — no image bytes through the chat).')}
         </span>
       </div>
       {open && (
@@ -493,7 +493,7 @@ function InboxPanel({ slug, draft, onImported }) {
               {t(' — or ')}
               <label className="link">
                 {t('choose files')}
-                <input type="file" multiple accept="image/*,.pdf,.svg" hidden onChange={(e) => { drop(e.target.files); e.target.value = ''; }} />
+                <input type="file" multiple accept="image/*,.pdf,.svg,.docx,.pptx,.xlsx,.zip" hidden onChange={(e) => { drop(e.target.files); e.target.value = ''; }} />
               </label>
               {t('. Stored in')} <code>{info?.dir || '…'}</code> {t('on the console machine; not committed until attached.')}
             </span>
@@ -774,13 +774,13 @@ function AssetsTab({ slug, docs, module, onChanged }) {
           upload(e.dataTransfer.files);
         }}
       >
-        <strong>{busy ? t('Uploading…') : t('Drop images here')}</strong>
+        <strong>{busy ? t('Uploading…') : t('Drop images or documents here')}</strong>
         <span className="muted">
           {draft ? t(' — or ') : t(' — no open draft; ')}
           {draft && (
             <label className="link">
               {t('choose files')}
-              <input type="file" multiple accept="image/*,.pdf,.svg" hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
+              <input type="file" multiple accept="image/*,.pdf,.svg,.docx,.pptx,.xlsx,.zip" hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
             </label>
           )}
           {draft ? t('. Files are committed to {branch}.', { branch: draft.branch }) : t('create a doc draft to add assets.')}

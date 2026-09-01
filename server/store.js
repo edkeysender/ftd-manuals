@@ -24,6 +24,7 @@ import {
 } from './docgen.js';
 import { normalizeChecklist } from './checklist.js';
 import { validateAsset } from './images.js';
+import { expandDocuments } from './extract.js';
 import * as inbox from './inbox.js';
 
 const DATA_DIR = process.env.FTD_DATA_DIR
@@ -1243,6 +1244,9 @@ export async function saveAssets(slug, key, files) {
   const { branch, meta: docMeta, manual } = await loadDraftDoc(slug, key);
   const version = docMeta.version;
   if (!files.length) throw new Error('No files to save');
+  // Word / PowerPoint / PDF / zip → the pictures inside (a Word text sidecar is not an asset)
+  files = (await expandDocuments(files)).filter((f) => !f.text);
+  if (!files.length) throw new Error('No pictures to save');
   for (const f of files) validateAsset(f.name, f.buffer); // reject truncated / mislabelled files before anything is committed
   const entry = await moduleOf(slug);
   const stamp = currentStamp(entry?.module || {}, await getSoftwareFeed());

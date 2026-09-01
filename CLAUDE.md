@@ -65,7 +65,9 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
   `list_assets {thumbnails}`, MCP resources `ftd://modules/<slug>/assets/<file>`), fetch server-side
   (`upload_photo_from_url`; optional per-host credentials `FTD_URL_CREDENTIALS` in `server/sources.js`), or
-  hand the user the Assets-tab drop link (`request_upload` → inbox → `import_local_files`). The console never
+  hand the user the Assets-tab drop link (`request_upload` → inbox → `import_local_files`). Documents are a
+  source of pictures: every drop point runs `expandDocuments()` (`server/extract.js`) so Word / PowerPoint /
+  PDF / zip files become the pictures inside them (+ `<doc>.txt` with the Word text, `read_inbox_text`). The console never
   logs into Confluence/Jira itself — the agent reads those through its own connector and pictures come via
   the inbox. `attach_figure` places `<figure>`s; `describe_asset` is the vision model. Resizing is `sharp`
   (`server/images.js` `preview`/`resizeSameFormat`, asset route `?w=`). There is no base64 upload tool any

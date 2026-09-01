@@ -361,7 +361,9 @@ export const PL = {
   '{files} attached to {draft}': '{files} dołączono do {draft}',
   Inbox: 'Skrzynka',
   '{files} waiting': '{files} czeka',
-  'Drop artwork here, then attach it yourself or tell the assistant which figure goes where (it imports by name — no image bytes through the chat).': 'Upuść tu grafiki, a potem dołącz je samodzielnie albo powiedz asystentowi, która ilustracja gdzie trafia (importuje po nazwie — bez przesyłania obrazów przez czat).',
+  'Drop artwork — or Word, PowerPoint, PDF and zip files: the pictures inside are extracted (a Word file also leaves its text). Then attach them yourself or tell the assistant which figure goes where (it imports by name — no image bytes through the chat).':
+    'Upuść grafiki — albo pliki Word, PowerPoint, PDF i zip: obrazy z ich wnętrza zostaną wyodrębnione (plik Word zostawia też swój tekst). Potem dołącz je samodzielnie albo powiedz asystentowi, która ilustracja gdzie trafia (importuje po nazwie — bez przesyłania obrazów przez czat).',
+  'Drop images or documents here': 'Upuść tu obrazy lub dokumenty',
   'Working…': 'Pracuję…',
   'Drop files for the inbox': 'Upuść pliki do skrzynki',
   ' — or ': ' — lub ',

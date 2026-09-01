@@ -310,7 +310,7 @@ export const TOOLS = [
   {
     name: 'import_local_files',
     description:
-      "Import files into the module draft's assets folder WITHOUT any bytes passing through the model — the way to add real photos and artwork. Give bare file names to take them from the console INBOX (the drop folder users fill from the Assets tab; see list_inbox), or absolute paths / a folder inside one of the allowed import roots. Imported inbox files are removed from the inbox unless keep_in_inbox is true. Every file is validated (complete PNG/JPEG/…); returns the served URLs to use in <img src>.",
+      "Import files into the module draft's assets folder WITHOUT any bytes passing through the model — the way to add real photos and artwork. Give bare file names to take them from the console INBOX (see list_inbox), or absolute paths / a folder inside one of the allowed import roots (FTD_IMPORT_ROOTS in .env — point one at the document share and no dropping is needed). A Word / PowerPoint / PDF / zip path is expanded into the pictures it contains. Imported inbox files are removed from the inbox unless keep_in_inbox is true. Every file is validated (complete PNG/JPEG/…); returns the served URLs to use in <img src> / attach_figure.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -329,9 +329,15 @@ export const TOOLS = [
   {
     name: 'list_inbox',
     description:
-      'List the console inbox: files the user dropped on the console machine, waiting to be attached to a module (name, size, type, pixel size, complete). Import them with import_local_files by bare name. Ask the user to drop files into the inbox (Module → Assets tab) when artwork is needed.',
+      'List the console inbox: files the user dropped on the console machine, waiting to be attached to a module (name, size, type, pixel size, complete). Dropped Word / PowerPoint / PDF / zip files are already expanded: the pictures inside appear as "<doc>-<n>.png/jpg" entries and a Word file also leaves "<doc>.txt" with its text and [figure: …] markers (read it with read_inbox_text). Import pictures with import_local_files by bare name. Ask the user to drop files (request_upload gives the link) when artwork is needed.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { title: 'List inbox', ...RO },
+  },
+  {
+    name: 'read_inbox_text',
+    description: 'Read a .txt / .md inbox entry — typically the text extracted from a dropped Word file (headings as ##, lists as -, table rows as a | b, pictures as [figure: name]). Use it as the source to write sections from, then import_local_files + attach_figure the pictures.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Inbox entry name, e.g. fcom-chapter-3.txt' } }, required: ['name'] },
+    annotations: { title: 'Read inbox text', ...RO },
   },
   {
     name: 'delete_asset',
@@ -929,7 +935,7 @@ async function callTool(name, args) {
       const base = currentBaseUrl || `http://localhost:${process.env.PORT || 5179}`;
       return {
         url: `${base}/#/modules/${args.slug}?tab=assets`,
-        instructions: 'Ask the user to open this link and drop the pictures on the "Drop files for the inbox" area (or drag them onto the Assets tab to attach them directly). Then call list_inbox and import_local_files with the bare file names.',
+        instructions: 'Ask the user to open this link and drop the pictures — or the Word / PowerPoint / PDF files that contain them — on the "Drop files for the inbox" area (or onto the Assets tab to attach them directly). Documents are expanded into their pictures (+ a .txt with the Word text). Then call list_inbox, read_inbox_text for the text, and import_local_files with the bare picture names.',
       };
     }
     case 'import_local_files': {
@@ -957,7 +963,7 @@ async function callTool(name, args) {
         }
         if (st.isDirectory()) {
           for (const name of await fs.readdir(abs)) {
-            if (/\.(png|jpe?g|gif|webp|svg|pdf)$/i.test(name)) {
+            if (/\.(png|jpe?g|gif|webp|svg|pdf|docx|pptx|xlsx|zip)$/i.test(name)) {
               files.push({ name, buffer: await fs.readFile(path.join(abs, name)) });
             }
           }
@@ -973,6 +979,11 @@ async function callTool(name, args) {
     }
     case 'list_inbox':
       return { dir: inbox.INBOX_DIR, files: await inbox.listInbox() };
+    case 'read_inbox_text': {
+      const text = await inbox.readInboxText(args.name);
+      if (text === null) throw new Error(`"${args.name}" is not in the inbox — see list_inbox`);
+      return { name: args.name, text };
+    }
     case 'delete_asset':
       return await store.deleteAsset(args.slug, args.version, args.name);
     case 'upload_photo_from_url': {
