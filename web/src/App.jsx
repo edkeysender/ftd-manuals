@@ -8,6 +8,7 @@ import Settings from './pages/Settings.jsx';
 import ManualsList from './pages/ManualsList.jsx';
 import ManualView from './pages/ManualView.jsx';
 import SoftwareList from './pages/SoftwareList.jsx';
+import PartsList from './pages/PartsList.jsx';
 import Login from './pages/Login.jsx';
 import { t, plural, useLocale, LanguageSwitch } from './i18n.jsx';
 
@@ -67,6 +68,7 @@ export default function App() {
               <NavLink to="/" end>
                 {t('Modules')}
               </NavLink>
+              <NavLink to="/parts">{t('Parts')}</NavLink>
               <NavLink to="/software">{t('Software')}</NavLink>
             </nav>
             <div className="sync-state">
@@ -99,6 +101,7 @@ export default function App() {
               <Route path="/modules/:slug" element={<ModuleDetail />} />
               <Route path="/modules/:slug/docs/:version/edit" element={<Editor />} />
               <Route path="/modules/:slug/docs/:version/review" element={<Editor review />} />
+              <Route path="/parts" element={<PartsList />} />
               <Route path="/software" element={<SoftwareList />} />
               <Route path="/manuals" element={<ManualsList />} />
               <Route path="/manuals/:slug" element={<ManualView />} />
