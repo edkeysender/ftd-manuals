@@ -43,9 +43,13 @@ Change that password in Settings → *Your password*. Two roles: **administrator
 deleting (manuals, drafts, assets, inbox files, comment threads, users); **editor** — everything except
 deleting. Every `DELETE` route and the draft *discard* answer `403` for editors, and the UI hides those buttons.
 Administrators manage accounts in Settings → *Users* (add, change role, reset password, delete; the last
-administrator cannot be removed). The **/mcp endpoint requires a bearer token**: every user creates and
-revokes their own in Settings → MCP access tokens (`data/mcp-tokens.json`, hashes only, value shown once);
-`MCP_TOKEN` in `.env` still works as a master token for local tooling.
+administrator cannot be removed). Roles: **admin** (everything, incl. deleting), **moderator** (writes
+manuals, may connect MCP agents), **viewer** (reads and comments in reviews — no MCP, no editing).
+
+The **/mcp endpoint is authorized with OAuth** (authorization code + PKCE, dynamic client registration):
+when an MCP client connects it opens the console's sign-in/consent page and gets short-lived access
+tokens (1 h) plus a rotating refresh token — approve as admin or moderator. `MCP_TOKEN` in `.env`
+stays honoured as a master token for local tooling.
 
 ## How documents are stored
 

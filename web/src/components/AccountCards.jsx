@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, timeAgo } from '../api.js';
+import { api } from '../api.js';
 import { useAuth, useToast, ROLE_LABELS } from '../App.jsx';
 import { t } from '../i18n.jsx';
 
@@ -44,7 +44,7 @@ export function PasswordCard() {
   );
 }
 
-const EMPTY = { name: '', email: '', password: '', role: 'editor' };
+const EMPTY = { name: '', email: '', password: '', role: 'moderator' };
 
 /** Settings card (administrators only): who can sign in, with which role. */
 export function UsersCard() {
@@ -97,7 +97,7 @@ export function UsersCard() {
     <section className="settings-card">
       <h2>{t('Users')}</h2>
       <p>
-        {t('Who can sign in to the console. Administrators can also delete — manuals, drafts, assets, inbox files, comment threads and users; editors can do everything else.')}
+        {t('Who can sign in to the console. Administrators can do everything including deleting; moderators write manuals and may connect MCP agents; viewers only read and comment in reviews — no MCP.')}
       </p>
       {users ? (
         <table className="table users-table">
@@ -159,120 +159,6 @@ export function UsersCard() {
           {t('Add user')}
         </button>
       </form>
-    </section>
-  );
-}
-
-/** Settings card: bearer tokens for the /mcp endpoint — each user manages their own
- *  (administrators see everyone's). The token value is shown exactly once. */
-export function TokensCard() {
-  const toast = useToast();
-  const { me } = useAuth();
-  const [tokens, setTokens] = useState(null);
-  const [label, setLabel] = useState('');
-  const [fresh, setFresh] = useState(null); // {token, label} — shown once after creation
-  const [busy, setBusy] = useState(false);
-
-  const load = () => api.tokens().then(setTokens).catch((e) => toast(e.message, 'err'));
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function create(e) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      const tk = await api.createToken(label.trim() || undefined);
-      setFresh(tk);
-      setLabel('');
-      await load();
-    } catch (err) {
-      toast(err.message, 'err');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function revoke(tk) {
-    if (!confirm(t('Revoke token "{label}"? MCP clients using it stop working immediately.', { label: tk.label }))) return;
-    try {
-      await api.revokeToken(tk.id);
-      if (fresh && fresh.id === tk.id) setFresh(null);
-      await load();
-      toast(t('Token revoked'));
-    } catch (err) {
-      toast(err.message, 'err');
-    }
-  }
-
-  return (
-    <section className="settings-card">
-      <h2>{t('MCP access tokens')}</h2>
-      <p>
-        {t('The MCP endpoint requires a bearer token. Create one per agent or machine and send it as')}{' '}
-        <code>Authorization: Bearer &lt;token&gt;</code>{' '}
-        {t('— or, for clients that cannot set headers (the claude.ai connector), use the endpoint')}{' '}
-        <code>/mcp/t/&lt;token&gt;</code>. {t('The value is shown only once — revoke a token to cut an agent off.')}
-      </p>
-      {fresh && (
-        <div className="token-reveal">
-          <strong>{t('Token "{label}" created — copy it now, it will not be shown again:', { label: fresh.label })}</strong>
-          <div className="pair">
-            <code className="token-value">{fresh.token}</code>
-            <button
-              type="button"
-              className="btn btn-sm"
-              onClick={() => {
-                navigator.clipboard?.writeText(fresh.token);
-                toast(t('Token copied'));
-              }}
-            >
-              {t('Copy')}
-            </button>
-            <button type="button" className="btn btn-sm" onClick={() => setFresh(null)}>
-              {t('Done')}
-            </button>
-          </div>
-        </div>
-      )}
-      <form className="pair wrap" onSubmit={create}>
-        <input placeholder={t('Label (which agent / machine uses it)')} value={label} onChange={(e) => setLabel(e.target.value)} style={{ minWidth: 260 }} />
-        <button className="btn btn-primary" disabled={busy}>
-          {busy ? t('Creating…') : t('Create token')}
-        </button>
-      </form>
-      {tokens === null ? (
-        <p className="muted">{t('Loading…')}</p>
-      ) : tokens.length === 0 ? (
-        <p className="muted">{t('No tokens yet — MCP clients cannot connect until one exists.')}</p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t('Label')}</th>
-              {me?.role === 'admin' && <th>{t('Owner')}</th>}
-              <th>{t('Created')}</th>
-              <th>{t('Last used')}</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {tokens.map((tk) => (
-              <tr key={tk.id}>
-                <td><strong>{tk.label}</strong></td>
-                {me?.role === 'admin' && <td className="muted">{tk.owner}</td>}
-                <td className="muted">{new Date(tk.createdAt).toISOString().slice(0, 10)}</td>
-                <td className="muted">{tk.lastUsedAt ? timeAgo(tk.lastUsedAt) : t('never')}</td>
-                <td className="btn-row">
-                  <button className="btn btn-sm btn-danger" onClick={() => revoke(tk)}>
-                    {t('Revoke')}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </section>
   );
 }

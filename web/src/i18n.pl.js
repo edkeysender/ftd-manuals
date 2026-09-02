@@ -498,6 +498,12 @@ export const PL = {
     'Przykłady:\n- Jesteśmy FTD.aero, budujemy urządzenia szkoleniowe FNPT II.\n- Napięcie we wszystkich symulatorach: 230 V AC / 24 V DC; zawsze ostrzegaj przed otwarciem szafy rack.\n- W instrukcjach SIM używaj „flight compartment”, nigdy „cockpit”.\n- Numery części zawsze w formie FTD-XXXX-YY; nigdy ich nie wymyślaj.',
   'Save guidelines': 'Zapisz wytyczne',
   'MCP connector': 'Złącze MCP',
+  Moderator: 'Moderator',
+  Viewer: 'Przeglądający',
+  'Who can sign in to the console. Administrators can do everything including deleting; moderators write manuals and may connect MCP agents; viewers only read and comment in reviews — no MCP.':
+    'Kto może logować się do konsoli. Administratorzy mogą wszystko, łącznie z usuwaniem; moderatorzy piszą instrukcje i mogą podłączać agentów MCP; przeglądający tylko czytają i komentują w recenzjach — bez MCP.',
+  'External agents (Claude Code, Claude.ai, any MCP client) can create and edit module docs exactly like the UI. Access is authorized with your console account: when the client connects it opens a sign-in page — approve it as an administrator or moderator (viewers cannot connect agents).':
+    'Zewnętrzni agenci (Claude Code, Claude.ai, dowolny klient MCP) mogą tworzyć i edytować dokumenty modułów jak w UI. Dostęp autoryzowany jest kontem konsoli: przy łączeniu klient otwiera stronę logowania — zatwierdź ją jako administrator lub moderator (przeglądający nie mogą podłączać agentów).',
   'MCP access tokens': 'Tokeny dostępu MCP',
   'The MCP endpoint requires a bearer token. Create one per agent or machine and send it as': 'Endpoint MCP wymaga tokenu bearer. Utwórz osobny dla każdego agenta lub komputera i wysyłaj go jako',
   'The value is shown only once — revoke a token to cut an agent off.': 'Wartość jest pokazywana tylko raz — unieważnij token, aby odciąć agenta.',

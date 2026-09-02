@@ -189,10 +189,11 @@ const clearSnapshot = (slug, version) => {
  * people get: they select text and comment; the author sees the threads in the
  * editor's Comments tab, resolves them, or asks the AI to propose the change.
  */
-export default function Editor({ review = false }) {
+export default function Editor({ review: reviewProp = false }) {
   const { slug, version } = useParams();
   const toast = useToast();
-  const { isAdmin } = useAuth();
+  const { isAdmin, canEdit } = useAuth();
+  const review = reviewProp || !canEdit; // viewers always get the read-only review view
   const navigate = useNavigate();
 
   // review comments
