@@ -17,6 +17,7 @@ import {
   DEFAULT_MANUAL,
   manualTypeOf,
   docKey,
+  manualDocCode,
   parseDocKey,
   LANGUAGES,
   DEFAULT_LANG,
@@ -230,7 +231,7 @@ async function collectAllUncached() {
       }
       if (chosen) {
         const threads = chosenRef !== 'main' ? get(chosenRef, commentsIn(d.dir))?.threads || [] : [];
-        docs.push({ ...chosen, manual: d.manual, key, dir: d.dir, ref: chosenRef, openComments: threads.filter((c) => c.status === 'open').length });
+        docs.push({ ...chosen, manual: d.manual, key, dir: d.dir, ref: chosenRef, docCode: manualDocCode(module, d.manual), openComments: threads.filter((c) => c.status === 'open').length });
       }
     }
     // newest version first within a manual type; types in their canonical order
@@ -572,6 +573,7 @@ export async function listModules() {
       softwares: module.softwares || [],
       softwareLabel: softwareLabel(module.softwares),
       manuals,
+      type: module.type || null,
       latestDoc: primary ? primary.label : null,
       status: moduleStatus(docs),
       updated,
@@ -785,6 +787,7 @@ export async function createModuleDoc(input, manuals) {
     code: input.code || null,
     category: input.category || 'software',
     group: input.group,
+    type: input.type || null, // own-module | third-party-kit | own-software | module-software
     hardwareIds: hw.ids,
     softwares: input.softwares || [],
     createdAt: created,

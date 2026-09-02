@@ -469,3 +469,17 @@ label.inline { font-weight: 400; color: var(--muted); }
 /* ---------- MCP tokens ---------- */
 .token-reveal { border: 1px solid #86efac; background: #f0fdf4; border-radius: 8px; padding: 10px 14px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
 .token-value { user-select: all; word-break: break-all; background: #fff; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); }
+
+/* ---------- compact new-module modal ---------- */
+.wizard-compact { width: 640px; max-width: 94vw; }
+.form-rows { display: flex; flex-direction: column; gap: 12px; }
+.form-row { display: grid; grid-template-columns: 130px 1fr; gap: 14px; align-items: start; }
+.form-row > span:first-child { color: var(--muted); font-size: 13px; padding-top: 8px; }
+.form-row input, .form-row select, .form-row textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; box-sizing: border-box; }
+.form-row .code-input { width: 160px; }
+.type-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.type-card { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 10px 13px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.type-card span { color: var(--muted); font-weight: 400; font-size: 12.5px; }
+.type-card.selected { border-color: var(--accent); background: #eef4ff; }
+.will-create { margin-top: 16px; background: #eef4ff; border: 1px solid #b9c9ff; border-radius: 8px; padding: 9px 13px; font-size: 13px; color: #1e3a8a; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.will-create code { background: #fff; }

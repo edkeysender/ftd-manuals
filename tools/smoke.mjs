@@ -950,6 +950,27 @@ try {
   await req('DELETE', '/api/manuals/b737-simulator-manual');
   ok((await req('GET', '/api/manuals')).length === 0, 'manual deleted');
 
+  // module types: what the module is decides which manuals are drafted
+  const mst = await req('POST', '/api/modules', { name: 'Starter Kit', code: 'SK', category: 'instructor-station', group: 'IOS', type: 'module-software', software: 'STP Core', parts: 'Płyta czołowa v1\nEncoder', checklist: { mode: 'template' } });
+  ok(mst.docs.length === 4 && mst.docs.map((d) => d.manual).join(',') === 'customer,technician,software-customer,software-technician', 'module-software drafts all four manuals');
+  const mstMod = await req('GET', '/api/modules/starter-kit');
+  ok(mstMod.module.type === 'module-software' && mstMod.module.softwares[0].name === 'STP Core', 'module type stored, selected software linked');
+  ok(mstMod.module.hardwareItems.some((h) => h.name === 'Płyta czołowa' && h.type === 'ftd' && h.version === 'v1') && mstMod.module.hardwareItems.some((h) => h.name === 'Encoder' && h.type === 'cots'), 'parts parsed: trailing version = made by FTD, none = bought');
+  ok(mstMod.docs.find((d) => d.manual === 'technician').docCode === 'SK-TECH-HW' && mstMod.docs.find((d) => d.manual === 'software-customer').docCode === 'SK-USER-SW', 'doc codes derived from the module code');
+  ok(mstMod.docs.find((d) => d.manual === 'technician').fat === true && mstMod.docs.find((d) => d.manual === 'customer').fat === false, 'FAT lands on the technician manual');
+  const mstDoc = await req('GET', '/api/modules/starter-kit/docs/technician:A1.0');
+  ok(mstDoc.generated.includes('<h3>Parts</h3>') && mstDoc.generated.includes('SK-TECH-HW') && mstDoc.generated.includes('Płyta czołowa'), 'generated section 3 lists the parts and the document code');
+  ok((await req('GET', '/api/modules')).find((m) => m.slug === 'starter-kit').type === 'module-software', 'list row carries the module type');
+  const badType = await req('POST', '/api/modules', { name: 'Bad', group: 'SIM', type: 'kit' }).catch((e) => e);
+  ok(badType instanceof Error && /Unknown module type/.test(badType.message), 'unknown module type rejected');
+  const swAuto = await req('POST', '/api/modules', { name: 'Config Tool', group: 'IOS', category: 'software', type: 'own-software' });
+  ok(swAuto.docs.length === 2 && swAuto.docs.every((d) => d.manual.startsWith('software-')), 'own-software drafts the software pair');
+  ok((await req('GET', '/api/modules/config-tool')).module.softwares[0].name === 'Config Tool', 'a software named after the module was created and linked');
+  ok((await req('GET', '/api/software')).some((r) => r.name === 'Config Tool' && r.modules.length === 1), 'the auto-linked software shows on the Software page');
+  await req('DELETE', '/api/modules/starter-kit');
+  await req('DELETE', '/api/modules/config-tool');
+  ok(!(await req('GET', '/api/modules')).some((m) => ['starter-kit', 'config-tool'].includes(m.slug)), 'type-test modules removed (cleanup)');
+
   // software delete: unlinks from modules, drops the feed entry; the module keeps its other software
   await req('POST', '/api/software', { name: 'Tmp Tool', version: 'v0.1', modules: [{ slug: 'starting-panel' }] });
   ok((await req('GET', '/api/software')).some((r) => r.name === 'Tmp Tool' && r.modules.length === 1 && r.releases.length === 1), 'software created, linked and versioned');

@@ -107,7 +107,7 @@ export default function ModuleDetail() {
           {t('Manuals')}{docs.length ? ` (${Object.keys(data.manuals || {}).length})` : ''}
         </button>
         <button className={tab === 'hardware' ? 'active' : ''} onClick={() => setTab('hardware')}>
-          {t('Hardware')}{module.hardwareItems?.length ? ` (${module.hardwareItems.length})` : ''}
+          {t('Parts')}{module.hardwareItems?.length ? ` (${module.hardwareItems.length})` : ''}
         </button>
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
           {t('Assets')}

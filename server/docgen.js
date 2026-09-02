@@ -6,12 +6,77 @@
  */
 
 export const CATEGORY_LABELS = {
-  software: 'Software',
   'cockpit-hardware': 'Cockpit hardware',
-  structure: 'Structure',
   peripherals: 'Peripherals',
-  rack: 'Rack',
+  structure: 'Structure',
+  'instructor-station': 'Instructor station',
+  software: 'Software',
+  rack: 'Rack', // legacy — existing modules keep it; no longer offered for new ones
 };
+
+/* ------------------------------------------------------------------ */
+/* Module types                                                        */
+/* What a module IS decides which manuals it needs — creating a module */
+/* drafts them all at once, with predictable document codes.           */
+/* ------------------------------------------------------------------ */
+
+export const MODULE_TYPES = {
+  'own-module': {
+    id: 'own-module',
+    label: 'Own module',
+    desc: 'off-the-shelf parts + own versioned plates',
+    manuals: ['customer', 'technician'],
+    needsSoftware: false,
+  },
+  'third-party-kit': {
+    id: 'third-party-kit',
+    label: '3rd-party kit',
+    desc: 'bought as a complete set, e.g. an intercom',
+    manuals: ['customer', 'technician'],
+    needsSoftware: false,
+  },
+  'own-software': {
+    id: 'own-software',
+    label: 'Own software',
+    desc: 'an FTD application without hardware',
+    manuals: ['software-customer', 'software-technician'],
+    needsSoftware: true,
+  },
+  'module-software': {
+    id: 'module-software',
+    label: 'Module + software',
+    desc: 'e.g. the IOS starting panel',
+    manuals: ['customer', 'technician', 'software-customer', 'software-technician'],
+    needsSoftware: true,
+  },
+};
+
+export function moduleTypeOf(id) {
+  const t = MODULE_TYPES[id];
+  if (!t) throw new Error(`Unknown module type "${id}" — one of ${Object.keys(MODULE_TYPES).join(', ')}`);
+  return t;
+}
+
+/** Document code of one manual of a module: <CODE>-TECH-HW / <CODE>-USER-SW … */
+export function manualDocCode(module, manualId) {
+  const t = manualTypeOf(manualId);
+  const base = String(module.code || module.slug || '').toUpperCase();
+  return `${base}-${t.audience === 'technician' ? 'TECH' : 'USER'}-${t.kind === 'software' ? 'SW' : 'HW'}`;
+}
+
+/**
+ * Parts the module is built from — either made in-house ("Płyta czołowa v1",
+ * trailing version → an FTD catalog item) or bought ("Encoder" → a COTS item).
+ * Accepts the textarea text (one part per line) or an array of lines.
+ */
+export function parseParts(parts) {
+  const lines = (Array.isArray(parts) ? parts : String(parts || '').split(/\r?\n/)).map((l) => String(l).trim()).filter(Boolean);
+  return lines.map((line) => {
+    const m = /^(.*\S)\s+[vV](\d[\w.-]*)$/.exec(line);
+    if (m) return { name: m[1], type: 'ftd', version: `v${m[2]}` };
+    return { name: line, type: 'cots' };
+  });
+}
 
 export const GROUP_LABELS = {
   SIM: 'Simulator manual',
@@ -259,8 +324,8 @@ const STRINGS = {
     categories: CATEGORY_LABELS,
     audiences: { customer: 'customer', technician: 'technician' },
     revisionRecord: 'Revision record', documentRevisions: 'Document revisions', revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
-    introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualGroup: 'Manual group', manualType: 'Manual type',
-    hardware: 'Hardware', unit: 'Unit', relation: 'Relation', notes: 'Notes', notHardware: 'Not hardware-related',
+    introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualGroup: 'Manual group', manualType: 'Manual type', docCode: 'Document code',
+    hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes', notHardware: 'No parts — not a hardware module',
     softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', notSoftware: 'Not software-related',
     audienceRow: (label, audience) => `${label} — ${audience} audience`,
     introAudience: { technician: 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.', customer: 'It is intended for the operator of the simulator.' },
@@ -277,8 +342,8 @@ const STRINGS = {
     categories: { software: 'Oprogramowanie', 'cockpit-hardware': 'Sprzęt kokpitu', structure: 'Konstrukcja', peripherals: 'Urządzenia peryferyjne', rack: 'Rack' },
     audiences: { customer: 'klient', technician: 'technik' },
     revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
-    introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualGroup: 'Grupa instrukcji', manualType: 'Rodzaj instrukcji',
-    hardware: 'Sprzęt', unit: 'Jednostka', relation: 'Relacja', notes: 'Uwagi', notHardware: 'Nie dotyczy sprzętu',
+    introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualGroup: 'Grupa instrukcji', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
+    hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi', notHardware: 'Brak części — moduł bez sprzętu',
     softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', notSoftware: 'Nie dotyczy oprogramowania',
     audienceRow: (label, audience) => `${label} — odbiorca: ${audience}`,
     introAudience: { technician: 'Jest przeznaczony dla instalatora i technika serwisu i nie stanowi części dokumentacji przekazywanej operatorowi symulatora.', customer: 'Jest przeznaczony dla operatora symulatora.' },
@@ -359,6 +424,7 @@ ${record || `<tr><td colspan="3">${T.noRevisions}</td></tr>`}
 <tr><th>${T.category}</th><td>${esc(T.categories[module.category] || module.category || '—')}</td></tr>
 <tr><th>${T.manualGroup}</th><td>${esc(module.group)}</td></tr>
 <tr><th>${T.manualType}</th><td>${T.audienceRow(typeLabel, esc(T.audiences[type.audience]))}</td></tr>
+<tr><th>${T.docCode}</th><td>${esc(manualDocCode(module, type.id))}</td></tr>
 </tbody>
 </table>
 <h3>${T.hardware}</h3>
