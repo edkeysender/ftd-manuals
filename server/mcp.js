@@ -520,6 +520,24 @@ export const TOOLS = [
     annotations: { title: 'Register software release (new version)', ...RW },
   },
   {
+    name: 'delete_module',
+    description:
+      'DELETE a module: every draft branch of its docs, its folder on main (all doc versions, assets) and its chapter in every assembled manual. The hardware catalog and the software release feed stay. Irreversible from the API — confirm with the user before calling.',
+    inputSchema: { type: 'object', properties: { slug: { type: 'string', description: 'Module slug' } }, required: ['slug'] },
+    annotations: { title: 'Delete module', ...RW, destructiveHint: true },
+  },
+  {
+    name: 'delete_software',
+    description:
+      'DELETE a software: unlinks it from every module and removes it, with all its registered releases, from the release feed. Existing docs keep their covered ranges. On a module whose only software it is, open software manual drafts are RELEASED first (returned in `released`) — they cannot exist without a software relation. Prefer link_software with unlink: true to detach one module.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Software name exactly as in list_software' } },
+      required: ['name'],
+    },
+    annotations: { title: 'Delete software', ...RW, destructiveHint: true },
+  },
+  {
     name: 'link_software',
     description:
       'Link an existing software to a module (or update the from-version of an existing link) — the "software relation" that enables the module\'s software manuals and puts the software\'s releases on its watch list. Set unlink: true to remove the link instead.',
@@ -729,6 +747,10 @@ async function callTool(name, args) {
         note: args.note,
         modules: (args.modules || []).map((m) => ({ slug: m.slug, fromVersion: m.from_version })),
       });
+    case 'delete_module':
+      return await store.deleteModule(args.slug);
+    case 'delete_software':
+      return await store.deleteSoftware(args.name);
     case 'link_software':
       return args.unlink ? await store.unlinkSoftware(args.slug, args.name) : await store.linkSoftware(args.slug, args.name, args.from_version);
     case 'register_software_release':

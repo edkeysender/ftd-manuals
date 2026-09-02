@@ -123,6 +123,22 @@ function SoftwareBlock({ sw, reload }) {
     setForm({ version: '', manualAffecting: false, note: '' });
   }
 
+  async function remove() {
+    // Open software manual drafts on modules that have no other software get released by the delete.
+    const toRelease = sw.modules.flatMap((m) => (m.softwareCount === 1 ? m.docs.filter(isOpenDoc).map((d) => `${m.name} ${d.key}`) : []));
+    let msg = sw.modules.length
+      ? t('Delete software "{name}"? It is unlinked from {modules} and its {releases} are removed from the feed. Existing manuals are kept.', {
+          name: sw.name,
+          modules: sw.modules.map((m) => m.name).join(', '),
+          releases: plural(sw.releases.length, 'release'),
+        })
+      : t('Delete software "{name}" and its {releases}?', { name: sw.name, releases: plural(sw.releases.length, 'release') });
+    if (toRelease.length) msg += '\n\n' + t('Open drafts released first: {drafts}', { drafts: toRelease.join(', ') });
+    if (!confirm(msg)) return;
+    const r = await act('delete', () => api.deleteSoftware(sw.name));
+    if (r) toast(r.released.length ? t('{name} deleted · released {drafts}', { name: sw.name, drafts: r.released.join(', ') }) : t('{name} deleted', { name: sw.name }));
+  }
+
   return (
     <div className="sw-block software-block">
       <div className="software-head">
@@ -137,6 +153,15 @@ function SoftwareBlock({ sw, reload }) {
           <span className="chip">{plural(sw.manualCount, 'software manual')}</span>
           <span className="chip">{plural(sw.releases.length, 'release')}</span>
         </span>
+        <button
+          className="btn btn-sm btn-danger"
+          style={{ marginLeft: 'auto' }}
+          disabled={busy === 'delete'}
+          title={t('Unlink from every module and remove the software with its releases from the feed')}
+          onClick={remove}
+        >
+          {busy === 'delete' ? t('Deleting…') : t('Delete')}
+        </button>
       </div>
 
       <LinkModuleRow sw={sw} reload={reload} />
