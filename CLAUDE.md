@@ -52,7 +52,14 @@ The functional spec lives in this file's history and in the Modules spec provide
   identically on main (when released) and on every open draft branch.
 - Sections 1–3 (revision record, introduction, general info) are **generated** from module data —
   they are never hand-edited; the editor stores only sections 4–7 as semantic HTML.
-- Manual groups: `SIM` / `IOS` / `RACK`. Hardware: a shared catalog (`hardware.json` on `main`, items
+- Module types (`MODULE_TYPES` in `server/docgen.js`, mirrored in `web/src/api.js`): what a module IS decides
+  which manuals are drafted on creation — `own-module` / `third-party-kit` → customer + technician,
+  `own-software` → the software pair (a software named after the module is auto-created when none is picked),
+  `module-software` → all four. Doc codes derive as `<CODE>-TECH-HW` / `<CODE>-USER-SW` (`manualDocCode`,
+  `docCode` on every doc record, shown in generated section 3). "Parts" are the hardware catalog: a line with
+  a trailing version ("Płyta czołowa v1") = made by FTD, without = bought COTS (`parseParts`; `parts` on
+  POST /api/modules and MCP `create_module`). New-module modal is compact (no steps); groups offered: SIM, IOS.
+- Manual groups: `SIM` / `IOS` / `RACK` (RACK legacy). Hardware: a shared catalog (`hardware.json` on `main`, items
   `{id, name, type: ftd|cots, version | manufacturer+model, notes}`); a module links **N** items via
   `hardwareIds` — pick existing or create new (wizard step 3, module → Hardware tab, MCP `list_hardware` /
   `create_hardware` / `update_hardware`, `hardware: [{id}|{name,type,…}]` on create/update). One manual may

@@ -13,6 +13,9 @@ import {
   MANUAL_ORDER,
   DEFAULT_MANUAL,
   manualTypeOf,
+  MODULE_TYPES,
+  moduleTypeOf,
+  parseParts,
   LANGUAGES,
   DEFAULT_LANG,
   langOf,
@@ -154,8 +157,33 @@ async function manualSpec(moduleInput, manualId, start, fat) {
 app.post('/api/modules', wrap(async (req, res) => {
   const input = req.body;
   if (!input.name) throw new Error('Module name is required');
-  if (!['SIM', 'IOS', 'RACK'].includes(input.group)) throw new Error('Manual group must be SIM, IOS or RACK');
-  const manualIds = [...new Set((Array.isArray(input.manuals) && input.manuals.length ? input.manuals : [DEFAULT_MANUAL]).map((m) => manualTypeOf(m).id))];
+  if (!['SIM', 'IOS', 'RACK'].includes(input.group)) throw new Error('Manual group must be SIM or IOS');
+
+  // The module type decides which manuals are drafted: own-module / third-party-kit
+  // (customer + technician), own-software (the software pair), module-software (all four).
+  const mtype = input.type ? moduleTypeOf(input.type) : null;
+
+  // Parts: "Płyta czołowa v1" (made, versioned) or "Encoder" (bought) — one per line.
+  if (input.parts !== undefined) {
+    input.hardware = [...(Array.isArray(input.hardware) ? input.hardware : []), ...parseParts(input.parts)];
+  }
+
+  // Software relation: a single name from the modal ("— none —" omitted); a software
+  // type without one gets a software named after the module.
+  if (typeof input.software === 'string' && input.software.trim()) {
+    input.softwares = [{ name: input.software.trim(), fromVersion: input.softwareFrom || '' }];
+  }
+  if (mtype?.needsSoftware && !(input.softwares || []).length) {
+    input.softwares = [{ name: input.name.trim(), fromVersion: '' }];
+  }
+
+  const manualIds = [
+    ...new Set(
+      (Array.isArray(input.manuals) && input.manuals.length ? input.manuals : mtype ? mtype.manuals : [DEFAULT_MANUAL]).map(
+        (m) => manualTypeOf(m).id
+      )
+    ),
+  ];
 
   const start = input.start || { mode: 'blank' };
   // Hardware: catalog ids and/or new items — resolved (not yet written) so the

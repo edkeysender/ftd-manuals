@@ -117,18 +117,26 @@ export const api = {
 };
 
 export const CATEGORIES = [
-  ['software', 'Software'],
   ['cockpit-hardware', 'Cockpit hardware'],
-  ['structure', 'Structure'],
   ['peripherals', 'Peripherals'],
-  ['rack', 'Rack'],
+  ['structure', 'Structure'],
+  ['instructor-station', 'Instructor station'],
+  ['software', 'Software'],
 ];
 
 export const GROUPS = [
   ['SIM', 'Simulator'],
   ['IOS', 'IOS'],
-  ['RACK', 'RACK cabinets'],
 ];
+
+/** What a module IS — decides which manuals are drafted on creation (mirrors MODULE_TYPES in server/docgen.js). */
+export const MODULE_TYPES = [
+  { id: 'own-module', label: 'Own module', desc: 'off-the-shelf parts + own versioned plates', manuals: ['customer', 'technician'], needsSoftware: false },
+  { id: 'third-party-kit', label: '3rd-party kit', desc: 'bought as a complete set, e.g. an intercom', manuals: ['customer', 'technician'], needsSoftware: false },
+  { id: 'own-software', label: 'Own software', desc: 'an FTD application without hardware', manuals: ['software-customer', 'software-technician'], needsSoftware: true },
+  { id: 'module-software', label: 'Module + software', desc: 'e.g. the IOS starting panel', manuals: ['customer', 'technician', 'software-customer', 'software-technician'], needsSoftware: true },
+];
+export const moduleType = (id) => MODULE_TYPES.find((t) => t.id === id) || null;
 
 /** Manual types — one doc stream per audience (mirrors server/docgen.js MANUAL_TYPES). */
 export const MANUAL_TYPES = [

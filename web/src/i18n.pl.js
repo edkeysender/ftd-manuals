@@ -91,6 +91,30 @@ export const PL = {
   EN: 'EN',
   PL: 'PL',
 
+  // ----- new-module modal (module types) -----
+  'New module': 'Nowy moduł',
+  'the type generates the required manuals as drafts': 'typ generuje wymagane instrukcje jako wersje robocze',
+  Name: 'Nazwa',
+  'e.g. IHS': 'np. IHS',
+  'Instructor station': 'Stanowisko instruktora',
+  'Own module': 'Moduł własny',
+  'off-the-shelf parts + own versioned plates': 'części gotowe + własne płyty wersjonowane',
+  '3rd-party kit': 'Zestaw 3rd-party',
+  'bought as a complete set, e.g. an intercom': 'kupowany komplet, np. interkom',
+  'Own software': 'Oprogramowanie własne',
+  'an FTD application without hardware': 'aplikacja FTD bez sprzętu',
+  'Module + software': 'Moduł + oprogramowanie',
+  'e.g. the IOS starting panel': 'np. panel startowy IOS',
+  'No software selected — one named after the module will be created and linked.': 'Nie wybrano oprogramowania — powstanie i zostanie powiązane oprogramowanie o nazwie modułu.',
+  Parts: 'Części',
+  'one per line, version at the end: Płyta czołowa v1': 'jedna na linię, wersja na końcu: Płyta czołowa v1',
+  'A trailing version marks a part made by FTD; without one it is a bought part (e.g. an encoder). Parts join the shared catalog.':
+    'Wersja na końcu oznacza część produkcji FTD; bez wersji to część kupowana (np. enkoder). Części trafiają do wspólnego katalogu.',
+  'Will create:': 'Powstaną:',
+  Create: 'Utwórz',
+  Part: 'Część',
+  'Document code': 'Kod dokumentu',
+
   // ----- wizard / modules list / pickers -----
   '{group} manual': 'instrukcja: {group}',
   'no hardware': 'brak sprzętu',

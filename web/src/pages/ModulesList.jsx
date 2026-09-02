@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, CATEGORIES, MANUAL_TYPES, timeAgo } from '../api.js';
+import { api, CATEGORIES, MANUAL_TYPES, moduleType, timeAgo } from '../api.js';
 import Wizard from '../components/Wizard.jsx';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
@@ -91,8 +91,9 @@ export default function ModulesList() {
           <thead>
             <tr>
               <th>{t('Module')}</th>
+              <th>{t('Type')}</th>
               <th>{t('Manual group')}</th>
-              <th>{t('Hardware')}</th>
+              <th>{t('Parts')}</th>
               <th>{t('Software relation')}</th>
               <th>{t('Manuals')}</th>
               <th>{t('Updated')}</th>
@@ -117,6 +118,7 @@ export default function ModulesList() {
                     </span>
                   </div>
                 </td>
+                <td>{m.type ? t(moduleType(m.type)?.label || m.type) : <span className="muted">—</span>}</td>
                 <td>
                   <span className="chip">{m.group}</span>
                 </td>

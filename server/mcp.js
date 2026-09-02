@@ -14,7 +14,7 @@ import * as ai from './ai.js';
 import * as illustrate from './illustrate.js';
 import * as images from './images.js';
 import * as sources from './sources.js';
-import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf, parseDocKey, docKey, LANGUAGES, DEFAULT_LANG, langOf } from './docgen.js';
+import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf, MODULE_TYPES, moduleTypeOf, parseParts, parseDocKey, docKey, LANGUAGES, DEFAULT_LANG, langOf } from './docgen.js';
 import { templateChecklist } from './checklist.js';
 import * as inbox from './inbox.js';
 
@@ -124,10 +124,20 @@ export const TOOLS = [
       type: 'object',
       properties: {
         name: { type: 'string' },
+        type: {
+          type: 'string',
+          enum: Object.keys(MODULE_TYPES),
+          description:
+            'What the module IS — decides which manuals are drafted: "own-module" (off-the-shelf parts + own plates) and "third-party-kit" (bought set, e.g. an intercom) draft customer + technician; "own-software" (an FTD app, no hardware) drafts the software pair; "module-software" (e.g. the IOS starting panel) drafts all four. A software type without `softwares` gets a software named after the module.',
+        },
+        parts: {
+          type: 'string',
+          description: 'Parts the module is built from, one per line; a trailing version marks a part made in-house ("Płyta czołowa v1"), no version = bought ("Encoder"). Becomes catalog items like `hardware`.',
+        },
         manuals: {
           type: 'array',
           items: MANUAL_PROP,
-          description: `Which manuals to create (default ["customer"]). A hardware module typically gets "customer" + "technician"; a software-related one also "software-customer" and/or "software-technician". ${MANUAL_HELP}.`,
+          description: `Explicit manual list — overrides \`type\`; default ["customer"] when neither is given. ${MANUAL_HELP}.`,
         },
         code: { type: 'string', description: 'Module code like SW-STP' },
         category: { type: 'string', enum: ['software', 'cockpit-hardware', 'structure', 'peripherals', 'rack'] },
@@ -829,17 +839,20 @@ async function callTool(name, args) {
       return await store.updateHardware(id, patch);
     }
     case 'create_module': {
+      const mtype = args.type ? moduleTypeOf(args.type) : null;
       const input = {
         name: args.name,
         code: args.code || null,
         category: args.category || 'software',
         group: args.group,
-        hardware: args.hardware || [],
+        type: mtype?.id || null,
+        hardware: [...(args.hardware || []), ...(args.parts !== undefined ? parseParts(args.parts) : [])],
         softwares: args.softwares || [],
         startSummary: 'Created via MCP',
       };
+      if (mtype?.needsSoftware && !input.softwares.length) input.softwares = [{ name: args.name.trim(), fromVersion: '' }];
       input.hardwareItems = await store.previewHardware(input, input.name);
-      const manuals = [...new Set((Array.isArray(args.manuals) && args.manuals.length ? args.manuals : [DEFAULT_MANUAL]).map((m) => manualTypeOf(m).id))];
+      const manuals = [...new Set((Array.isArray(args.manuals) && args.manuals.length ? args.manuals : mtype ? mtype.manuals : [DEFAULT_MANUAL]).map((m) => manualTypeOf(m).id))];
       const fatManual = ['technician', 'customer', 'software-technician', 'software-customer'].find((t) => manuals.includes(t)) || manuals[0];
       const specs = manuals.map((manual, i) => ({
         manual,
