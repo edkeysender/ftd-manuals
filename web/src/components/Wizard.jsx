@@ -137,7 +137,10 @@ export default function Wizard({ onClose, onCreated }) {
             </label>
             <div className="form-row">
               <span />
-              <span className="hint">{t('A trailing version marks a part made by FTD; without one it is a bought part (e.g. an encoder). Parts join the shared catalog.')}</span>
+              <span className="hint">
+                {t('A trailing version marks a part made by FTD; without one it is a bought part (e.g. an encoder). Parts join the shared catalog.')}{' '}
+                {type === 'third-party-kit' && !parts.trim() && t('Left empty, the bought device itself becomes the single part (e.g. the smoke detector).')}
+              </span>
             </div>
           </div>
 

@@ -963,6 +963,12 @@ try {
   ok((await req('GET', '/api/modules')).find((m) => m.slug === 'starter-kit').type === 'module-software', 'list row carries the module type');
   const badType = await req('POST', '/api/modules', { name: 'Bad', group: 'SIM', type: 'kit' }).catch((e) => e);
   ok(badType instanceof Error && /Unknown module type/.test(badType.message), 'unknown module type rejected');
+  const tpk = await req('POST', '/api/modules', { name: 'Smoke Detector', code: 'ST-622', group: 'IOS', category: 'peripherals', type: 'third-party-kit' });
+  ok(tpk.docs.length === 2, 'third-party-kit drafts customer + technician');
+  const tpkMod = await req('GET', '/api/modules/smoke-detector');
+  ok(tpkMod.module.hardwareItems.length === 1 && tpkMod.module.hardwareItems[0].name === 'Smoke Detector' && tpkMod.module.hardwareItems[0].type === 'cots' && tpkMod.module.hardwareItems[0].model === 'ST-622',
+    'a 3rd-party module without parts becomes its own bought part');
+  await req('DELETE', '/api/modules/smoke-detector');
   const swAuto = await req('POST', '/api/modules', { name: 'Config Tool', group: 'IOS', category: 'software', type: 'own-software' });
   ok(swAuto.docs.length === 2 && swAuto.docs.every((d) => d.manual.startsWith('software-')), 'own-software drafts the software pair');
   ok((await req('GET', '/api/modules/config-tool')).module.softwares[0].name === 'Config Tool', 'a software named after the module was created and linked');
