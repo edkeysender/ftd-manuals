@@ -446,3 +446,26 @@ label.inline { font-weight: 400; color: var(--muted); }
 .comment-reply { border-top: 1px dashed var(--line); padding-top: 6px; white-space: pre-wrap; }
 .comment-actions { flex-wrap: wrap; }
 .comments-toggle { border: none; background: none; color: var(--accent); text-align: left; padding: 4px 2px; }
+
+/* ---------- login & users ---------- */
+.login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); }
+.login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 28px 32px; width: 380px; max-width: 100%; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 40px rgb(16 24 35 / 0.08); }
+.login-card .brand { display: flex; align-items: center; gap: 10px; }
+.login-card .brand-name { color: var(--ink); font-weight: 600; }
+.login-card h1 { margin: 6px 0 0; font-size: 20px; }
+.login-card label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 13px; }
+.login-card input { border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px; font-weight: 400; }
+.login-card input:focus { outline: 2px solid #b9c9ff; border-color: var(--accent); }
+.login-card .btn-primary { padding: 10px 14px; margin-top: 4px; }
+.login-error { color: var(--red); background: #fdecec; border-radius: 7px; padding: 8px 10px; font-size: 13px; }
+.login-lang { display: flex; justify-content: center; margin-top: 6px; }
+.user-chip { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #b7c3d1; white-space: nowrap; }
+.user-name { color: #e6edf5; }
+.user-signout { border: 1px solid #2c3a4a; background: none; color: #b7c3d1; border-radius: 6px; padding: 3px 9px; font-size: 12.5px; }
+.user-signout:hover { border-color: #5d6f84; color: #fff; }
+.users-table select { border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--panel); }
+.chip-you { margin-left: 6px; background: #e5edff; color: #1e40af; }
+
+/* ---------- MCP tokens ---------- */
+.token-reveal { border: 1px solid #86efac; background: #f0fdf4; border-radius: 8px; padding: 10px 14px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.token-value { user-select: all; word-break: break-all; background: #fff; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); }

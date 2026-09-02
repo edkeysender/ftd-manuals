@@ -1,5 +1,11 @@
 import { t } from './i18n.jsx';
 
+/** Called when any API request answers 401 (session expired / signed out elsewhere) — App shows the login page. */
+let unauthorizedHandler = null;
+export const onUnauthorized = (fn) => {
+  unauthorizedHandler = fn;
+};
+
 async function request(url, opts = {}) {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -7,11 +13,30 @@ async function request(url, opts = {}) {
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    if (res.status === 401 && data.code === 'unauthenticated' && unauthorizedHandler) unauthorizedHandler();
+    const err = new Error(data.error || `${res.status} ${res.statusText}`);
+    err.status = res.status;
+    err.code = data.code;
+    throw err;
+  }
   return data;
 }
 
 export const api = {
+  /* login & users */
+  me: () => request('/api/auth/me'),
+  login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
+  logout: () => request('/api/auth/logout', { method: 'POST' }),
+  changePassword: (current, next) => request('/api/auth/password', { method: 'POST', body: { current, next } }),
+  tokens: () => request('/api/tokens'),
+  createToken: (label) => request('/api/tokens', { method: 'POST', body: { label } }),
+  revokeToken: (id) => request(`/api/tokens/${id}`, { method: 'DELETE' }),
+  users: () => request('/api/users'),
+  createUser: (body) => request('/api/users', { method: 'POST', body }),
+  updateUser: (id, body) => request(`/api/users/${id}`, { method: 'PUT', body }),
+  deleteUser: (id) => request(`/api/users/${id}`, { method: 'DELETE' }),
+
   status: () => request('/api/status'),
   modules: () => request('/api/modules'),
   createModule: (input) => request('/api/modules', { method: 'POST', body: input }),

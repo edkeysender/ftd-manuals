@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64 } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
-import { useToast } from '../App.jsx';
+import { useToast, useAuth } from '../App.jsx';
 import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
 import { ManualPills } from './ModulesList.jsx';
 import { t, plural } from '../i18n.jsx';
@@ -174,6 +174,7 @@ function ManualsTab({ data, slug, act, reload }) {
   const [adding, setAdding] = useState(null); // manual type id being created
   const navigate = useNavigate();
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const hasSoftware = (module.softwares || []).length > 0;
 
   const versionRows = (typed, mt) =>
@@ -209,7 +210,7 @@ function ManualsTab({ data, slug, act, reload }) {
                   </button>
                 </>
               )}
-              <button
+              {isAdmin && <button
                 className="btn btn-sm btn-danger"
                 onClick={() => {
                   if (confirm(t('Discard {manual} draft {version}? The branch {branch} will be deleted.', { manual: t(mt.label).toLowerCase(), version: d.version, branch: d.branch }))) {
@@ -221,7 +222,7 @@ function ManualsTab({ data, slug, act, reload }) {
                 }}
               >
                 {t('Discard')}
-              </button>
+              </button>}
             </>
           )}
           {(d.status === 'released' || d.status === 'superseded') && (
@@ -447,6 +448,7 @@ function AddManualModal({ slug, module, manual, onClose, onCreated }) {
  */
 function InboxPanel({ slug, draft, onImported }) {
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
@@ -540,7 +542,7 @@ function InboxPanel({ slug, draft, onImported }) {
                     <button className="btn btn-sm btn-primary" disabled={!draft || busy || f.complete === false} onClick={() => importFiles([f.name])}>
                       {t('Attach to {draft}', { draft: draft ? draft.key : t('draft') })}
                     </button>
-                    <button
+                    {isAdmin && <button
                       className="btn-icon"
                       title={t('Delete from inbox')}
                       onClick={async () => {
@@ -553,7 +555,7 @@ function InboxPanel({ slug, draft, onImported }) {
                       }}
                     >
                       ✕
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}
@@ -703,6 +705,7 @@ function stampLabel(meta, hwItems) {
 
 function AssetsTab({ slug, docs, module, onChanged }) {
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const [assets, setAssets] = useState(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
@@ -903,7 +906,7 @@ function AssetsTab({ slug, docs, module, onChanged }) {
                     {drawing === a.name ? t('Drawing…') : t('✎ Line-art')}
                   </button>
                 )}
-                {draft && (
+                {draft && isAdmin && (
                   <button
                     className="btn-icon"
                     title={t('Remove from {draft} (git rm on {branch})', { draft: draft.key, branch: draft.branch })}

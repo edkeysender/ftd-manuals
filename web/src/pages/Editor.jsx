@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, readFileAsBase64, timeAgo, manualType, LANGUAGES, language } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
-import { useToast } from '../App.jsx';
+import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
 
 const AUTO_OUTLINE = {
@@ -192,6 +192,7 @@ const clearSnapshot = (slug, version) => {
 export default function Editor({ review = false }) {
   const { slug, version } = useParams();
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const navigate = useNavigate();
 
   // review comments
@@ -1338,7 +1339,7 @@ export default function Editor({ review = false }) {
                         {editable && c.status === 'resolved' && (
                           <button className="btn btn-sm" onClick={(e) => { e.stopPropagation(); setStatus(c, 'open'); }}>{t('Reopen')}</button>
                         )}
-                        {editable && (
+                        {editable && isAdmin && (
                           <button className="btn-icon" title={t('Delete thread')} onClick={(e) => { e.stopPropagation(); removeComment(c); }}>✕</button>
                         )}
                       </div>

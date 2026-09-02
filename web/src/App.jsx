@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import { api, timeAgo } from './api.js';
+import { api, onUnauthorized, timeAgo } from './api.js';
 import ModulesList from './pages/ModulesList.jsx';
 import ModuleDetail from './pages/ModuleDetail.jsx';
 import Editor from './pages/Editor.jsx';
@@ -8,14 +8,22 @@ import Settings from './pages/Settings.jsx';
 import ManualsList from './pages/ManualsList.jsx';
 import ManualView from './pages/ManualView.jsx';
 import SoftwareList from './pages/SoftwareList.jsx';
+import Login from './pages/Login.jsx';
 import { t, plural, useLocale, LanguageSwitch } from './i18n.jsx';
 
 const ToastContext = createContext(() => {});
 export const useToast = () => useContext(ToastContext);
 
+const AuthContext = createContext({ user: null, isAdmin: false, logout: () => {} });
+/** The signed-in user: {user, isAdmin, logout}. Deleting is admin-only — render delete buttons behind isAdmin. */
+export const useAuth = () => useContext(AuthContext);
+
+export const ROLE_LABELS = { admin: 'Administrator', editor: 'Editor' };
+
 export default function App() {
   const [toasts, setToasts] = useState([]);
   const [status, setStatus] = useState(null);
+  const [user, setUser] = useState(undefined); // undefined = session still being checked
   const location = useLocation();
 
   const toast = useCallback((message, kind = 'ok') => {
@@ -25,65 +33,87 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    api.status().then(setStatus).catch(() => {});
-  }, [location]);
+    onUnauthorized(() => setUser(null)); // any 401 later (expired session) brings the login page back
+    api.me().then((r) => setUser(r.user)).catch(() => setUser(null));
+  }, []);
+
+  useEffect(() => {
+    if (user) api.status().then(setStatus).catch(() => {});
+  }, [location, user]);
+
+  const logout = useCallback(async () => {
+    await api.logout().catch(() => {});
+    setStatus(null);
+    setUser(null);
+  }, []);
 
   const isEditor = /\/(edit|review)$/.test(location.pathname);
   const { locale } = useLocale();
 
+  if (user === undefined) return <div className="login-screen" lang={locale}><span className="muted">{t('connecting…')}</span></div>;
+  if (!user) return <div lang={locale} key={locale}><Login onLogin={setUser} /></div>;
+
   return (
     <ToastContext.Provider value={toast}>
-      <div className={`shell ${isEditor ? 'shell-editor' : ''}`} lang={locale}>
-        <header className="topbar">
-          <div className="brand">
-            <span className="brand-mark">FTD</span>
-            <span className="brand-name">{t('Documentation Console')}</span>
-          </div>
-          <nav>
-            <NavLink to="/manuals">{t('Manuals')}</NavLink>
-            <NavLink to="/" end>
-              {t('Modules')}
-            </NavLink>
-            <NavLink to="/software">{t('Software')}</NavLink>
-          </nav>
-          <div className="sync-state">
-            {status ? (
-              <>
-                <span className="sync-dot" />
-                {status.repo} · {status.branch} ·{' '}
-                {status.lastCommit ? timeAgo(status.lastCommit.date) : t('empty')}
-                {status.drafts > 0 && <span className="sync-drafts">{plural(status.drafts, 'draft')}</span>}
-              </>
-            ) : (
-              t('connecting…')
-            )}
-          </div>
-          <nav className="topbar-tools">
-            <NavLink to="/settings">{t('Settings')}</NavLink>
-          </nav>
-          <LanguageSwitch />
-        </header>
-        {/* key: remount the page on a language switch so every string re-renders */}
-        <main className={isEditor ? 'main-editor' : 'main'} key={locale}>
-          <Routes>
-            <Route path="/" element={<ModulesList />} />
-            <Route path="/modules/:slug" element={<ModuleDetail />} />
-            <Route path="/modules/:slug/docs/:version/edit" element={<Editor />} />
-            <Route path="/modules/:slug/docs/:version/review" element={<Editor review />} />
-            <Route path="/software" element={<SoftwareList />} />
-            <Route path="/manuals" element={<ManualsList />} />
-            <Route path="/manuals/:slug" element={<ManualView />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </main>
-        <div className="toasts">
-          {toasts.map((t) => (
-            <div key={t.id} className={`toast toast-${t.kind}`}>
-              {t.message}
+      <AuthContext.Provider value={{ user, isAdmin: user.role === 'admin', logout }}>
+        <div className={`shell ${isEditor ? 'shell-editor' : ''}`} lang={locale}>
+          <header className="topbar">
+            <div className="brand">
+              <span className="brand-mark">FTD</span>
+              <span className="brand-name">{t('Documentation Console')}</span>
             </div>
-          ))}
+            <nav>
+              <NavLink to="/manuals">{t('Manuals')}</NavLink>
+              <NavLink to="/" end>
+                {t('Modules')}
+              </NavLink>
+              <NavLink to="/software">{t('Software')}</NavLink>
+            </nav>
+            <div className="sync-state">
+              {status ? (
+                <>
+                  <span className="sync-dot" />
+                  {status.repo} · {status.branch} ·{' '}
+                  {status.lastCommit ? timeAgo(status.lastCommit.date) : t('empty')}
+                  {status.drafts > 0 && <span className="sync-drafts">{plural(status.drafts, 'draft')}</span>}
+                </>
+              ) : (
+                t('connecting…')
+              )}
+            </div>
+            <nav className="topbar-tools">
+              <NavLink to="/settings">{t('Settings')}</NavLink>
+            </nav>
+            <div className="user-chip" title={`${user.email} · ${t(ROLE_LABELS[user.role] || user.role)}`}>
+              <span className="user-name">{user.name}</span>
+              <button className="user-signout" onClick={logout}>
+                {t('Sign out')}
+              </button>
+            </div>
+            <LanguageSwitch />
+          </header>
+          {/* key: remount the page on a language switch so every string re-renders */}
+          <main className={isEditor ? 'main-editor' : 'main'} key={locale}>
+            <Routes>
+              <Route path="/" element={<ModulesList />} />
+              <Route path="/modules/:slug" element={<ModuleDetail />} />
+              <Route path="/modules/:slug/docs/:version/edit" element={<Editor />} />
+              <Route path="/modules/:slug/docs/:version/review" element={<Editor review />} />
+              <Route path="/software" element={<SoftwareList />} />
+              <Route path="/manuals" element={<ManualsList />} />
+              <Route path="/manuals/:slug" element={<ManualView />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </main>
+          <div className="toasts">
+            {toasts.map((t) => (
+              <div key={t.id} className={`toast toast-${t.kind}`}>
+                {t.message}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </AuthContext.Provider>
     </ToastContext.Provider>
   );
 }
