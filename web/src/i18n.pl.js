@@ -501,6 +501,7 @@ export const PL = {
   'MCP access tokens': 'Tokeny dostępu MCP',
   'The MCP endpoint requires a bearer token. Create one per agent or machine and send it as': 'Endpoint MCP wymaga tokenu bearer. Utwórz osobny dla każdego agenta lub komputera i wysyłaj go jako',
   'The value is shown only once — revoke a token to cut an agent off.': 'Wartość jest pokazywana tylko raz — unieważnij token, aby odciąć agenta.',
+  '— or, for clients that cannot set headers (the claude.ai connector), use the endpoint': '— albo, dla klientów bez możliwości ustawienia nagłówków (złącze claude.ai), użyj endpointu',
   'Token "{label}" created — copy it now, it will not be shown again:': 'Utworzono token „{label}” — skopiuj go teraz, nie zostanie pokazany ponownie:',
   'Token copied': 'Token skopiowany',
   Copy: 'Kopiuj',
