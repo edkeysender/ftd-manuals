@@ -465,3 +465,7 @@ label.inline { font-weight: 400; color: var(--muted); }
 .user-signout:hover { border-color: #5d6f84; color: #fff; }
 .users-table select { border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--panel); }
 .chip-you { margin-left: 6px; background: #e5edff; color: #1e40af; }
+
+/* ---------- MCP tokens ---------- */
+.token-reveal { border: 1px solid #86efac; background: #f0fdf4; border-radius: 8px; padding: 10px 14px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.token-value { user-select: all; word-break: break-all; background: #fff; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); }

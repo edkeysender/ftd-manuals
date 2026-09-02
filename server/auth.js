@@ -3,7 +3,9 @@
  * session cookie, and two roles — `admin` (everything, including deleting) and `editor`
  * (everything except deleting). The first start seeds the default administrator.
  *
- * The MCP endpoint is not covered here — agents keep authenticating with MCP_TOKEN.
+ * The /mcp endpoint requires a per-user bearer token (mcp-tokens.json, hashes only):
+ * each user creates and revokes their own in Settings → MCP connector; MCP_TOKEN in
+ * .env stays honoured as a master token for local tooling.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -77,6 +79,12 @@ export async function initAuth() {
     users = Array.isArray(parsed.users) ? parsed.users : [];
   } catch {
     users = [];
+  }
+  try {
+    const parsed = JSON.parse(await fs.readFile(TOKENS_FILE, 'utf8'));
+    tokens = Array.isArray(parsed.tokens) ? parsed.tokens : [];
+  } catch {
+    tokens = [];
   }
   if (!users.length) {
     users.push({
@@ -205,8 +213,81 @@ export async function deleteUser(id, actor) {
   if (actor && actor.id === id) throw new Error('You cannot delete your own account');
   if (users[i].role === 'admin' && users.filter((x) => x.role === 'admin').length === 1) throw new Error('Cannot delete the last administrator');
   users.splice(i, 1);
+  if (tokens.some((t) => t.userId === id)) {
+    tokens = tokens.filter((t) => t.userId !== id); // a deleted user's MCP tokens die with the account
+    await saveTokens();
+  }
   await saveUsers();
   return { ok: true };
+}
+
+/* ---------- MCP tokens: per-user bearer tokens for the /mcp endpoint ---------- */
+
+const TOKENS_FILE = path.join(AUTH_DIR, 'mcp-tokens.json');
+let tokens = [];
+
+async function saveTokens() {
+  writing = writing.then(async () => {
+    await fs.mkdir(AUTH_DIR, { recursive: true });
+    const tmp = `${TOKENS_FILE}.${process.pid}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify({ tokens }, null, 2) + '\n');
+    await fs.rename(tmp, TOKENS_FILE);
+  });
+  return writing;
+}
+
+const hashMcpToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
+
+const publicToken = (tk) => ({
+  id: tk.id,
+  label: tk.label,
+  owner: users.find((u) => u.id === tk.userId)?.email || '(deleted)',
+  createdAt: tk.createdAt,
+  lastUsedAt: tk.lastUsedAt || null,
+});
+
+/** Create a bearer token for the /mcp endpoint. The plaintext is returned ONCE; only its hash is stored. */
+export async function createMcpToken(user, label) {
+  const plain = `ftd_${crypto.randomBytes(24).toString('hex')}`;
+  const tk = {
+    id: crypto.randomUUID(),
+    userId: user.id,
+    label: String(label || '').trim().slice(0, 60) || 'MCP client',
+    tokenHash: hashMcpToken(plain),
+    createdAt: new Date().toISOString(),
+    lastUsedAt: null,
+  };
+  tokens.push(tk);
+  await saveTokens();
+  return { ...publicToken(tk), token: plain };
+}
+
+/** A user sees their own tokens; administrators see everyone's. */
+export const listMcpTokens = (user) => tokens.filter((tk) => user.role === 'admin' || tk.userId === user.id).map(publicToken);
+
+export async function revokeMcpToken(id, actor) {
+  const i = tokens.findIndex((tk) => tk.id === id);
+  if (i < 0) throw new Error('Token not found');
+  if (actor.role !== 'admin' && tokens[i].userId !== actor.id) throw new Error('You can only revoke your own tokens');
+  tokens.splice(i, 1);
+  await saveTokens();
+  return { ok: true };
+}
+
+/** The user behind an Authorization header, or null. Updates lastUsedAt (throttled to once a minute). */
+export function verifyMcpToken(header) {
+  const m = /^Bearer\s+(.+)$/i.exec(String(header || ''));
+  if (!m) return null;
+  const hash = hashMcpToken(m[1].trim());
+  const tk = tokens.find((x) => x.tokenHash.length === hash.length && crypto.timingSafeEqual(Buffer.from(x.tokenHash), Buffer.from(hash)));
+  if (!tk) return null;
+  const user = users.find((u) => u.id === tk.userId);
+  if (!user) return null;
+  if (!tk.lastUsedAt || Date.now() - Date.parse(tk.lastUsedAt) > 60e3) {
+    tk.lastUsedAt = new Date().toISOString();
+    saveTokens().catch(() => {});
+  }
+  return user;
 }
 
 /** Self-service password change — requires the current password. */

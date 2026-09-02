@@ -58,6 +58,13 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', auth.requireAuth, (req, res) => res.json({ user: auth.publicUser(req.user) }));
 
 app.use('/api', auth.requireAuth);
+
+/* MCP tokens: every signed-in user manages their own (registered before the
+   admin-only DELETE catch-all so editors can revoke their own tokens). */
+app.get('/api/tokens', wrap(async (req, res) => res.json(auth.listMcpTokens(req.user))));
+app.post('/api/tokens', wrap(async (req, res) => res.json(await auth.createMcpToken(req.user, req.body?.label))));
+app.delete('/api/tokens/:id', wrap(async (req, res) => res.json(await auth.revokeMcpToken(req.params.id, req.user))));
+
 app.delete('/api/*', auth.requireAdmin);
 app.post('/api/modules/:slug/docs/:version/discard', auth.requireAdmin);
 
@@ -777,10 +784,15 @@ app.put('/api/settings/ai', wrap(async (req, res) => {
 // Optional protection for public tunnels: set MCP_TOKEN in .env and clients
 // must send  Authorization: Bearer <token>.
 app.use('/mcp', (req, res, next) => {
-  const token = process.env.MCP_TOKEN;
-  if (token && req.headers.authorization !== `Bearer ${token}`) {
-    return res.status(401).json({ error: 'Unauthorized — send Authorization: Bearer <MCP_TOKEN>' });
+  const master = process.env.MCP_TOKEN;
+  if (master && req.headers.authorization === `Bearer ${master}`) return next();
+  const user = auth.verifyMcpToken(req.headers.authorization);
+  if (!user) {
+    return res.status(401).json({
+      error: 'Unauthorized — send Authorization: Bearer <MCP token>. Every user creates their own tokens in Settings → MCP connector.',
+    });
   }
+  req.user = user;
   next();
 });
 
@@ -797,7 +809,7 @@ app.get('/api/mcp-info', (req, res) => {
   res.json({
     endpoint: `http://localhost:${PORT}/mcp`,
     transport: 'streamable-http (stateless)',
-    authRequired: !!process.env.MCP_TOKEN,
+    authRequired: true,
     tools: MCP_TOOLS.map((t) => ({ name: t.name, description: t.description })),
   });
 });

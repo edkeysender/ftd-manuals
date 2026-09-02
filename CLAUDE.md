@@ -86,7 +86,8 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Login: `server/auth.js` — users in `data/users.json` (scrypt hashes, seeded admin `l.wicenciak@ftd.aero`),
   signed session cookie `ftd_session`. Every `/api` route needs a user; every `DELETE` and the draft discard need
   the `admin` role (`requireAdmin`) — the UI hides those buttons behind `useAuth().isAdmin`. `/mcp` keeps its own
-  `MCP_TOKEN` scheme. `tools/smoke.mjs` signs in first (`login()` helper) — new smoke calls go through `req()`.
+  per-user MCP bearer tokens (`data/mcp-tokens.json`, hashes only; Settings → MCP access tokens; env `MCP_TOKEN`
+  = master fallback). `tools/smoke.mjs` signs in first and sets `mcpToken` — new smoke calls go through `req()`/`mcpCall()`.
 - Branch names: `console/<topic>`. Do not push to `main`.
 - The store's git operations are serialized through `GitRepo.lock()` — any new store mutation must
   run inside it and leave the working tree checked out on `main`.

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, readFileAsBase64 } from '../api.js';
 import { useToast } from '../App.jsx';
-import { PasswordCard, UsersCard } from '../components/AccountCards.jsx';
+import { PasswordCard, UsersCard, TokensCard } from '../components/AccountCards.jsx';
 import { t, plural } from '../i18n.jsx';
 
 /** t() for sentences with inline markup: each `{name}` placeholder is replaced by the given React node. */
@@ -288,6 +288,8 @@ export default function Settings() {
       <UsersCard />
 
       <PasswordCard />
+
+      <TokensCard />
 
       <section className="settings-card">
         <h2>{t('MCP connector')}</h2>

@@ -46,10 +46,12 @@ const ok = (cond, label) => {
 /** Session cookie of the signed-in user (set by login()); the API refuses everything without it.
  *  Every fetch() in this file sends it unless the call sets its own Cookie header. */
 let cookie = '';
+let mcpToken = '';
 const rawFetch = globalThis.fetch;
 globalThis.fetch = (url, init = {}) => {
   const headers = { ...(init.headers || {}) };
   if (cookie && !headers.Cookie) headers.Cookie = cookie;
+  if (mcpToken && !headers.Authorization && String(url).includes('/mcp')) headers.Authorization = `Bearer ${mcpToken}`;
   return rawFetch(url, { ...init, headers });
 };
 
@@ -116,6 +118,18 @@ try {
   ok((await req('DELETE', `/api/users/${editor.id}`)).ok === true, 'admin deletes the editor');
   const deadSession = await req('GET', '/api/auth/me', undefined, { cookie: editorCookie }).catch((e) => e);
   ok(deadSession instanceof Error && deadSession.status === 401, 'deleted user session is invalid');
+
+  // MCP authorization: bearer token required, managed per user
+  const mcpAnon = await fetch(BASE + '/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) });
+  ok(mcpAnon.status === 401 && /Settings/.test((await mcpAnon.json()).error), 'MCP refuses calls without a bearer token');
+  const tk = await req('POST', '/api/tokens', { label: 'smoke agent' });
+  ok(/^ftd_[0-9a-f]{48}$/.test(tk.token) && tk.label === 'smoke agent', 'token created (value returned once)');
+  ok(!JSON.stringify(await req('GET', '/api/tokens')).includes(tk.token), 'stored tokens never expose the value');
+  mcpToken = tk.token;
+  const badBearer = await fetch(BASE + '/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: 'Bearer ftd_' + '0'.repeat(48) }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) });
+  ok(badBearer.status === 401, 'MCP refuses an unknown token');
+  const tk2 = await req('POST', '/api/tokens', { label: 'to revoke' });
+  ok((await req('DELETE', `/api/tokens/${tk2.id}`)).ok === true && (await req('GET', '/api/tokens')).every((x) => x.id !== tk2.id), 'token revoked');
 
   // empty list
   ok((await req('GET', '/api/modules')).length === 0, 'starts with no modules');
