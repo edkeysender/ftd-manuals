@@ -51,6 +51,16 @@ when an MCP client connects it opens the console's sign-in/consent page and gets
 tokens (1 h) plus a rotating refresh token — approve as admin or moderator. `MCP_TOKEN` in `.env`
 stays honoured as a master token for local tooling.
 
+Connecting clients (endpoint = `http://localhost:5179/mcp`, or `https://<tunnel>/mcp` from `npm run tunnel`):
+
+- **Claude Code**: `claude mcp add --transport http ftd-docs <endpoint>` — the browser opens the sign-in page on first use.
+- **Claude (claude.ai)**: Settings → Connectors → *Add custom connector* → paste the endpoint → Authorize.
+- **ChatGPT**: Settings → Apps & Connectors → *Advanced settings* → enable **Developer mode**, then
+  *Create* a connector with the endpoint as MCP server URL and **OAuth** authentication (Plus/Pro/Business/
+  Enterprise plans; enable it per chat under Developer mode / Deep research tools).
+- **OpenAI API (Responses)**: no interactive sign-in there — set `MCP_TOKEN` in `.env` and pass
+  `tools: [{ "type": "mcp", "server_label": "ftd_docs", "server_url": "<endpoint>", "authorization": "<MCP_TOKEN>" }]`.
+
 ## How documents are stored
 
 `data/repo/` is a real git repository managed by the server (created on first start) and mirrors the

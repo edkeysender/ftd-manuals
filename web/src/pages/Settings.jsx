@@ -299,20 +299,51 @@ export default function Settings() {
             <p>
               {tx('Endpoint: {endpoint} · transport {transport}', { endpoint: <code>{mcp.endpoint}</code>, transport: <code>{mcp.transport}</code> })}
             </p>
-            <p className="muted">{t('Add it to Claude Code with:')}</p>
-            <pre className="code-block">claude mcp add --transport http ftd-docs {mcp.endpoint}</pre>
             <p className="muted">
-              {tx('To test from outside this machine, run {cmd} — it prints a public {url} URL forwarding to this console (use {mcpUrl} as the endpoint).', {
+              {tx('From another machine first run {cmd} on the console computer — it prints a public {url} URL; use {mcpUrl} as the endpoint below.', {
                 cmd: <code>npm run tunnel</code>,
                 url: <code>https://….trycloudflare.com</code>,
                 mcpUrl: <code>&lt;that URL&gt;/mcp</code>,
-              })}{' '}
-              {tx('While a tunnel is up, anyone with the URL can read {andEdit} your docs{auth}; set {tokenVar} in {envFile} to require {header} on MCP calls, and stop the tunnel when done.', {
-                andEdit: <em>{t('and edit')}</em>,
-                auth: mcp.authRequired ? ` ${t('(bearer token required — MCP_TOKEN is set)')}` : '',
+              })}
+            </p>
+            <h3 className="settings-sub">{t('Claude Code (terminal)')}</h3>
+            <pre className="code-block">claude mcp add --transport http ftd-docs {mcp.endpoint}</pre>
+            <p className="muted">{t('On the first tool call the browser opens the sign-in page — approve as administrator or moderator.')}</p>
+            <h3 className="settings-sub">{t('Claude (claude.ai)')}</h3>
+            <p className="muted">
+              {tx('{path} → add {endpoint} as a custom connector. The browser opens this console’s sign-in page — Authorize, done.', {
+                path: <strong>{t('Settings → Connectors → Add custom connector')}</strong>,
+                endpoint: <code>{mcp.endpoint}</code>,
+              })}
+            </p>
+            <h3 className="settings-sub">{t('ChatGPT (chatgpt.com)')}</h3>
+            <p className="muted">
+              {tx('First enable developer mode: {devPath}. Then {connPath}: name it, paste {endpoint} as the MCP server URL, choose {oauth} as authentication and complete the sign-in page. Custom connectors need a Plus / Pro / Business / Enterprise plan; in a chat, enable the connector under {tools}.', {
+                devPath: <strong>{t('Settings → Apps & Connectors → Advanced settings → Developer mode')}</strong>,
+                connPath: <strong>{t('Settings → Apps & Connectors → Create')}</strong>,
+                endpoint: <code>{mcp.endpoint}</code>,
+                oauth: <code>OAuth</code>,
+                tools: <em>{t('Developer mode / Deep research tools')}</em>,
+              })}
+            </p>
+            <h3 className="settings-sub">{t('OpenAI API (Responses)')}</h3>
+            <p className="muted">
+              {tx('The API cannot open a sign-in page, so give it the master token: set {tokenVar} in {envFile} on the console and pass it as {authField}:', {
                 tokenVar: <code>MCP_TOKEN=&lt;secret&gt;</code>,
                 envFile: <code>.env</code>,
-                header: <code>Authorization: Bearer &lt;secret&gt;</code>,
+                authField: <code>authorization</code>,
+              })}
+            </p>
+            <pre className="code-block">{`tools: [{
+  "type": "mcp",
+  "server_label": "ftd_docs",
+  "server_url": "${mcp.endpoint}",
+  "authorization": "<MCP_TOKEN>",
+  "require_approval": "never"
+}]`}</pre>
+            <p className="muted">
+              {tx('While a tunnel is up, the OAuth sign-in (and the master token) are what protect your docs — stop the tunnel with {ctrlc} when done.', {
+                ctrlc: <code>Ctrl+C</code>,
               })}
             </p>
             <table className="table">
