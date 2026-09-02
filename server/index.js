@@ -784,6 +784,7 @@ app.put('/api/settings/ai', wrap(async (req, res) => {
 // Optional protection for public tunnels: set MCP_TOKEN in .env and clients
 // must send  Authorization: Bearer <token>.
 app.use('/mcp', (req, res, next) => {
+  if (req.path.startsWith('/t/')) return next(); // token-in-the-URL variant checks itself below
   const master = process.env.MCP_TOKEN;
   if (master && req.headers.authorization === `Bearer ${master}`) return next();
   const user = auth.verifyMcpToken(req.headers.authorization);
@@ -796,14 +797,30 @@ app.use('/mcp', (req, res, next) => {
   next();
 });
 
-app.post('/mcp', (req, res) => {
+const runMcp = (req, res) => {
   handleMcpRequest(req, res).catch((e) => {
     console.error('MCP error:', e);
     if (!res.headersSent) res.status(500).json({ error: e.message });
   });
-});
+};
+
+app.post('/mcp', runMcp);
 app.get('/mcp', (req, res) => res.status(405).json({ error: 'Stateless MCP endpoint — use POST' }));
 app.delete('/mcp', (req, res) => res.status(405).json({ error: 'Stateless MCP endpoint — use POST' }));
+
+/* Token-in-the-URL variant for MCP clients that cannot send an Authorization
+ * header (the claude.ai connector UI): https://…/mcp/t/<token>. Same tokens,
+ * same checks — the URL is the secret, so share it like a password. */
+app.all('/mcp/t/:token', (req, res) => {
+  const user = auth.verifyMcpToken(`Bearer ${req.params.token}`);
+  const master = process.env.MCP_TOKEN;
+  if (!user && !(master && req.params.token === master)) {
+    return res.status(401).json({ error: 'Unauthorized — unknown MCP token. Create one in Settings → MCP access tokens.' });
+  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Stateless MCP endpoint — use POST' });
+  req.user = user;
+  runMcp(req, res);
+});
 
 app.get('/api/mcp-info', (req, res) => {
   res.json({

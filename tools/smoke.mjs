@@ -130,6 +130,10 @@ try {
   ok(badBearer.status === 401, 'MCP refuses an unknown token');
   const tk2 = await req('POST', '/api/tokens', { label: 'to revoke' });
   ok((await req('DELETE', `/api/tokens/${tk2.id}`)).ok === true && (await req('GET', '/api/tokens')).every((x) => x.id !== tk2.id), 'token revoked');
+  const urlMcp = await rawFetch(BASE + `/mcp/t/${tk.token}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) });
+  ok(urlMcp.status === 200, 'token-in-the-URL endpoint /mcp/t/<token> works (for clients without headers)');
+  const urlMcpBad = await rawFetch(BASE + '/mcp/t/ftd_' + '0'.repeat(48), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  ok(urlMcpBad.status === 401, 'unknown URL token refused');
 
   // empty list
   ok((await req('GET', '/api/modules')).length === 0, 'starts with no modules');

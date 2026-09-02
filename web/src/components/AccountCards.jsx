@@ -210,7 +210,9 @@ export function TokensCard() {
       <h2>{t('MCP access tokens')}</h2>
       <p>
         {t('The MCP endpoint requires a bearer token. Create one per agent or machine and send it as')}{' '}
-        <code>Authorization: Bearer &lt;token&gt;</code>. {t('The value is shown only once — revoke a token to cut an agent off.')}
+        <code>Authorization: Bearer &lt;token&gt;</code>{' '}
+        {t('— or, for clients that cannot set headers (the claude.ai connector), use the endpoint')}{' '}
+        <code>/mcp/t/&lt;token&gt;</code>. {t('The value is shown only once — revoke a token to cut an agent off.')}
       </p>
       {fresh && (
         <div className="token-reveal">
