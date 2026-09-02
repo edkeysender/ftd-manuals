@@ -585,7 +585,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
     .map((c, i) =>
       c.missing
         ? `<tr><td>${i + 1}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="4" class="missing">${T.noDocumentation}</td></tr>`
-        : `<tr><td>${i + 1}</td><td><a href="#ch-${esc(c.slug)}">${esc(c.module.name)}</a></td><td>${esc(
+        : `<tr><td>${i + 1}</td><td><a href="#ch-${esc(c.slug)}">${esc(c.title || c.module.name)}</a></td><td>${esc(
             c.module.code || '—'
           )}</td><td>${esc(c.doc.version)}${c.isDraft ? ` ${T.draft} r${c.doc.revision}` : ''}</td><td>${esc(
             c.doc.status
@@ -595,7 +595,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
 
   const toc = processed
     .map((c, i) => {
-      const title = esc(c.module?.name || c.slug);
+      const title = esc(c.title || c.module?.name || c.slug);
       if (c.missing) return `<li class="missing"><span class="num">${i + 1}</span>${title} — ${T.noDocumentation}</li>`;
       const subs = c.items
         .map(
@@ -617,7 +617,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
         c.langFallback ? `<span class="draft-flag lang-flag">${esc(T.langFallback)}</span>` : '',
       ].join('');
       return `<section class="chapter" id="ch-${esc(c.slug)}">
-<h1>${esc(c.module.name)}${flags}</h1>
+<h1>${esc(c.title || c.module.name)}${flags}</h1>
 ${c.html}
 </section>`;
     })

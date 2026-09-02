@@ -923,6 +923,14 @@ try {
     'manual compiles the released A1.1 as chapter 1');
   ok(compiled.html.includes('class="chapter"') && compiled.html.includes('Table of contents') && compiled.html.includes('Grounding check added'),
     'compiled html has chapter, TOC and module content');
+  // a released software manual of the same audience joins the bundle as its own chapter
+  const swcNew = await req('POST', '/api/modules/starting-panel/docs', { manual: 'software-customer' });
+  await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`);
+  const withSw = await req('GET', '/api/manuals/b737-simulator-manual');
+  ok(withSw.chapters.length === 2 && withSw.chapters[1].slug === 'starting-panel--software' && withSw.chapters[1].software === true && withSw.chapters[1].doc.key === 'software-customer:A1.0',
+    'released software customer manual compiles as a second chapter of its module');
+  ok(withSw.chapters[1].title.includes('STP Core') && withSw.html.includes('id="ch-starting-panel--software"'),
+    `software chapter titled after the linked software: ${withSw.chapters[1].title}`);
   const fatRes = await fetch(BASE + '/api/manuals/b737-simulator-manual/fat.html');
   const fatHtml = await fatRes.text();
   ok(fatRes.status === 200 && fatHtml.includes('Factory Acceptance Test protocol') && fatHtml.includes('id="fat-starting-panel"') && fatHtml.includes('Modules under test'),

@@ -47,7 +47,9 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…` while draft,
   own revision record, own draft branch `draft/<slug>-<manual>-a1.0` (one open draft per manual type).
   Only **Released** versions compile into simulator manuals; an assembled manual (`manuals/<slug>/manual.json`)
-  has a `manual` type and takes that type's doc from every chapter module. The FAT checklist sits on the
+  has a `manual` type and takes that type's doc from every chapter module — and when a chapter module also has
+  a **released software manual of the same audience** (customer → software-customer, technician →
+  software-technician) it compiles as an extra chapter right after, titled after the linked software. The FAT checklist sits on the
   technician manual when the module has one, else the customer manual. Module metadata edits are written
   identically on main (when released) and on every open draft branch.
 - Sections 1–3 (revision record, introduction, general info) are **generated** from module data —

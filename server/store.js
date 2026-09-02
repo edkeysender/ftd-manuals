@@ -1724,7 +1724,10 @@ export async function deleteManual(slug) {
  * Assemble a manual: one chapter per selected module, using the latest
  * Released doc version of the manual's type (customer / technician / …),
  * or — flagged — its latest draft when nothing is released yet. A module
- * without that manual type is a missing chapter.
+ * without that manual type is a missing chapter. A module that also has a
+ * RELEASED software manual of the same audience (customer → software-customer,
+ * technician → software-technician) contributes a second chapter right after
+ * its hardware one, titled after the linked software.
  */
 export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   lang = langOf(lang);
@@ -1732,8 +1735,27 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   if (!manual) return null;
   const type = manualTypeOf(manual.manual).id;
   manual.manual = type;
+  const swType = { customer: 'software-customer', technician: 'software-technician' }[type] || null;
   const { modules } = await collectAll();
   const chapters = [];
+  const chapterOf = async (entry, doc, extra = {}) => {
+    // Translation when the manual is compiled in another language; English (flagged) when there is none.
+    let content = lang === DEFAULT_LANG ? null : await repo.show(doc.ref, contentLangIn(doc.dir, lang));
+    const langFallback = lang !== DEFAULT_LANG && !content;
+    if (!content) content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
+    const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
+    return {
+      slug: entry.module.slug,
+      module: entry.module,
+      doc,
+      generated: generatedSections(entry.module, doc, lang),
+      content,
+      checklist,
+      isDraft: doc.status !== 'released',
+      langFallback,
+      ...extra,
+    };
+  };
   for (const mslug of manual.modules) {
     const entry = modules.find((m) => m.module.slug === mslug);
     if (!entry) {
@@ -1746,21 +1768,13 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       chapters.push({ slug: mslug, module: entry.module, missing: true, reason: `no ${MANUAL_TYPES[type].label.toLowerCase()}` });
       continue;
     }
-    // Translation when the manual is compiled in another language; English (flagged) when there is none.
-    let content = lang === DEFAULT_LANG ? null : await repo.show(doc.ref, contentLangIn(doc.dir, lang));
-    const langFallback = lang !== DEFAULT_LANG && !content;
-    if (!content) content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
-    const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
-    chapters.push({
-      slug: mslug,
-      module: entry.module,
-      doc,
-      generated: generatedSections(entry.module, doc, lang),
-      content,
-      checklist,
-      isDraft: doc.status !== 'released',
-      langFallback,
-    });
+    chapters.push(await chapterOf(entry, doc));
+    // released software manual of the same audience → additional chapter
+    const swDoc = swType ? docsOfType(entry.docs, swType).find((d) => d.status === 'released') : null;
+    if (swDoc) {
+      const swNames = (entry.module.softwares || []).map((s) => s.name).join(' · ');
+      chapters.push(await chapterOf(entry, swDoc, { slug: `${mslug}--software`, title: swNames || `${entry.module.name} — software`, software: true }));
+    }
   }
   return { manual, chapters, lang };
 }
