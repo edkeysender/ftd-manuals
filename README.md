@@ -151,7 +151,10 @@ catalog and the release feed stay. Both deletes are meant for administrators onc
   freezes the revision counter, supersedes older released versions of the same manual type and deletes
   the branch.
 - Only Released doc versions are compiled into simulator manuals. An assembled manual has a manual type:
-  an *IOS technician manual* takes the technician manual of every chapter module.
+  an *IOS technician manual* takes the technician manual of every chapter module. When a chapter module
+  also has a released software manual of the same audience (customer → software-customer, technician →
+  software-technician), it compiles as an extra chapter right after the module's own, titled after the
+  linked software — picking the module brings both sections into the manual.
 - A manual-affecting software release must be covered by every manual type the module maintains
   (orange dot until each has a version for it).
 - Sections 1–3 (revision record, introduction, general information) are generated from module data —
