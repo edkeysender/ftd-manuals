@@ -850,6 +850,7 @@ async function callTool(name, args) {
         softwares: args.softwares || [],
         startSummary: 'Created via MCP',
       };
+      if (mtype?.id === 'third-party-kit' && !input.hardware.length) input.hardware = [{ name: args.name.trim(), type: 'cots', model: args.code || '' }];
       if (mtype?.needsSoftware && !input.softwares.length) input.softwares = [{ name: args.name.trim(), fromVersion: '' }];
       input.hardwareItems = await store.previewHardware(input, input.name);
       const manuals = [...new Set((Array.isArray(args.manuals) && args.manuals.length ? args.manuals : mtype ? mtype.manuals : [DEFAULT_MANUAL]).map((m) => manualTypeOf(m).id))];

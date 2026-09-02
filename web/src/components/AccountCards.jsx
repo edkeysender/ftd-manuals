@@ -103,7 +103,7 @@ export function UsersCard() {
         <table className="table users-table">
           <thead>
             <tr>
-              <th>{t('Name')}</th>
+              <th>{t('Full name')}</th>
               <th>{t('E-mail')}</th>
               <th>{t('Role')}</th>
               <th></th>
@@ -145,7 +145,7 @@ export function UsersCard() {
       )}
       <h3 className="settings-sub">{t('Add user')}</h3>
       <form className="pair wrap" onSubmit={add}>
-        <input placeholder={t('Name')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <input placeholder={t('Full name')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <input type="email" placeholder={t('E-mail')} required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <input type="password" placeholder={t('Password')} autoComplete="new-password" required minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>

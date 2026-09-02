@@ -132,7 +132,7 @@ export const GROUPS = [
 /** What a module IS — decides which manuals are drafted on creation (mirrors MODULE_TYPES in server/docgen.js). */
 export const MODULE_TYPES = [
   { id: 'own-module', label: 'Own module', desc: 'off-the-shelf parts + own versioned plates', manuals: ['customer', 'technician'], needsSoftware: false },
-  { id: 'third-party-kit', label: '3rd-party kit', desc: 'bought as a complete set, e.g. an intercom', manuals: ['customer', 'technician'], needsSoftware: false },
+  { id: 'third-party-kit', label: '3rd-party kit', desc: 'a bought device or set, e.g. an intercom or a smoke detector', manuals: ['customer', 'technician'], needsSoftware: false },
   { id: 'own-software', label: 'Own software', desc: 'an FTD application without hardware', manuals: ['software-customer', 'software-technician'], needsSoftware: true },
   { id: 'module-software', label: 'Module + software', desc: 'e.g. the IOS starting panel', manuals: ['customer', 'technician', 'software-customer', 'software-technician'], needsSoftware: true },
 ];

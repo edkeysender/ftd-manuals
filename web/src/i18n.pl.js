@@ -100,7 +100,7 @@ export const PL = {
   'Own module': 'Moduł własny',
   'off-the-shelf parts + own versioned plates': 'części gotowe + własne płyty wersjonowane',
   '3rd-party kit': 'Zestaw 3rd-party',
-  'bought as a complete set, e.g. an intercom': 'kupowany komplet, np. interkom',
+  'a bought device or set, e.g. an intercom or a smoke detector': 'kupowane urządzenie lub zestaw, np. interkom, czujnik dymu',
   'Own software': 'Oprogramowanie własne',
   'an FTD application without hardware': 'aplikacja FTD bez sprzętu',
   'Module + software': 'Moduł + oprogramowanie',
@@ -110,6 +110,7 @@ export const PL = {
   'one per line, version at the end: Płyta czołowa v1': 'jedna na linię, wersja na końcu: Płyta czołowa v1',
   'A trailing version marks a part made by FTD; without one it is a bought part (e.g. an encoder). Parts join the shared catalog.':
     'Wersja na końcu oznacza część produkcji FTD; bez wersji to część kupowana (np. enkoder). Części trafiają do wspólnego katalogu.',
+  'Left empty, the bought device itself becomes the single part (e.g. the smoke detector).': 'Puste pole oznacza, że jedyną częścią będzie samo kupowane urządzenie (np. czujnik dymu).',
   'Will create:': 'Powstaną:',
   Create: 'Utwórz',
   Part: 'Część',
@@ -766,9 +767,10 @@ export const PL = {
   Users: 'Użytkownicy',
   'Who can sign in to the console. Administrators can also delete — manuals, drafts, assets, inbox files, comment threads and users; editors can do everything else.':
     'Kto może logować się do konsoli. Administratorzy mogą też usuwać — instrukcje, wersje robocze, zasoby, pliki ze skrzynki, wątki komentarzy i użytkowników; redaktorzy mogą wszystko poza tym.',
-  Name: 'Imię i nazwisko',
+
   Role: 'Rola',
   'Reset password…': 'Resetuj hasło…',
+  'Full name': 'Imię i nazwisko',
   'New password for {email} (at least 8 characters):': 'Nowe hasło dla {email} (co najmniej 8 znaków):',
   'Password of {email} reset': 'Hasło {email} zresetowane',
   'Delete user {email}?': 'Usunąć użytkownika {email}?',

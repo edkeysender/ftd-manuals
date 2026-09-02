@@ -168,6 +168,12 @@ app.post('/api/modules', wrap(async (req, res) => {
     input.hardware = [...(Array.isArray(input.hardware) ? input.hardware : []), ...parseParts(input.parts)];
   }
 
+  // A 3rd-party module without parts IS its own bought part (a smoke detector, an
+  // intercom set) — give it a catalog row so section 3 and the FAT header list it.
+  if (mtype?.id === 'third-party-kit' && !(input.hardware || []).length) {
+    input.hardware = [{ name: input.name.trim(), type: 'cots', model: input.code || '' }];
+  }
+
   // Software relation: a single name from the modal ("— none —" omitted); a software
   // type without one gets a software named after the module.
   if (typeof input.software === 'string' && input.software.trim()) {

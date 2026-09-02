@@ -31,7 +31,7 @@ export const MODULE_TYPES = {
   'third-party-kit': {
     id: 'third-party-kit',
     label: '3rd-party kit',
-    desc: 'bought as a complete set, e.g. an intercom',
+    desc: 'a bought device or set, e.g. an intercom or a smoke detector',
     manuals: ['customer', 'technician'],
     needsSoftware: false,
   },
