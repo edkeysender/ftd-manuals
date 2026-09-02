@@ -328,6 +328,8 @@ export const PL = {
   'Delete module "{name}"? Its {docs} doc versions ({open} open drafts) and assets are deleted and it is removed from every assembled manual. This cannot be undone.':
     'Usunąć moduł „{name}”? Jego {docs} wersji dokumentów ({open} otwartych szkiców) i zasoby zostaną usunięte, a moduł zniknie z każdej złożonej instrukcji. Tej operacji nie można cofnąć.',
   'Module {name} deleted': 'Usunięto moduł {name}',
+  'New chat — clears this conversation (it is kept per doc across reloads)':
+    'Nowy czat — czyści tę rozmowę (jest zachowywana dla dokumentu między odświeżeniami)',
   'Not linked to any module yet — link one above to enable its software manuals.': 'Niepowiązane z żadnym modułem — powiąż powyżej, aby włączyć instrukcje oprogramowania.',
   'Linked from': 'Powiązane od',
   'Start {type} A1.0 for {module}': 'Rozpocznij {type} A1.0 dla {module}',

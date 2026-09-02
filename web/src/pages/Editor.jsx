@@ -165,6 +165,29 @@ const reviewerName = () => {
 
 /* The pre-edit snapshot survives refreshes in localStorage so Accept/Discard
    still work after a reload. */
+/* AI chat history survives reloads and navigation — one conversation per doc. */
+const chatKey = (slug, version) => `ftd-chat:${slug}:${version}`;
+const loadChat = (slug, version) => {
+  try {
+    const m = JSON.parse(localStorage.getItem(chatKey(slug, version)) || 'null');
+    return Array.isArray(m) && m.length ? m : null;
+  } catch {
+    return null;
+  }
+};
+const saveChat = (slug, version, messages) => {
+  try {
+    let m = messages.slice(-60);
+    while (m.length > 1 && JSON.stringify(m).length > 200000) m = m.slice(1);
+    localStorage.setItem(chatKey(slug, version), JSON.stringify(m));
+  } catch {}
+};
+const clearChat = (slug, version) => {
+  try {
+    localStorage.removeItem(chatKey(slug, version));
+  } catch {}
+};
+
 const snapshotKey = (slug, version) => `ftd-pending-ai:${slug}:${version}`;
 const loadSnapshot = (slug, version) => {
   try {
@@ -235,6 +258,8 @@ export default function Editor({ review: reviewProp = false }) {
   const todoRangesRef = useRef([]);
   const todoCursorRef = useRef(-1);
   const chatRef = useRef(null);
+  const greetingRef = useRef(null); // rebuilt on doc load, used by "New chat"
+  const chatDocRef = useRef(null); // which doc the current messages belong to (guards persistence on doc switch)
   const fileRef = useRef(null);
   const photoRef = useRef(null);
   const selRef = useRef(null); // last caret position inside the rich editor
@@ -379,6 +404,9 @@ export default function Editor({ review: reviewProp = false }) {
             L.source ? t('Paste a wiki/web page and I take only what belongs in this manual type.') : t('I answer and edit in {language}.', { language: t(L.label) })
           }`,
         };
+        greetingRef.current = greeting;
+        chatDocRef.current = `${slug}:${version}`;
+        const savedChat = loadChat(slug, version);
         // Recover a pending AI edit that was interrupted (e.g. page refresh).
         if (hasPendingMarkers(d.content)) {
           const snap = loadSnapshot(slug, lang === 'en' ? version : `${version}@${lang}`);
@@ -388,21 +416,25 @@ export default function Editor({ review: reviewProp = false }) {
             commentId: snap?.commentId ?? null,
             recovered: true,
           });
-          setMessages([
-            greeting,
-            {
-              role: 'assistant',
-              content: t(
-                'This draft contains a pending AI edit (recovered after the page was reloaded). Review the highlighted blocks and Accept or Discard them above the document.'
-              ),
-            },
-          ]);
+          const note = {
+            role: 'assistant',
+            content: t(
+              'This draft contains a pending AI edit (recovered after the page was reloaded). Review the highlighted blocks and Accept or Discard them above the document.'
+            ),
+          };
+          const base = savedChat || [greeting];
+          setMessages(base[base.length - 1]?.content === note.content ? base : [...base, note]);
         } else {
-          setMessages([greeting]);
+          setMessages(savedChat || [greeting]);
         }
       })
       .catch((e) => toast(e.message, 'err'));
   }, [slug, version, lang]);
+
+  /* Keep the conversation across reloads and navigation — one history per doc. */
+  useEffect(() => {
+    if (messages.length && chatDocRef.current === `${slug}:${version}`) saveChat(slug, version, messages);
+  }, [messages, slug, version]);
 
   /* ---------- language switch / translation ---------- */
   /** A save in a translation language creates that translation (typed by hand) — reflect it without a reload. */
@@ -1255,6 +1287,19 @@ export default function Editor({ review: reviewProp = false }) {
               {openComments.length > 0 && <span className="count-pill">{openComments.length}</span>}
             </button>
             {sidePane === 'ai' && <span className="ai-tag">{t('API · MCP enabled')}</span>}
+            {sidePane === 'ai' && !review && messages.length > 1 && (
+              <button
+                className="btn-icon"
+                style={{ marginLeft: 'auto' }}
+                title={t('New chat — clears this conversation (it is kept per doc across reloads)')}
+                onClick={() => {
+                  clearChat(slug, version);
+                  setMessages(greetingRef.current ? [greetingRef.current] : []);
+                }}
+              >
+                ↺
+              </button>
+            )}
           </div>
           {sidePane === 'comments' && (
             <div className="comments-pane">
