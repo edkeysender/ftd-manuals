@@ -12,6 +12,36 @@ import PartsList from './pages/PartsList.jsx';
 import Login from './pages/Login.jsx';
 import { t, plural, useLocale, LanguageSwitch } from './i18n.jsx';
 
+/* UI theme: stored choice wins, else the OS preference. Applied at import time so
+   the login screen and the first paint already have it (documents stay print-white). */
+const initTheme = () => {
+  try {
+    return localStorage.getItem('ftd-theme') || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  } catch {
+    return 'light';
+  }
+};
+document.documentElement.dataset.theme = initTheme();
+
+function ThemeSwitch() {
+  const [theme, setTheme] = useState(initTheme);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  const toggle = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    try {
+      localStorage.setItem('ftd-theme', next);
+    } catch {}
+    setTheme(next);
+  };
+  return (
+    <button className="ui-theme" onClick={toggle} title={theme === 'dark' ? t('Switch to light mode') : t('Switch to dark mode')}>
+      {theme === 'dark' ? '☀' : '🌙'}
+    </button>
+  );
+}
+
 const ToastContext = createContext(() => {});
 export const useToast = () => useContext(ToastContext);
 
@@ -92,6 +122,7 @@ export default function App() {
                 {t('Sign out')}
               </button>
             </div>
+            <ThemeSwitch />
             <LanguageSwitch />
           </header>
           {/* key: remount the page on a language switch so every string re-renders */}
