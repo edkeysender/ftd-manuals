@@ -526,10 +526,12 @@ try {
     ['word/media/image2.png', Buffer.from(png1x1, 'base64')], // icon-sized → skipped
   ]);
   const dropDoc = await req('POST', '/api/inbox', { files: [{ name: 'FCOM chapter 3.docx', dataBase64: docx.toString('base64') }] });
-  ok(dropDoc.some((f) => f.name === 'fcom-chapter-3-image1.png' && f.from === 'FCOM chapter 3.docx') && dropDoc.some((f) => f.name === 'fcom-chapter-3.txt' && f.text) && !dropDoc.some((f) => /image2/.test(f.name)),
-    `dropping a Word file leaves its pictures and text in the inbox: ${dropDoc.map((f) => f.name).join(', ')}`);
-  const docText = await mcpTool(870, 'read_inbox_text', { name: 'fcom-chapter-3.txt' });
-  ok(!(docText instanceof Error) && /^## Installation\nMount the panel & connect it\.\n- Check the LED\n\[figure: image1\.png\]\nPin \| Signal/.test(docText.text), `Word text extracted with headings, lists, figure markers and tables:\n${docText.text}`);
+  ok(dropDoc.some((f) => f.name === 'fcom-chapter-3-image1.png' && f.from === 'FCOM chapter 3.docx') && dropDoc.some((f) => f.name === 'fcom-chapter-3.html' && f.text) && !dropDoc.some((f) => /image2/.test(f.name)),
+    `dropping a Word file leaves its pictures and content in the inbox: ${dropDoc.map((f) => f.name).join(', ')}`);
+  const docText = await mcpTool(870, 'read_inbox_text', { name: 'fcom-chapter-3.html' });
+  ok(!(docText instanceof Error) &&
+    docText.text === '<h2>Installation</h2>\n<p>Mount the panel &amp; connect it.</p>\n<ul><li>Check the LED</li></ul>\n<p>[figure: fcom-chapter-3-image1.png]</p>\n<table><tr><td>Pin</td><td>Signal</td></tr></table>',
+    `Word content extracted as semantic HTML with heading, list, figure marker and table:\n${docText.text}`);
   const zlib = await import('node:zlib');
   const rgbRaw = Buffer.alloc(64 * 64 * 3, 0x40);
   const rows = []; for (let y = 0; y < 64; y++) rows.push(Buffer.from([0]), rgbRaw.subarray(y * 192, (y + 1) * 192));
@@ -558,7 +560,7 @@ try {
   ok(viaAssets.length === 1 && viaAssets[0].name === 'wiring-notes-image1.png', 'a Word file dropped on the Assets tab lands as its pictures (no text sidecar in assets)');
   const emptyDoc = await req('POST', '/api/inbox', { files: [{ name: 'empty.docx', dataBase64: storeZip([['word/document.xml', Buffer.from('<w:document/>')]]).toString('base64') }] }).catch((e) => e);
   ok(emptyDoc instanceof Error && /no pictures found/.test(emptyDoc.message), 'a document without pictures is reported');
-  for (const n of ['fcom-chapter-3.txt', 'Assembly spec.pdf', 'assembly-spec-1.jpg', 'assembly-spec-4.png']) await req('DELETE', `/api/inbox/${encodeURIComponent(n)}`);
+  for (const n of ['fcom-chapter-3.html', 'Assembly spec.pdf', 'assembly-spec-1.jpg', 'assembly-spec-4.png']) await req('DELETE', `/api/inbox/${encodeURIComponent(n)}`);
   ok((await req('GET', '/api/inbox')).files.length === 0, 'inbox cleaned up after the document tests');
   ok((await req('GET', '/api/modules/starting-panel/assets')).some((a) => a.name === 'cbw-operation.png'), 'imported inbox file is a module asset');
   const del = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'delete_asset', arguments: { slug: 'starting-panel', version: 'A1.0', name: 'cbw-operation.png' } } });

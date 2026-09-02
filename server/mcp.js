@@ -339,14 +339,15 @@ export const TOOLS = [
   {
     name: 'list_inbox',
     description:
-      'List the console inbox: files the user dropped on the console machine, waiting to be attached to a module (name, size, type, pixel size, complete). Dropped Word / PowerPoint / PDF / zip files are already expanded: the pictures inside appear as "<doc>-<n>.png/jpg" entries and a Word file also leaves "<doc>.txt" with its text and [figure: …] markers (read it with read_inbox_text). Import pictures with import_local_files by bare name. Ask the user to drop files (request_upload gives the link) when artwork is needed.',
+      'List the console inbox: files the user dropped on the console machine, waiting to be attached to a module (name, size, type, pixel size, complete). Dropped Word / PowerPoint / PDF / zip files are already expanded: the pictures inside appear as "<doc>-<n>.png/jpg" entries and a Word file also leaves "<doc>.html" — its full content as semantic HTML with formatting, tables and [figure: …] markers (read it with read_inbox_text). Import pictures with import_local_files by bare name. Ask the user to drop files (request_upload gives the link) when artwork is needed.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { title: 'List inbox', ...RO },
   },
   {
     name: 'read_inbox_text',
-    description: 'Read a .txt / .md inbox entry — typically the text extracted from a dropped Word file (headings as ##, lists as -, table rows as a | b, pictures as [figure: name]). Use it as the source to write sections from, then import_local_files + attach_figure the pictures.',
-    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Inbox entry name, e.g. fcom-chapter-3.txt' } }, required: ['name'] },
+    description:
+      'Read a .html / .txt / .md inbox entry — typically "<doc>.html", the content of a dropped Word file as semantic HTML: headings, strong/em/u/sup/sub, hyperlinks, nested ul/ol, tables (colspan/rowspan, th header rows) and "[figure: <inbox file>]" markers naming the extracted pictures. To recreate the document in a manual: write the sections from this HTML keeping the formatting and tables (save_doc_content / insert_into_section), import_local_files the pictures the markers name, then attach_figure each picture where its marker sits.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Inbox entry name, e.g. fcom-chapter-3.html' } }, required: ['name'] },
     annotations: { title: 'Read inbox text', ...RO },
   },
   {
