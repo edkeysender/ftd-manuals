@@ -504,6 +504,25 @@ export const PL = {
     'Kto może logować się do konsoli. Administratorzy mogą wszystko, łącznie z usuwaniem; moderatorzy piszą instrukcje i mogą podłączać agentów MCP; przeglądający tylko czytają i komentują w recenzjach — bez MCP.',
   'External agents (Claude Code, Claude.ai, any MCP client) can create and edit module docs exactly like the UI. Access is authorized with your console account: when the client connects it opens a sign-in page — approve it as an administrator or moderator (viewers cannot connect agents).':
     'Zewnętrzni agenci (Claude Code, Claude.ai, dowolny klient MCP) mogą tworzyć i edytować dokumenty modułów jak w UI. Dostęp autoryzowany jest kontem konsoli: przy łączeniu klient otwiera stronę logowania — zatwierdź ją jako administrator lub moderator (przeglądający nie mogą podłączać agentów).',
+  'From another machine first run {cmd} on the console computer — it prints a public {url} URL; use {mcpUrl} as the endpoint below.':
+    'Z innego komputera najpierw uruchom {cmd} na komputerze konsoli — wypisze publiczny adres {url}; jako endpoint poniżej użyj {mcpUrl}.',
+  'Claude Code (terminal)': 'Claude Code (terminal)',
+  'On the first tool call the browser opens the sign-in page — approve as administrator or moderator.': 'Przy pierwszym wywołaniu narzędzia przeglądarka otworzy stronę logowania — zatwierdź jako administrator lub moderator.',
+  'Claude (claude.ai)': 'Claude (claude.ai)',
+  'Settings → Connectors → Add custom connector': 'Ustawienia → Konektory → Dodaj własny konektor',
+  '{path} → add {endpoint} as a custom connector. The browser opens this console’s sign-in page — Authorize, done.':
+    '{path} → dodaj {endpoint} jako własny konektor. Przeglądarka otworzy stronę logowania tej konsoli — Autoryzuj i gotowe.',
+  'ChatGPT (chatgpt.com)': 'ChatGPT (chatgpt.com)',
+  'Settings → Apps & Connectors → Advanced settings → Developer mode': 'Ustawienia → Aplikacje i konektory → Ustawienia zaawansowane → Tryb dewelopera',
+  'Settings → Apps & Connectors → Create': 'Ustawienia → Aplikacje i konektory → Utwórz',
+  'First enable developer mode: {devPath}. Then {connPath}: name it, paste {endpoint} as the MCP server URL, choose {oauth} as authentication and complete the sign-in page. Custom connectors need a Plus / Pro / Business / Enterprise plan; in a chat, enable the connector under {tools}.':
+    'Najpierw włącz tryb dewelopera: {devPath}. Potem {connPath}: nazwij konektor, wklej {endpoint} jako adres serwera MCP, wybierz {oauth} jako uwierzytelnianie i przejdź stronę logowania. Własne konektory wymagają planu Plus / Pro / Business / Enterprise; w czacie włącz konektor w {tools}.',
+  'Developer mode / Deep research tools': 'Tryb dewelopera / narzędzia Deep research',
+  'OpenAI API (Responses)': 'OpenAI API (Responses)',
+  'The API cannot open a sign-in page, so give it the master token: set {tokenVar} in {envFile} on the console and pass it as {authField}:':
+    'API nie otworzy strony logowania, więc podaj mu token główny: ustaw {tokenVar} w {envFile} na konsoli i przekaż go jako {authField}:',
+  'While a tunnel is up, the OAuth sign-in (and the master token) are what protect your docs — stop the tunnel with {ctrlc} when done.':
+    'Gdy tunel działa, dokumentów strzeże logowanie OAuth (i token główny) — po zakończeniu zatrzymaj tunel przez {ctrlc}.',
   'MCP access tokens': 'Tokeny dostępu MCP',
   'The MCP endpoint requires a bearer token. Create one per agent or machine and send it as': 'Endpoint MCP wymaga tokenu bearer. Utwórz osobny dla każdego agenta lub komputera i wysyłaj go jako',
   'The value is shown only once — revoke a token to cut an agent off.': 'Wartość jest pokazywana tylko raz — unieważnij token, aby odciąć agenta.',
