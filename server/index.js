@@ -24,6 +24,7 @@ import * as images from './images.js';
 import * as sources from './sources.js';
 import { templateChecklist, checklistBodyHtml, fatProtocolBodyHtml, checklistExportHtml, CHECKLIST_CSS } from './checklist.js';
 import * as auth from './auth.js';
+import * as oauth from './oauth.js';
 
 const PORT = process.env.PORT || 5179;
 const app = express();
@@ -58,13 +59,7 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', auth.requireAuth, (req, res) => res.json({ user: auth.publicUser(req.user) }));
 
 app.use('/api', auth.requireAuth);
-
-/* MCP tokens: every signed-in user manages their own (registered before the
-   admin-only DELETE catch-all so editors can revoke their own tokens). */
-app.get('/api/tokens', wrap(async (req, res) => res.json(auth.listMcpTokens(req.user))));
-app.post('/api/tokens', wrap(async (req, res) => res.json(await auth.createMcpToken(req.user, req.body?.label))));
-app.delete('/api/tokens/:id', wrap(async (req, res) => res.json(await auth.revokeMcpToken(req.params.id, req.user))));
-
+app.use('/api', auth.viewerGuard); // viewers read and comment in reviews, nothing else
 app.delete('/api/*', auth.requireAdmin);
 app.post('/api/modules/:slug/docs/:version/discard', auth.requireAdmin);
 
@@ -77,7 +72,11 @@ app.post('/api/auth/password', wrap(async (req, res) => {
 app.get('/api/users', auth.requireAdmin, (req, res) => res.json(auth.listUsers()));
 app.post('/api/users', auth.requireAdmin, wrap(async (req, res) => res.json(await auth.createUser(req.body || {}))));
 app.put('/api/users/:id', auth.requireAdmin, wrap(async (req, res) => res.json(await auth.updateUser(req.params.id, req.body || {}))));
-app.delete('/api/users/:id', wrap(async (req, res) => res.json(await auth.deleteUser(req.params.id, req.user))));
+app.delete('/api/users/:id', wrap(async (req, res) => {
+  const r = await auth.deleteUser(req.params.id, req.user);
+  await oauth.dropUser(req.params.id); // their agents lose access within the hour
+  res.json(r);
+}));
 
 /* ---------- status ---------- */
 app.get('/api/status', wrap(async (req, res) => {
@@ -783,14 +782,27 @@ app.put('/api/settings/ai', wrap(async (req, res) => {
 /* ---------- MCP (Model Context Protocol) endpoint ---------- */
 // Optional protection for public tunnels: set MCP_TOKEN in .env and clients
 // must send  Authorization: Bearer <token>.
+/* ---------- OAuth for MCP: discovery, registration, consent, tokens ---------- */
+app.get('/.well-known/oauth-authorization-server', (req, res) => res.json(oauth.asMetadata(req)));
+app.get('/.well-known/oauth-authorization-server/mcp', (req, res) => res.json(oauth.asMetadata(req)));
+app.get('/.well-known/oauth-protected-resource', (req, res) => res.json(oauth.resourceMetadata(req)));
+app.get('/.well-known/oauth-protected-resource/mcp', (req, res) => res.json(oauth.resourceMetadata(req)));
+app.use('/oauth', express.urlencoded({ extended: false }), auth.attachUser);
+app.post('/oauth/register', wrap(async (req, res) => res.status(201).json(await oauth.register(req.body))));
+app.get('/oauth/authorize', wrap(oauth.authorize));
+app.post('/oauth/authorize', wrap(oauth.authorize));
+app.post('/oauth/token', wrap(oauth.token));
+
+/* The MCP endpoint accepts OAuth access tokens (admin + moderator only); MCP_TOKEN in .env
+ * stays as a master token for local tooling. 401s point clients at the discovery documents. */
 app.use('/mcp', (req, res, next) => {
-  if (req.path.startsWith('/t/')) return next(); // token-in-the-URL variant checks itself below
   const master = process.env.MCP_TOKEN;
   if (master && req.headers.authorization === `Bearer ${master}`) return next();
-  const user = auth.verifyMcpToken(req.headers.authorization);
+  const user = auth.verifyMcpAccessToken(req.headers.authorization);
   if (!user) {
+    res.set('WWW-Authenticate', oauth.wwwAuthenticate(req));
     return res.status(401).json({
-      error: 'Unauthorized — send Authorization: Bearer <MCP token>. Every user creates their own tokens in Settings → MCP connector.',
+      error: 'Unauthorized — connect through the OAuth flow (sign in as an administrator or moderator when your MCP client opens the authorization page).',
     });
   }
   req.user = user;
@@ -808,19 +820,6 @@ app.post('/mcp', runMcp);
 app.get('/mcp', (req, res) => res.status(405).json({ error: 'Stateless MCP endpoint — use POST' }));
 app.delete('/mcp', (req, res) => res.status(405).json({ error: 'Stateless MCP endpoint — use POST' }));
 
-/* Token-in-the-URL variant for MCP clients that cannot send an Authorization
- * header (the claude.ai connector UI): https://…/mcp/t/<token>. Same tokens,
- * same checks — the URL is the secret, so share it like a password. */
-app.all('/mcp/t/:token', (req, res) => {
-  const user = auth.verifyMcpToken(`Bearer ${req.params.token}`);
-  const master = process.env.MCP_TOKEN;
-  if (!user && !(master && req.params.token === master)) {
-    return res.status(401).json({ error: 'Unauthorized — unknown MCP token. Create one in Settings → MCP access tokens.' });
-  }
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Stateless MCP endpoint — use POST' });
-  req.user = user;
-  runMcp(req, res);
-});
 
 app.get('/api/mcp-info', (req, res) => {
   res.json({
@@ -839,6 +838,7 @@ if (fs.existsSync(dist)) {
 }
 
 await store.initStore();
+await oauth.initOAuth();
 await inbox.ensureInbox();
 await auth.initAuth();
 app.listen(PORT, () => {

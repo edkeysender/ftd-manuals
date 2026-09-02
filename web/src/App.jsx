@@ -14,11 +14,11 @@ import { t, plural, useLocale, LanguageSwitch } from './i18n.jsx';
 const ToastContext = createContext(() => {});
 export const useToast = () => useContext(ToastContext);
 
-const AuthContext = createContext({ user: null, isAdmin: false, logout: () => {} });
-/** The signed-in user: {user, isAdmin, logout}. Deleting is admin-only — render delete buttons behind isAdmin. */
+const AuthContext = createContext({ user: null, isAdmin: false, canEdit: false, logout: () => {} });
+/** The signed-in user: {user, isAdmin, canEdit, logout}. Deleting is admin-only (isAdmin); viewers are read-only (canEdit false). */
 export const useAuth = () => useContext(AuthContext);
 
-export const ROLE_LABELS = { admin: 'Administrator', editor: 'Editor' };
+export const ROLE_LABELS = { admin: 'Administrator', moderator: 'Moderator', viewer: 'Viewer' };
 
 export default function App() {
   const [toasts, setToasts] = useState([]);
@@ -55,7 +55,7 @@ export default function App() {
 
   return (
     <ToastContext.Provider value={toast}>
-      <AuthContext.Provider value={{ user, isAdmin: user.role === 'admin', logout }}>
+      <AuthContext.Provider value={{ user, isAdmin: user.role === 'admin', canEdit: user.role !== 'viewer', logout }}>
         <div className={`shell ${isEditor ? 'shell-editor' : ''}`} lang={locale}>
           <header className="topbar">
             <div className="brand">

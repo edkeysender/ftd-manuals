@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api, readFileAsBase64 } from '../api.js';
 import { useToast } from '../App.jsx';
-import { PasswordCard, UsersCard, TokensCard } from '../components/AccountCards.jsx';
+import { PasswordCard, UsersCard } from '../components/AccountCards.jsx';
 import { t, plural } from '../i18n.jsx';
 
 /** t() for sentences with inline markup: each `{name}` placeholder is replaced by the given React node. */
@@ -289,12 +289,10 @@ export default function Settings() {
 
       <PasswordCard />
 
-      <TokensCard />
-
       <section className="settings-card">
         <h2>{t('MCP connector')}</h2>
         <p>
-          {t('External agents (Claude Code, Claude.ai, any MCP client) can create and edit module docs exactly like the UI — search, read, edit, upload photos, create modules, submit and release.')}
+          {t('External agents (Claude Code, Claude.ai, any MCP client) can create and edit module docs exactly like the UI. Access is authorized with your console account: when the client connects it opens a sign-in page — approve it as an administrator or moderator (viewers cannot connect agents).')}
         </p>
         {mcp ? (
           <>

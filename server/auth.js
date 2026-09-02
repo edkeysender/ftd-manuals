@@ -1,11 +1,10 @@
 /**
- * Console login: users with scrypt-hashed passwords in <data>/users.json, an HMAC-signed
- * session cookie, and two roles — `admin` (everything, including deleting) and `editor`
- * (everything except deleting). The first start seeds the default administrator.
+ * Console login: users with scrypt-hashed passwords in <data>/users.json and an
+ * HMAC-signed session cookie. The first start seeds the default administrator.
  *
- * The /mcp endpoint requires a per-user bearer token (mcp-tokens.json, hashes only):
- * each user creates and revokes their own in Settings → MCP connector; MCP_TOKEN in
- * .env stays honoured as a master token for local tooling.
+ * Three roles: admin (everything), moderator (edit, MCP), viewer (read + review comments;
+ * no MCP). The /mcp endpoint takes short-lived OAuth access tokens minted by server/oauth.js
+ * (redirect + consent flow); MCP_TOKEN in .env stays honoured as a master token for local tooling.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -17,7 +16,9 @@ const AUTH_DIR = process.env.FTD_AUTH_DIR ? path.resolve(process.env.FTD_AUTH_DI
 const USERS_FILE = path.join(AUTH_DIR, 'users.json');
 const SECRET_FILE = path.join(AUTH_DIR, 'auth-secret');
 
-export const ROLES = ['admin', 'editor'];
+export const ROLES = ['admin', 'moderator', 'viewer'];
+/** Roles allowed to connect MCP agents — viewers are read-only humans. */
+export const MCP_ROLES = ['admin', 'moderator'];
 export const COOKIE = 'ftd_session';
 const SESSION_DAYS = 30;
 const MIN_PASSWORD = 8;
@@ -80,11 +81,10 @@ export async function initAuth() {
   } catch {
     users = [];
   }
-  try {
-    const parsed = JSON.parse(await fs.readFile(TOKENS_FILE, 'utf8'));
-    tokens = Array.isArray(parsed.tokens) ? parsed.tokens : [];
-  } catch {
-    tokens = [];
+  // the 'editor' role became 'moderator' when viewers arrived
+  if (users.some((u) => u.role === 'editor')) {
+    for (const u of users) if (u.role === 'editor') u.role = 'moderator';
+    await saveUsers();
   }
   if (!users.length) {
     users.push({
@@ -170,7 +170,7 @@ function checkPassword(password) {
   if (typeof password !== 'string' || password.length < MIN_PASSWORD) throw new Error(`Password must be at least ${MIN_PASSWORD} characters`);
 }
 
-export async function createUser({ email, name, password, role = 'editor' }) {
+export async function createUser({ email, name, password, role = 'moderator' }) {
   email = normEmail(email);
   if (!validEmail(email)) throw new Error('A valid e-mail address is required');
   if (users.some((u) => u.email === email)) throw new Error(`${email} already has an account`);
@@ -213,88 +213,47 @@ export async function deleteUser(id, actor) {
   if (actor && actor.id === id) throw new Error('You cannot delete your own account');
   if (users[i].role === 'admin' && users.filter((x) => x.role === 'admin').length === 1) throw new Error('Cannot delete the last administrator');
   users.splice(i, 1);
-  if (tokens.some((t) => t.userId === id)) {
-    tokens = tokens.filter((t) => t.userId !== id); // a deleted user's MCP tokens die with the account
-    await saveTokens();
-  }
   await saveUsers();
   return { ok: true };
 }
 
-/* ---------- MCP tokens: per-user bearer tokens for the /mcp endpoint ---------- */
+/* ---------- MCP access tokens (minted by the OAuth flow in oauth.js) ---------- */
 
-const TOKENS_FILE = path.join(AUTH_DIR, 'mcp-tokens.json');
-let tokens = [];
+export const userById = (id) => users.find((u) => u.id === id) || null;
 
-async function saveTokens() {
-  writing = writing.then(async () => {
-    await fs.mkdir(AUTH_DIR, { recursive: true });
-    const tmp = `${TOKENS_FILE}.${process.pid}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify({ tokens }, null, 2) + '\n');
-    await fs.rename(tmp, TOKENS_FILE);
-  });
-  return writing;
+/** Short-lived HMAC-signed access token: base64url({uid, aud:"mcp", exp}).sig */
+export function createMcpAccessToken(user, ttlSeconds = 3600) {
+  const payload = Buffer.from(JSON.stringify({ uid: user.id, aud: 'mcp', exp: Date.now() + ttlSeconds * 1000 })).toString('base64url');
+  return `${payload}.${sign(payload)}`;
 }
 
-const hashMcpToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
-
-const publicToken = (tk) => ({
-  id: tk.id,
-  label: tk.label,
-  owner: users.find((u) => u.id === tk.userId)?.email || '(deleted)',
-  createdAt: tk.createdAt,
-  lastUsedAt: tk.lastUsedAt || null,
-});
-
-/** Create a bearer token for the /mcp endpoint. The plaintext is returned ONCE; only its hash is stored. */
-export async function createMcpToken(user, label) {
-  const plain = `ftd_${crypto.randomBytes(24).toString('hex')}`;
-  const tk = {
-    id: crypto.randomUUID(),
-    userId: user.id,
-    label: String(label || '').trim().slice(0, 60) || 'MCP client',
-    tokenHash: hashMcpToken(plain),
-    createdAt: new Date().toISOString(),
-    lastUsedAt: null,
-  };
-  tokens.push(tk);
-  await saveTokens();
-  return { ...publicToken(tk), token: plain };
-}
-
-/** A user sees their own tokens; administrators see everyone's. */
-export const listMcpTokens = (user) => tokens.filter((tk) => user.role === 'admin' || tk.userId === user.id).map(publicToken);
-
-export async function revokeMcpToken(id, actor) {
-  const i = tokens.findIndex((tk) => tk.id === id);
-  if (i < 0) throw new Error('Token not found');
-  if (actor.role !== 'admin' && tokens[i].userId !== actor.id) throw new Error('You can only revoke your own tokens');
-  tokens.splice(i, 1);
-  await saveTokens();
-  return { ok: true };
-}
-
-/** The user behind an Authorization header, or null. Updates lastUsedAt (throttled to once a minute). */
-export function verifyMcpToken(header) {
+/** The admin/moderator behind an "Authorization: Bearer …" header, or null (viewers refused). */
+export function verifyMcpAccessToken(header) {
   const m = /^Bearer\s+(.+)$/i.exec(String(header || ''));
   if (!m) return null;
-  const hash = hashMcpToken(m[1].trim());
-  const tk = tokens.find((x) => x.tokenHash.length === hash.length && crypto.timingSafeEqual(Buffer.from(x.tokenHash), Buffer.from(hash)));
-  if (!tk) return null;
-  const user = users.find((u) => u.id === tk.userId);
-  if (!user) return null;
-  if (!tk.lastUsedAt || Date.now() - Date.parse(tk.lastUsedAt) > 60e3) {
-    tk.lastUsedAt = new Date().toISOString();
-    saveTokens().catch(() => {});
+  const [payload, sig] = m[1].trim().split('.');
+  if (!payload || !sig) return null;
+  const expected = sign(payload);
+  if (expected.length !== sig.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig))) return null;
+  try {
+    const { uid, aud, exp } = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (aud !== 'mcp' || !exp || exp < Date.now()) return null;
+    const user = users.find((u) => u.id === uid);
+    return user && MCP_ROLES.includes(user.role) ? user : null;
+  } catch {
+    return null;
   }
-  return user;
 }
 
-/** Self-service password change — requires the current password. */
-export async function changePassword(user, current, next) {
-  if (!verifyPassword(current, user.passwordHash)) throw new Error('Current password is incorrect');
-  checkPassword(next);
-  user.passwordHash = hashPassword(next);
-  await saveUsers();
-  return { ok: true };
+/* ---------- viewer guard ---------- */
+
+/** Paths (relative to /api) a viewer may write to: review comments and replies. */
+const VIEWER_WRITE = new RegExp('^/modules/[^/]+/docs/[^/]+/comments(/[^/]+/replies)?$');
+
+/** After requireAuth: viewers are read-only except for review comments. */
+export function viewerGuard(req, res, next) {
+  if (!req.user || req.user.role !== 'viewer') return next();
+  if (req.method === 'GET' || req.method === 'HEAD') return next();
+  if (req.method === 'POST' && (VIEWER_WRITE.test(req.path) || req.path === '/auth/password' || req.path === '/auth/logout')) return next();
+  return res.status(403).json({ error: 'Viewers are read-only — you can browse manuals and comment in reviews', code: 'forbidden' });
 }

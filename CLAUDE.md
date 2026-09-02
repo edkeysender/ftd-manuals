@@ -83,11 +83,12 @@ The functional spec lives in this file's history and in the Modules spec provide
 ## Working here
 
 - Dev: `npm run dev` (API :5179, web :5173). Check: `npm run build && npm run smoke`.
-- Login: `server/auth.js` — users in `data/users.json` (scrypt hashes, seeded admin `l.wicenciak@ftd.aero`),
-  signed session cookie `ftd_session`. Every `/api` route needs a user; every `DELETE` and the draft discard need
-  the `admin` role (`requireAdmin`) — the UI hides those buttons behind `useAuth().isAdmin`. `/mcp` keeps its own
-  per-user MCP bearer tokens (`data/mcp-tokens.json`, hashes only; Settings → MCP access tokens; env `MCP_TOKEN`
-  = master fallback). `tools/smoke.mjs` signs in first and sets `mcpToken` — new smoke calls go through `req()`/`mcpCall()`.
+- Login: `server/auth.js` — users in `data/users.json` (scrypt, seeded admin `l.wicenciak@ftd.aero`), signed
+  session cookie. Roles: `admin` (everything incl. DELETE + discard), `moderator` (writes, MCP), `viewer`
+  (read + review comments only — `viewerGuard`; the editor always renders the review view). `/mcp` takes
+  OAuth access tokens from `server/oauth.js` (authorize-code + PKCE + dynamic registration; consent page
+  requires admin/moderator; refresh tokens rotate in `data/oauth.json`); env `MCP_TOKEN` = master fallback.
+  `tools/smoke.mjs` signs in and does the OAuth dance to set `mcpToken`.
 - Branch names: `console/<topic>`. Do not push to `main`.
 - The store's git operations are serialized through `GitRepo.lock()` — any new store mutation must
   run inside it and leave the working tree checked out on `main`.
