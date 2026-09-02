@@ -70,7 +70,7 @@ export async function listInbox() {
 }
 
 /** Write files into the inbox after validation; a name that exists gets a numeric suffix. files: [{name, buffer}].
- *  Word / PowerPoint / PDF / zip files are replaced by the pictures inside them (and a .txt with the Word text). */
+ *  Word / PowerPoint / PDF / zip files are replaced by the pictures inside them (and a .html with the Word content). */
 export async function saveToInbox(files) {
   await ensureInbox();
   const saved = [];
@@ -89,9 +89,9 @@ export async function saveToInbox(files) {
   return saved;
 }
 
-/** Plain text of a .txt/.md inbox entry (e.g. the text extracted from a Word file). */
+/** Text of a .html/.txt/.md inbox entry (e.g. the HTML extracted from a Word file). */
 export async function readInboxText(name) {
-  if (!/\.(txt|md)$/i.test(name)) throw new Error('Only .txt / .md inbox entries can be read as text');
+  if (!/\.(txt|md|html)$/i.test(name)) throw new Error('Only .html / .txt / .md inbox entries can be read as text');
   const f = await readInbox(name);
   if (!f) return null;
   return f.buffer.toString('utf8').slice(0, 200000);

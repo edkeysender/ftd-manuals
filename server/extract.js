@@ -2,8 +2,10 @@
  * Documents as a source of pictures. Source material arrives as Word / PowerPoint /
  * PDF (or a zip of pictures): every drop point (inbox, Assets tab, chat attachment,
  * import_local_files) runs `expandDocuments()` so the figures inside a document
- * become ordinary image files — and a Word file also yields its text with
- * "[figure: name]" markers, so an agent can write the sections from it.
+ * become ordinary image files — and a Word file also yields "<doc>.html": its
+ * content as semantic HTML (headings, inline formatting, lists, tables with
+ * col/rowspans, "[figure: name]" markers naming the extracted pictures), so an
+ * agent can recreate the document faithfully from it.
  *
  * No dependencies beyond node:zlib and sharp: OOXML is a zip (media under
  * word/media, ppt/media, xl/media); PDF image XObjects are found by scanning the
@@ -62,41 +64,315 @@ export function readZip(buf) {
 const decodeXml = (s) =>
   s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n));
 
-/** Word document text: headings as "## …", list items as "- …", table rows as "a | b", figures as "[figure: file]". */
-export function docxText(entries) {
+/* ---------- Word document → semantic HTML ---------- */
+
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** rId → target from a rels part (attribute order varies by producer). */
+function relTargets(entries, part) {
+  const xml = entries.find((e) => e.name === part)?.data.toString('utf8') || '';
+  const map = {};
+  for (const m of xml.matchAll(/<Relationship\b(?=[^>]*\bId="([^"]+)")(?=[^>]*\bTarget="([^"]+)")[^>]*>/g)) map[m[1]] = m[2];
+  return map;
+}
+
+/** styleId → heading level (1-based) from word/styles.xml: an explicit outlineLvl or a
+ *  "heading N" name, resolved through basedOn chains (custom heading styles). */
+function headingLevels(entries) {
+  const xml = entries.find((e) => e.name === 'word/styles.xml')?.data.toString('utf8') || '';
+  const styles = {};
+  for (const m of xml.matchAll(/<w:style\b[^>]*w:styleId="([^"]+)"[^>]*>([\s\S]*?)<\/w:style>/g)) {
+    const name = (/<w:name\b[^>]*w:val="([^"]+)"/.exec(m[2]) || [])[1] || '';
+    const outline = (/<w:outlineLvl\b[^>]*w:val="(\d+)"/.exec(m[2]) || [])[1];
+    const named = /^(?:heading|nag[łl][óo]wek)\s*(\d)$/i.exec(name);
+    styles[m[1]] = {
+      basedOn: (/<w:basedOn\b[^>]*w:val="([^"]+)"/.exec(m[2]) || [])[1],
+      lvl: outline !== undefined ? +outline + 1 : named ? +named[1] : null,
+    };
+  }
+  const levels = {};
+  for (const id of Object.keys(styles)) {
+    let s = styles[id];
+    for (let hop = 0; s && s.lvl === null && s.basedOn && hop < 6; hop++) s = styles[s.basedOn];
+    if (s && s.lvl) levels[id] = s.lvl;
+  }
+  return levels;
+}
+
+/** numId → (ilvl → 'ul' | 'ol') from word/numbering.xml. */
+function numberingKinds(entries) {
+  const xml = entries.find((e) => e.name === 'word/numbering.xml')?.data.toString('utf8') || '';
+  const abstract = {};
+  for (const m of xml.matchAll(/<w:abstractNum\b[^>]*w:abstractNumId="(\d+)"[\s\S]*?<\/w:abstractNum>/g)) {
+    const lvls = {};
+    for (const l of m[0].matchAll(/<w:lvl\b[^>]*w:ilvl="(\d+)"[^>]*>[\s\S]*?<w:numFmt\b[^>]*w:val="([^"]+)"/g)) {
+      lvls[l[1]] = l[2] === 'bullet' ? 'ul' : 'ol';
+    }
+    abstract[m[1]] = lvls;
+  }
+  const map = {};
+  for (const m of xml.matchAll(/<w:num\b[^>]*w:numId="(\d+)"[^>]*>[\s\S]*?<w:abstractNumId\b[^>]*w:val="(\d+)"/g)) map[m[1]] = abstract[m[2]] || {};
+  return map;
+}
+
+/** Top-level <w:tag>…</w:tag> inner ranges of xml, skipping the same tag nested deeper
+ *  (nesting always passes through the tag itself: tbl→tc→tbl, tr→tc→tbl→tr). */
+function topRanges(xml, tag) {
+  const out = [];
+  const re = new RegExp(`<w:${tag}[\\s>]|</w:${tag}>`, 'g');
+  let depth = 0;
+  let start = 0;
+  for (let m; (m = re.exec(xml)); ) {
+    if (m[0][1] === '/') {
+      depth--;
+      if (depth === 0) out.push(xml.slice(start, m.index));
+    } else {
+      depth++;
+      if (depth === 1) start = m.index + m[0].length;
+    }
+  }
+  return out;
+}
+
+/** Bold / italic / underline / vertical-align flags of one <w:rPr>…</w:rPr>. */
+function runFmt(rpr) {
+  const on = (tag) => {
+    const m = new RegExp(`<w:${tag}\\b([^>]*?)/?>`).exec(rpr);
+    if (!m) return false;
+    const v = /w:val="([^"]+)"/.exec(m[1]);
+    return !v || !/^(0|false|none)$/i.test(v[1]);
+  };
+  const va = (/<w:vertAlign\b[^>]*w:val="([^"]+)"/.exec(rpr) || [])[1];
+  return { b: on('b'), i: on('i'), u: on('u'), sup: va === 'superscript', sub: va === 'subscript' };
+}
+
+const NO_FMT = { b: false, i: false, u: false, sup: false, sub: false };
+
+/** Inline HTML of one paragraph: runs with strong/em/u/sup/sub, <br>, hyperlinks,
+ *  and "[figure: file]" markers naming the extracted pictures. */
+function inlineHtml(xml, ctx) {
+  const segs = [];
+  let fmt = NO_FMT;
+  let href = null;
+  const re = /<w:hyperlink\b[^>]*>|<\/w:hyperlink>|<w:rPr>[\s\S]*?<\/w:rPr>|<w:r\b[^>]*>|<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:(?:br|cr)(?:\s[^>]*)?\/>|<w:tab(?:\s[^>]*)?\/>|(?:r:embed|r:link)="([^"]+)"/g;
+  for (let m; (m = re.exec(xml)); ) {
+    const tok = m[0];
+    if (tok.startsWith('<w:hyperlink')) {
+      const t = ctx.rels[(/r:id="([^"]+)"/.exec(tok) || [])[1]];
+      href = t && /^https?:/i.test(t) ? t : null;
+    } else if (tok === '</w:hyperlink>') href = null;
+    else if (tok.startsWith('<w:rPr')) fmt = runFmt(tok);
+    else if (tok.startsWith('<w:r')) fmt = NO_FMT;
+    else if (m[1] !== undefined) segs.push({ fmt, href, text: esc(decodeXml(m[1])) });
+    else if (tok.startsWith('<w:tab')) segs.push({ fmt: NO_FMT, href, text: ' ' });
+    else if (m[2]) segs.push({ fmt: NO_FMT, href: null, text: `[figure: ${ctx.figName(m[2])}]` });
+    else segs.push({ fmt, href, text: '<br>' });
+  }
+  // merge runs of identical formatting so <strong>a</strong><strong>b</strong> becomes <strong>ab</strong>
+  const wrap = (s) => {
+    if (!s) return '';
+    let r = s.text;
+    if (!r) return '';
+    if (s.fmt.sup) r = `<sup>${r}</sup>`;
+    if (s.fmt.sub) r = `<sub>${r}</sub>`;
+    if (s.fmt.u) r = `<u>${r}</u>`;
+    if (s.fmt.i) r = `<em>${r}</em>`;
+    if (s.fmt.b) r = `<strong>${r}</strong>`;
+    if (s.href) r = `<a href="${esc(s.href)}">${r}</a>`;
+    return r;
+  };
+  let html = '';
+  let cur = null;
+  for (const s of segs) {
+    if (cur && cur.href === s.href && ['b', 'i', 'u', 'sup', 'sub'].every((k) => cur.fmt[k] === s.fmt[k])) cur.text += s.text;
+    else {
+      html += wrap(cur);
+      cur = { ...s };
+    }
+  }
+  return (html + wrap(cur)).replace(/(?:<br>|\s)+$/, '');
+}
+
+/** One <w:p>: {kind: 'p', html} for paragraphs/headings, {kind: 'li', level, type, html} for list items. */
+function paraBlock(pXml, ctx) {
+  const pPr = (/<w:pPr>[\s\S]*?<\/w:pPr>/.exec(pXml) || [''])[0];
+  const style = (/<w:pStyle\b[^>]*w:val="([^"]+)"/.exec(pPr) || [])[1] || '';
+  const inner = inlineHtml(pXml, ctx);
+  if (!inner.replace(/<br>/g, '').trim()) return null;
+  const outline = (/<w:outlineLvl\b[^>]*w:val="(\d+)"/.exec(pPr) || [])[1];
+  const level = outline !== undefined ? +outline + 1 : ctx.headings[style] || (/^(?:Heading|Nag[łl][óo]wek)(\d)$/i.exec(style) || [])[1];
+  if (level) {
+    const h = Math.min(+level + 1, 6);
+    return { kind: 'p', html: `<h${h}>${inner}</h${h}>` };
+  }
+  if (/^Title$/i.test(style)) return { kind: 'p', html: `<h1>${inner}</h1>` };
+  const numPr = /<w:numPr[\s/>]/.exec(pPr);
+  if (numPr) {
+    const num = (/<w:numPr>[\s\S]*?<\/w:numPr>/.exec(pPr) || [''])[0];
+    const level = +((/<w:ilvl\b[^>]*w:val="(\d+)"/.exec(num) || [])[1] || 0);
+    const numId = (/<w:numId\b[^>]*w:val="(\d+)"/.exec(num) || [])[1];
+    const type = (ctx.nums[numId] || {})[level] || 'ul';
+    return { kind: 'li', level, type, html: inner };
+  }
+  return { kind: 'p', html: `<p>${inner}</p>` };
+}
+
+/** Consecutive list paragraphs → nested <ul>/<ol> (deeper ilvl nests under the previous item). */
+function renderList(items) {
+  const base = items[0].level;
+  let html = `<${items[0].type}>`;
+  for (let i = 0; i < items.length; ) {
+    html += `<li>${items[i].html}`;
+    let j = i + 1;
+    while (j < items.length && items[j].level > base) j++;
+    if (j > i + 1) html += renderList(items.slice(i + 1, j));
+    html += '</li>';
+    i = j;
+  }
+  return html + `</${items[0].type}>`;
+}
+
+/** <w:tbl> → <table> with colspan (gridSpan), rowspan (vMerge) and th header rows (tblHeader). */
+function tableHtml(tblXml, ctx) {
+  const rows = topRanges(tblXml, 'tr').map((rowXml) => ({
+    header: /<w:tblHeader\b/.test((/<w:trPr>[\s\S]*?<\/w:trPr>/.exec(rowXml) || [''])[0]),
+    cells: topRanges(rowXml, 'tc').map((cellXml) => {
+      const tcPr = (/<w:tcPr>[\s\S]*?<\/w:tcPr>/.exec(cellXml) || [''])[0];
+      const vm = /<w:vMerge\b([^>]*?)\/?>/.exec(tcPr);
+      let html = blocksHtml(cellXml.replace(/<w:tcPr>[\s\S]*?<\/w:tcPr>/, ''), ctx);
+      const single = /^<p>([\s\S]*)<\/p>$/.exec(html);
+      if (single) html = single[1];
+      return {
+        colspan: +((/<w:gridSpan\b[^>]*w:val="(\d+)"/.exec(tcPr) || [])[1] || 1),
+        merge: vm ? (/w:val="restart"/.test(vm[1]) ? 'restart' : 'cont') : null,
+        rowspan: 1,
+        html,
+      };
+    }),
+  }));
+  // vertical merges: a "cont" cell extends the "restart" cell above it in the same grid column
+  const owners = {};
+  for (const row of rows) {
+    let col = 0;
+    for (const cell of row.cells) {
+      if (cell.merge === 'cont' && owners[col]) {
+        owners[col].rowspan++;
+        cell.skip = true;
+      } else if (cell.merge) owners[col] = cell;
+      else delete owners[col];
+      col += cell.colspan;
+    }
+  }
+  let html = '<table>';
+  for (const row of rows) {
+    const tag = row.header ? 'th' : 'td';
+    html += `<tr>${row.cells
+      .filter((c) => !c.skip)
+      .map((c) => `<${tag}${c.colspan > 1 ? ` colspan="${c.colspan}"` : ''}${c.rowspan > 1 ? ` rowspan="${c.rowspan}"` : ''}>${c.html}</${tag}>`)
+      .join('')}</tr>`;
+  }
+  return html + '</table>';
+}
+
+/** True when the tag opening at index i ends "/>", i.e. carries no content ("<w:p w:rsidR="…"/>"). */
+const selfClosing = (xml, i) => xml[xml.indexOf('>', i) - 1] === '/';
+
+/** Block sequence of a body / table cell: paragraphs, lists and (nested) tables in order. */
+function blocksHtml(xml, ctx) {
+  const out = [];
+  let list = null;
+  const flushList = () => {
+    if (list) out.push(renderList(list));
+    list = null;
+  };
+  const re = /<w:(tbl|p)[\s/>]/g;
+  for (let m; (m = re.exec(xml)); ) {
+    if (selfClosing(xml, m.index)) continue; // <w:p/>, <w:p attrs/>
+    if (m[1] === 'tbl') {
+      // depth-aware: consume the whole table (tables nest via tc)
+      const t = /<w:tbl[\s>]|<\/w:tbl>/g;
+      t.lastIndex = m.index;
+      let depth = 0;
+      let end = xml.length;
+      for (let mm; (mm = t.exec(xml)); ) {
+        if (mm[0][1] === '/') {
+          if (--depth === 0) {
+            end = mm.index + mm[0].length;
+            break;
+          }
+        } else if (!selfClosing(xml, mm.index)) depth++;
+      }
+      flushList();
+      out.push(tableHtml(xml.slice(m.index, end), ctx));
+      re.lastIndex = end;
+    } else {
+      // depth-aware close: a text box (w:txbxContent) nests paragraphs inside a paragraph
+      const t = /<w:p[\s>]|<\/w:p>/g;
+      t.lastIndex = m.index;
+      let depth = 0;
+      let close = -1;
+      for (let mm; (mm = t.exec(xml)); ) {
+        if (mm[0][1] === '/') {
+          if (--depth === 0) {
+            close = mm.index;
+            break;
+          }
+        } else if (!selfClosing(xml, mm.index)) depth++;
+      }
+      if (close < 0) break;
+      re.lastIndex = close + 6;
+      // text boxes render as their own blocks after the carrying paragraph
+      const boxes = [];
+      const pXml = xml.slice(m.index, close).replace(/<w:txbxContent>([\s\S]*?)<\/w:txbxContent>/g, (_, box) => {
+        boxes.push(box);
+        return '';
+      });
+      const p = paraBlock(pXml, ctx);
+      if (p) {
+        if (p.kind === 'li') (list ||= []).push(p);
+        else {
+          flushList();
+          out.push(p.html);
+        }
+      }
+      for (const box of boxes) {
+        const boxHtml = blocksHtml(box, ctx);
+        if (boxHtml) {
+          flushList();
+          out.push(boxHtml);
+        }
+      }
+    }
+  }
+  flushList();
+  return out.join('\n');
+}
+
+/**
+ * Word document → semantic HTML: headings (Heading1 → h2 …), paragraphs with
+ * strong/em/u/sup/sub and hyperlinks, nested ul/ol, tables with colspan/rowspan
+ * and th header rows, pictures as "[figure: <extracted file name>]" markers.
+ * `mediaNames` maps a media base name (image1.png) to the name the picture was
+ * extracted under, so the markers match the files next to this text.
+ */
+export function docxHtml(entries, stem = 'document', mediaNames = {}) {
   const doc = entries.find((e) => e.name === 'word/document.xml');
   if (!doc) return '';
-  const relsXml = entries.find((e) => e.name === 'word/_rels/document.xml.rels')?.data.toString('utf8') || '';
-  const rels = {};
-  for (const m of relsXml.matchAll(/<Relationship\b[^>]*\bId="([^"]+)"[^>]*\bTarget="([^"]+)"/g)) rels[m[1]] = m[2].split('/').pop();
-  for (const m of relsXml.matchAll(/<Relationship\b[^>]*\bTarget="([^"]+)"[^>]*\bId="([^"]+)"/g)) rels[m[2]] = m[1].split('/').pop();
-  let xml = doc.data.toString('utf8');
-  const encodeXml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  // tables: every row becomes one paragraph "cell | cell"
-  xml = xml.replace(/<w:tr[\s>][\s\S]*?<\/w:tr>/g, (row) => {
-    const cells = [...row.matchAll(/<w:tc[\s>][\s\S]*?<\/w:tc>/g)].map((c) =>
-      [...c[0].matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => decodeXml(m[1])).join('').trim()
-    );
-    return `<w:p><w:r><w:t>${encodeXml(cells.join(' | '))}</w:t></w:r></w:p>`;
-  });
-  const out = [];
-  const paras = xml.split(/<w:p[\s>]/).slice(1);
-  for (const p of paras) {
-    const style = (/<w:pStyle w:val="([^"]+)"/.exec(p) || [])[1] || '';
-    const heading = /^Heading(\d)/i.exec(style) || /^Nag[łl][óo]wek(\d)/i.exec(style);
-    const list = /<w:numPr[\s/>]/.test(p);
-    let text = '';
-    for (const m of p.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>|<w:tab\/>|<w:br\/>|r:embed="([^"]+)"/g)) {
-      if (m[1] !== undefined) text += decodeXml(m[1]);
-      else if (m[0] === '<w:tab/>') text += '\t';
-      else if (m[0] === '<w:br/>') text += '\n';
-      else if (m[2]) text += `[figure: ${rels[m[2]] || m[2]}]`;
-    }
-    text = text.replace(/[ \t]+$/g, '');
-    if (!text.trim()) continue;
-    out.push(heading ? `${'#'.repeat(+heading[1] + 1)} ${text}` : list ? `- ${text}` : text);
-  }
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const rels = relTargets(entries, 'word/_rels/document.xml.rels');
+  const ctx = {
+    rels,
+    nums: numberingKinds(entries),
+    headings: headingLevels(entries),
+    figName: (id) => {
+      const base = (rels[id] || id).split('/').pop();
+      return mediaNames[base] || `${stem}-${base}`;
+    },
+  };
+  const xml = doc.data.toString('utf8');
+  let body = (/<w:body[\s>]([\s\S]*)<\/w:body>/.exec(xml) || [null, xml])[1];
+  // mc:AlternateContent carries the same content twice (Choice + Fallback) — keep one
+  body = body.replace(/<mc:Fallback(?:\s[^>]*)?>[\s\S]*?<\/mc:Fallback>/g, '');
+  return blocksHtml(body, ctx).trim();
 }
 
 /* ---------- PDF images ---------- */
@@ -311,6 +587,7 @@ export async function expandDocuments(files, { keepDocuments = true, minPx = MIN
         throw new Error(`${f.name}: ${e.message}`);
       }
       const media = entries.filter((e) => /^(word|ppt|xl)\/media\//.test(e.name) || (ext === 'zip' && IMAGE_MEDIA.test(e.name)));
+      const mediaNames = {};
       let k = 0;
       for (const e of media) {
         const base = e.name.split('/').pop();
@@ -329,11 +606,12 @@ export async function expandDocuments(files, { keepDocuments = true, minPx = MIN
           }
         } else if (info.type !== 'svg' && (info.width < minPx || info.height < minPx)) continue;
         k++;
+        mediaNames[base] = name;
         extracted.push({ name, buffer, from: f.name });
       }
       if (ext === 'docx') {
-        const text = docxText(entries);
-        if (text) extracted.push({ name: `${stem}.txt`, buffer: Buffer.from(text, 'utf8'), from: f.name, text: true });
+        const html = docxHtml(entries, stem, mediaNames);
+        if (html) extracted.push({ name: `${stem}.html`, buffer: Buffer.from(html, 'utf8'), from: f.name, text: true });
       }
     }
     if (!extracted.length && !(ext === 'pdf' && keepDocuments)) {

@@ -117,7 +117,11 @@ the Assets-tab drop link for files on their own device or behind a login (then `
 of pictures:** a Word / PowerPoint / PDF / zip file dropped anywhere (inbox, Assets tab, chat attachment,
 `import_local_files` path) is expanded into the pictures inside it (`server/extract.js` — OOXML media,
 PDF image XObjects: JPEG as-is, Flate + PNG predictor, Indexed palettes) and a Word file also leaves
-`<doc>.txt` with its text and `[figure: …]` markers (`read_inbox_text`). Point `FTD_IMPORT_ROOTS` at the
+`<doc>.html` — its content as semantic HTML: headings (custom heading styles resolved via `styles.xml`),
+strong/em/u/sup/sub, hyperlinks, nested lists, tables with col/rowspans and `th` header rows, text boxes,
+and `[figure: …]` markers naming the extracted pictures (`read_inbox_text`) — so an agent can recreate
+the document faithfully over MCP: write the sections from the HTML, `import_local_files` the pictures,
+`attach_figure` each one at its marker. Point `FTD_IMPORT_ROOTS` at the
 document share and no dropping is needed at all. `attach_figure` inserts a
 proper `<figure>` after a phrase in a section and stamps `applies_to`; `describe_asset` asks the vision
 model for caption / alt / visible text / which unit is shown. The asset route serves `?w=<px>` resized
