@@ -150,6 +150,11 @@ catalog and the release feed stay. Both deletes are meant for administrators onc
 - **Submit for review** flags the doc In review; **Approve & release** merges the branch into `main`,
   freezes the revision counter, supersedes older released versions of the same manual type and deletes
   the branch.
+- Every assembled manual opens with chapter 1 *General*: 1.1 General Info (document statement + manufacturer
+  address), 1.2 revision record, 1.3 table of contents, 1.4 List of Effective Pages. Module chapters number
+  from 2. *Open / print* and *Export HTML* produce a self-paginating A4 document (paged.js inlined, works
+  offline) with the header box and proprietary text on every page, page / pages, and the List of Effective
+  Pages filled per printed page (issue.rev = doc version `A<issue>.<rev>`, effective date = release date).
 - Only Released doc versions are compiled into simulator manuals. An assembled manual has a manual type:
   an *IOS technician manual* takes the technician manual of every chapter module. When a chapter module
   also has a released software manual of the same audience (customer → software-customer, technician →

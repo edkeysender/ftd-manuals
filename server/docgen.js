@@ -2,8 +2,13 @@
  * Document templates and the auto-generated sections (1 Revision record,
  * 2 Introduction, 3 General information). Sections 1–3 are always derived
  * from module data and the revision record — never hand-edited.
- * Also: assembly of module docs into one manual (cover, TOC, chapters).
+ * Also: assembly of module docs into one manual (cover, chapter 1 General with
+ * revision record / TOC / List of Effective Pages, module chapters) and its
+ * self-paginating HTML export (paged.js).
  */
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 export const CATEGORY_LABELS = {
   'cockpit-hardware': 'Cockpit hardware',
@@ -296,6 +301,18 @@ function fmtDate(iso) {
   return String(iso).slice(0, 10);
 }
 
+/** dd.mm.yyyy — the date format of the FTD manual template (List of Effective Pages). */
+function fmtDots(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : fmtDate(iso);
+}
+
+/** Issue / revision / effective date of one doc for the List of Effective Pages: A1.0 → issue 1, rev 0. */
+export function docEffectivity(doc) {
+  const v = parseDocVersion(doc?.version);
+  return { issue: v ? String(v.major) : '—', rev: v ? String(v.minor) : '—', date: fmtDots(doc?.releasedAt || doc?.updatedAt) };
+}
+
 /** Sections 1–3 as read-only HTML, generated from module + doc metadata. */
 /* ------------------------------------------------------------------ */
 /* Languages                                                           */
@@ -335,6 +352,14 @@ const STRINGS = {
     // assembled manual
     tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
     draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', compiled: 'compiled', modules: (n) => `${n} module${n === 1 ? '' : 's'}`, assembled: 'Assembled manual', draft: 'draft',
+    // chapter 1 — General (FTD manual template)
+    general: 'General', generalIntro: 'In this section the overall information about the document itself is provided.', generalInfoHeading: 'General Info',
+    generalText1: (title) => `This document contains ${title} for Flight and Navigation Procedures Trainer (FNPT).`,
+    generalText2: 'Any changes or modification in this document are not allowed if not introduced by FNPT Manufacturer and approved by CAA.',
+    generalText3: 'If this document is found in unauthorized place, please contact FNPT Manufacturer:',
+    manufacturer: ['FTD.AERO Sp. z o.o.', 'Wąska 33', '62-052 Komorniki', 'Poland', 'www.FTD.aero', 'office@ftd.aero', 'tel. +48 519 737 800'],
+    lep: 'List of Effective Pages', page: 'Page', issue: 'Issue', rev: 'Rev.', effectiveDate: 'Effective date',
+    lepNote: 'Page numbers are assigned when the manual is opened for print or exported; the table below lists the effectivity of every chapter.',
   },
   pl: {
     manualTypes: { customer: 'Instrukcja użytkownika', technician: 'Instrukcja techniczna', 'software-customer': 'Instrukcja użytkownika oprogramowania', 'software-technician': 'Instrukcja techniczna oprogramowania' },
@@ -352,6 +377,13 @@ const STRINGS = {
     intro2: (version, draftRev) => `Wersja dokumentu ${version}${draftRev ? ` (robocza, rewizja ${draftRev})` : ''}. Do instrukcji symulatora kompilowane są wyłącznie wydane wersje dokumentów.`,
     tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', compiled: 'skompilowano', modules: (n) => `${n} ${n === 1 ? 'moduł' : n < 5 ? 'moduły' : 'modułów'}`, assembled: 'Instrukcja złożona', draft: 'robocza',
+    general: 'Ogólne', generalIntro: 'W tej sekcji podano ogólne informacje o samym dokumencie.', generalInfoHeading: 'Informacje ogólne',
+    generalText1: (title) => `Niniejszy dokument zawiera ${title} dla urządzenia FNPT (Flight and Navigation Procedures Trainer).`,
+    generalText2: 'Wszelkie zmiany lub modyfikacje niniejszego dokumentu są niedozwolone, jeżeli nie zostały wprowadzone przez producenta FNPT i zatwierdzone przez CAA.',
+    generalText3: 'W przypadku znalezienia tego dokumentu w nieuprawnionym miejscu prosimy o kontakt z producentem FNPT:',
+    manufacturer: ['FTD.AERO Sp. z o.o.', 'Wąska 33', '62-052 Komorniki', 'Polska', 'www.FTD.aero', 'office@ftd.aero', 'tel. +48 519 737 800'],
+    lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', effectiveDate: 'Data obowiązywania',
+    lepNote: 'Numery stron są nadawane przy otwarciu instrukcji do druku lub eksporcie; poniższa tabela podaje obowiązującą wersję każdego rozdziału.',
   },
 };
 
@@ -477,8 +509,13 @@ export const MANUAL_CSS = `
 .manual-doc .cover-image img { max-width: 92%; max-height: 560px; margin: 26px auto 10px; display: block; }
 .manual-doc .cover-placeholder { margin: 40px auto; width: 70%; height: 240px; border: 1px dashed #c8d1db; border-radius: 8px; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 14px; }
 .manual-doc .cover .sub { color: #64748b; margin-top: 24px; font-size: 14px; }
-.manual-doc .front h2 { font-size: 19px; border-bottom: 2px solid #16324f; padding-bottom: 6px; margin: 34px 0 12px; }
+.manual-doc .manufacturer { line-height: 1.7; margin: 8px 0 0 24px; }
+.manual-doc .lep-note { color: #64748b; font-size: 12px; }
+.manual-doc .lep-pages { display: none; }
+.manual-doc .lep-pages th, .manual-doc .lep-pages td { text-align: center; }
+.manual-doc .lep-pages td.pg { background: #f1f4f8; font-weight: 600; }
 .manual-doc .toc ol { margin: 0; padding-left: 22px; line-height: 1.9; }
+.manual-doc .toc > ol { list-style: none; padding-left: 0; }
 .manual-doc .toc > ol > li { font-weight: 600; margin: 6px 0; }
 .manual-doc .toc ol ol { list-style: none; padding-left: 22px; font-weight: 400; color: #475569; font-size: 14px; }
 .manual-doc .toc .l3 { padding-left: 18px; }
@@ -486,8 +523,11 @@ export const MANUAL_CSS = `
 .manual-doc .toc a:hover { color: #0b5fff; text-decoration: underline; }
 .manual-doc .toc .num { display: inline-block; min-width: 46px; color: #64748b; font-variant-numeric: tabular-nums; }
 .manual-doc table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12.5px; }
-.manual-doc th, .manual-doc td { border: 1px solid #c8d1db; padding: 7px 10px; text-align: left; vertical-align: top; }
+.manual-doc th, .manual-doc td { border: 1px solid #c8d1db; padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .manual-doc th { background: #f1f4f8; }
+/* wide tables (9+ columns) go compact so cells rarely have to break words to fit the page */
+.manual-doc table:has(tr > :nth-child(9)) { font-size: 10.5px; }
+.manual-doc table:has(tr > :nth-child(9)) th, .manual-doc table:has(tr > :nth-child(9)) td { padding: 4px 5px; }
 .manual-doc h1, .manual-doc h2, .manual-doc h3 { scroll-margin-top: 70px; }
 .manual-doc .chapter { counter-increment: chap; counter-reset: sec; margin-top: 60px; padding-top: 24px; border-top: 1px dashed #dde3ea; }
 .manual-doc .chapter > h1 { font-size: 24px; border-bottom: 3px solid #16324f; padding-bottom: 8px; margin: 0 0 16px; }
@@ -521,7 +561,7 @@ export const MANUAL_CSS = `
   .manual-doc .print-header .head-box { margin: 0; }
   .manual-doc .print-footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8.5px; color: #64748b; text-align: center; border-top: 1px solid #c8d1db; padding-top: 4px; background: #fff; line-height: 1.4; }
   .manual-doc .cover .head-box, .manual-doc .doc-footer { display: none; }
-  .manual-doc .front, .manual-doc .chapter { page-break-before: always; border-top: none; margin-top: 0; }
+  .manual-doc .chapter { page-break-before: always; border-top: none; margin-top: 0; }
   .manual-doc .cover { page-break-after: always; }
 }
 `;
@@ -567,8 +607,12 @@ function headerBox(manual, logoHtml) {
 }
 
 /**
- * Body HTML of an assembled manual: cover, revision record, clickable TOC,
- * chapters with anchored headings, proprietary footer.
+ * Body HTML of an assembled manual: cover, chapter 1 "General" (1.1 General Info
+ * with the manufacturer's address, 1.2 revision record, 1.3 clickable TOC,
+ * 1.4 List of Effective Pages), module chapters numbered from 2 with anchored
+ * headings, proprietary footer. Every section carries data-lep-* (issue / rev /
+ * effective date of the doc it comes from) so the export can fill the List of
+ * Effective Pages per printed page; the web view shows the per-chapter table.
  * opts: { logoUrl, coverUrl, footerText }
  */
 export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts = {}) {
@@ -576,16 +620,21 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
   const T = strings(lang);
   const date = new Date().toISOString().slice(0, 10);
   const logoHtml = logoUrl ? `<img class="logo" src="${esc(logoUrl)}" alt="FTD.aero">` : LOGO_SVG;
+  const frontLep = { issue: '—', rev: '—', date: fmtDots(date) };
+  const lepAttrs = (l) => ` data-lep-issue="${esc(l.issue)}" data-lep-rev="${esc(l.rev)}" data-lep-date="${esc(l.date)}"`;
 
-  const processed = chapters.map((c, i) =>
-    c.missing ? { ...c, html: '', items: [] } : { ...c, ...numberHeadings(`${c.generated}\n${c.content}`, i + 1) }
-  );
+  // chapter 1 is General — module chapters are numbered from 2
+  const processed = chapters.map((c, i) => {
+    const num = i + 2;
+    const lep = c.missing ? frontLep : docEffectivity(c.doc);
+    return c.missing ? { ...c, num, lep, html: '', items: [] } : { ...c, num, lep, ...numberHeadings(`${c.generated}\n${c.content}`, num) };
+  });
 
   const recordRows = processed
-    .map((c, i) =>
+    .map((c) =>
       c.missing
-        ? `<tr><td>${i + 1}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="4" class="missing">${T.noDocumentation}</td></tr>`
-        : `<tr><td>${i + 1}</td><td><a href="#ch-${esc(c.slug)}">${esc(c.title || c.module.name)}</a></td><td>${esc(
+        ? `<tr><td>${c.num}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="4" class="missing">${T.noDocumentation}</td></tr>`
+        : `<tr><td>${c.num}</td><td><a href="#ch-${esc(c.slug)}">${esc(c.title || c.module.name)}</a></td><td>${esc(
             c.module.code || '—'
           )}</td><td>${esc(c.doc.version)}${c.isDraft ? ` ${T.draft} r${c.doc.revision}` : ''}</td><td>${esc(
             c.doc.status
@@ -593,30 +642,79 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
     )
     .join('\n');
 
-  const toc = processed
-    .map((c, i) => {
-      const title = esc(c.title || c.module?.name || c.slug);
-      if (c.missing) return `<li class="missing"><span class="num">${i + 1}</span>${title} — ${T.noDocumentation}</li>`;
-      const subs = c.items
-        .map(
-          (it) =>
-            `<li class="${it.level === 3 ? 'l3' : 'l2'}"><a href="#${it.id}"><span class="num">${it.num}</span>${esc(it.title)}</a></li>`
-        )
-        .join('');
-      return `<li><a href="#ch-${esc(c.slug)}"><span class="num">${i + 1}</span>${title}</a><ol>${subs}</ol></li>`;
-    })
+  const generalItems = [
+    ['general-info', T.generalInfoHeading],
+    ['revision-record', T.revisionRecord],
+    ['toc', T.tableOfContents],
+    ['lep', T.lep],
+  ];
+  const generalToc = `<li><a href="#ch-general"><span class="num">1</span>${esc(T.general)}</a><ol>${generalItems
+    .map(([id, title], i) => `<li class="l2"><a href="#${id}"><span class="num">1.${i + 1}</span>${esc(title)}</a></li>`)
+    .join('')}</ol></li>`;
+  const toc = [generalToc]
+    .concat(
+      processed.map((c) => {
+        const title = esc(c.title || c.module?.name || c.slug);
+        if (c.missing) return `<li class="missing"><span class="num">${c.num}</span>${title} — ${T.noDocumentation}</li>`;
+        const subs = c.items
+          .map(
+            (it) =>
+              `<li class="${it.level === 3 ? 'l3' : 'l2'}"><a href="#${it.id}"><span class="num">${it.num}</span>${esc(it.title)}</a></li>`
+          )
+          .join('');
+        return `<li><a href="#ch-${esc(c.slug)}"><span class="num">${c.num}</span>${title}</a><ol>${subs}</ol></li>`;
+      })
+    )
     .join('\n');
+
+  const lepChapterRows = [`<tr><td>1</td><td>${esc(T.general)}</td><td>—</td><td>—</td><td>${esc(frontLep.date)}</td></tr>`]
+    .concat(
+      processed.map(
+        (c) =>
+          `<tr><td>${c.num}</td><td>${esc(c.title || c.module?.name || c.slug)}</td><td>${esc(c.lep.issue)}</td><td>${esc(c.lep.rev)}</td><td>${esc(c.lep.date)}</td></tr>`
+      )
+    )
+    .join('\n');
+
+  const general = `<section class="chapter general" id="ch-general"${lepAttrs(frontLep)}>
+<h1>${esc(T.general)}</h1>
+<p>${T.generalIntro}</p>
+<h2 id="general-info">${esc(T.generalInfoHeading)}</h2>
+<p>${T.generalText1(`<strong>${esc(manual.name)}</strong>`)}</p>
+<p>${T.generalText2}</p>
+<p>${T.generalText3}</p>
+<p class="manufacturer">${T.manufacturer.map(esc).join('<br>')}</p>
+<h2 id="revision-record">${T.revisionRecord}</h2>
+<table>
+  <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.code}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
+  <tbody>${recordRows}</tbody>
+</table>
+<h2 id="toc">${T.tableOfContents}</h2>
+<div class="toc"><ol>${toc}</ol></div>
+<h2 id="lep">${esc(T.lep)}</h2>
+<p class="lep-note">${T.lepNote}</p>
+<table class="lep-chapters">
+<thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th></tr></thead>
+<tbody>
+${lepChapterRows}
+</tbody>
+</table>
+<table class="lep-pages">
+<thead><tr><th>${T.page}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th><th>${T.page}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th></tr></thead>
+<tbody></tbody>
+</table>
+</section>`;
 
   const body = processed
     .map((c) => {
       if (c.missing) {
-        return `<section class="chapter" id="ch-${esc(c.slug)}"><h1>${esc(c.module?.name || c.slug)}</h1><p class="missing">${T.noDocumentationYet}</p></section>`;
+        return `<section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(c.lep)}><h1>${esc(c.module?.name || c.slug)}</h1><p class="missing">${T.noDocumentationYet}</p></section>`;
       }
       const flags = [
         c.isDraft ? `<span class="draft-flag">${esc(T.draftFlag(c.doc.version, c.doc.revision))}</span>` : '',
         c.langFallback ? `<span class="draft-flag lang-flag">${esc(T.langFallback)}</span>` : '',
       ].join('');
-      return `<section class="chapter" id="ch-${esc(c.slug)}">
+      return `<section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(c.lep)}>
 <h1>${esc(c.title || c.module.name)}${flags}</h1>
 ${c.html}
 </section>`;
@@ -631,27 +729,149 @@ ${c.html}
 <div class="print-header">${headerBox(manual, logoHtml)}</div>
 <div class="print-footer">${esc(footerText)}</div>
 <div class="manual">
-<section class="cover" id="cover">
+<section class="cover" id="cover"${lepAttrs(frontLep)}>
   ${headerBox(manual, logoHtml)}
   ${cover}
   <div class="sub">${esc(T.groups[manual.group] || (manual.group ? manual.group : T.assembled))} · ${esc(
     T.manualTypes[manualTypeOf(manual.manual).id]
   )} · ${T.compiled} ${date} · ${T.modules(chapters.length)}</div>
 </section>
-<section class="front" id="front">
-  <h2 id="revision-record">${T.revisionRecord}</h2>
-  <table>
-    <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.code}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
-    <tbody>${recordRows}</tbody>
-  </table>
-  <h2 id="toc">${T.tableOfContents}</h2>
-  <div class="toc"><ol>${toc}</ol></div>
-</section>
+${general}
 ${body}
 <footer class="doc-footer">${esc(footerText)}</footer>
 </div>
 </div>`;
 }
+
+/* ------------------------------------------------------------------ */
+/* Standalone export — paginated with paged.js                         */
+/* The export is the printed manual: A4 pages, the header box and the  */
+/* proprietary text as running header/footer, "page / pages", and the  */
+/* List of Effective Pages filled from the pages that actually came    */
+/* out (the page count converges in a second pass because the list     */
+/* itself takes pages). paged.js is inlined so the file stays          */
+/* self-contained and offline.                                         */
+/* ------------------------------------------------------------------ */
+
+const FONT = "Verdana, Tahoma, 'DejaVu Sans', Geneva, sans-serif";
+
+export const PAGED_CSS = `
+@page {
+  size: A4;
+  margin: 34mm 14mm 22mm;
+  @top-center { content: element(pageHeader); width: 100%; vertical-align: bottom; }
+  @bottom-center { content: element(pageFooter); width: 100%; vertical-align: top; }
+  @bottom-right { content: counter(page) " / " counter(pages); font-family: ${FONT}; font-size: 9px; color: #64748b; vertical-align: top; white-space: nowrap; border-top: 1px solid #c8d1db; padding-top: 4px; text-align: right; }
+}
+body { font-family: ${FONT}; }
+.pagedjs_pages, .pagedjs_margin-content { font-family: ${FONT}; }
+.manual-doc .print-header { position: running(pageHeader); display: block; }
+.manual-doc .print-footer { position: running(pageFooter); display: block; }
+.pagedjs_margin-content .print-footer { font-size: 8.5px; color: #64748b; text-align: center; border-top: 1px solid #c8d1db; padding-top: 4px; line-height: 1.4; }
+.pagedjs_margin-content .head-box { width: 100%; border-collapse: collapse; border: 2px solid #1c2733; margin: 0 0 3mm; }
+.pagedjs_margin-content .head-box td { border: 2px solid #1c2733; padding: 5px 10px; vertical-align: middle; }
+.pagedjs_margin-content .head-title { text-align: center; width: 62%; }
+.pagedjs_margin-content .head-code { font-size: 15px; font-weight: 700; line-height: 1.1; }
+.pagedjs_margin-content .head-name { font-size: 11px; font-weight: 700; margin-top: 2px; }
+.pagedjs_margin-content .head-logo { text-align: center; }
+.pagedjs_margin-content .head-logo img, .pagedjs_margin-content .head-logo svg { height: 28px; max-width: 120px; display: inline-block; }
+.manual-doc .manual { max-width: none; padding: 0; margin: 0; }
+.manual-doc .cover { break-after: page; padding-top: 30mm; }
+.manual-doc .cover .head-box { display: none; }
+.manual-doc .chapter { break-before: page; border-top: none; margin-top: 0; padding-top: 0; }
+.manual-doc .doc-footer { display: none; }
+.manual-doc .lep-chapters, .manual-doc .lep-note { display: none; }
+.manual-doc .lep-pages { display: table; }
+.manual-doc h1, .manual-doc h2, .manual-doc h3 { break-after: avoid; }
+.manual-doc tr, .manual-doc figure, .manual-doc .admonition { break-inside: avoid; }
+.manual-doc .auto-section { background: none; padding: 0; }
+@media screen {
+  body { background: #e5e7eb; }
+  .pagedjs_page { background: #fff; margin: 12px auto; box-shadow: 0 1px 6px rgb(0 0 0 / 0.25); }
+}
+`;
+
+/** Runs in the exported file: paginates #source and fills the List of Effective Pages. */
+const LEP_SCRIPT = `
+(function () {
+  var source = document.getElementById('source');
+  var style = document.getElementById('manual-css');
+  var html = source.innerHTML;
+  var css = style.textContent;
+  var mount = document.createElement('div');
+  mount.id = 'pages';
+  var FIELDS = ['issue', 'rev', 'date'];
+  function cell(n, field, info) {
+    var v = info[n];
+    if (field === 'page') return '<td class="pg" data-p="' + n + '" data-f="page">' + n + '</td>';
+    return '<td data-p="' + n + '" data-f="' + field + '">' + (v ? v[field] : '') + '</td>';
+  }
+  function entry(n, info) { return cell(n, 'page', info) + FIELDS.map(function (f) { return cell(n, f, info); }).join(''); }
+  function rows(total, info) {
+    var half = Math.ceil(total / 2), out = '';
+    for (var i = 1; i <= half; i++) {
+      var j = i + half;
+      out += '<tr>' + entry(i, info) + (j <= total ? entry(j, info) : '<td></td><td></td><td></td><td></td>') + '</tr>';
+    }
+    return out;
+  }
+  function withLep(total, info) {
+    return html.replace(/(<table class="lep-pages">[\\s\\S]*?<tbody>)[\\s\\S]*?(<\\/tbody>)/, function (m, a, b) { return a + rows(total, info) + b; });
+  }
+  function effectivity() {
+    var info = {};
+    var pages = mount.querySelectorAll('.pagedjs_page');
+    for (var i = 0; i < pages.length; i++) {
+      var el = pages[i].querySelector('[data-lep-issue]');
+      info[i + 1] = el
+        ? { issue: el.getAttribute('data-lep-issue'), rev: el.getAttribute('data-lep-rev'), date: el.getAttribute('data-lep-date') }
+        : { issue: '', rev: '', date: '' };
+    }
+    return info;
+  }
+  async function run() {
+    source.parentNode.removeChild(source);
+    style.parentNode.removeChild(style);
+    document.body.appendChild(mount);
+    var total = 0, info = {}, previewer = null, flow = null;
+    for (var pass = 0; pass < 4; pass++) {
+      if (previewer) previewer.polisher.destroy();
+      mount.innerHTML = '';
+      previewer = new PagedModule.Previewer();
+      flow = await previewer.preview(withLep(total, info), [{ 'manual.css': css }], mount);
+      info = effectivity();
+      if (flow.total === total) break;
+      total = flow.total;
+    }
+    var cells = mount.querySelectorAll('.lep-pages td[data-f]');
+    for (var k = 0; k < cells.length; k++) {
+      var f = cells[k].getAttribute('data-f');
+      var v = info[cells[k].getAttribute('data-p')];
+      if (f !== 'page') cells[k].textContent = v ? v[f] : '';
+    }
+    document.documentElement.setAttribute('data-pages', String(flow.total));
+  }
+  run().catch(function (e) {
+    console.error('pagination failed — showing the continuous document', e);
+    if (mount.parentNode) mount.parentNode.removeChild(mount);
+    document.head.appendChild(style);
+    document.body.appendChild(source);
+  });
+})();
+`;
+
+let pagedJsSource = null;
+function pagedJs() {
+  if (pagedJsSource === null) {
+    // the package's exports map hides dist/, so the file is read from the repo's node_modules
+    const file = fileURLToPath(new URL('../node_modules/pagedjs/dist/paged.min.js', import.meta.url));
+    pagedJsSource = readFileSync(file, 'utf8').replace(/<\/script/gi, '<\\/script');
+  }
+  return pagedJsSource;
+}
+
+/** The screen stylesheet without its browser-print block — the export paginates itself instead. */
+const SCREEN_CSS = MANUAL_CSS.replace(/\n@media print \{[\s\S]*$/, '\n');
 
 /** Standalone HTML document for export / print. */
 export function manualExportHtml(compiled, opts = {}) {
@@ -660,13 +880,18 @@ export function manualExportHtml(compiled, opts = {}) {
 <head>
 <meta charset="utf-8">
 <title>${esc(compiled.manual.name)} — FTD.aero</title>
-<style>
+<style id="manual-css">
 body { margin: 0; background: #fff; }
-${MANUAL_CSS}
+${SCREEN_CSS}
+${PAGED_CSS}
 </style>
 </head>
 <body>
+<div id="source">
 ${manualBodyHtml(compiled, opts)}
+</div>
+<script>${pagedJs()}</script>
+<script>${LEP_SCRIPT}</script>
 </body>
 </html>
 `;
