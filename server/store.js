@@ -15,6 +15,7 @@ import {
   MANUAL_TYPES,
   MANUAL_ORDER,
   DEFAULT_MANUAL,
+  MODULE_TYPES,
   manualTypeOf,
   docKey,
   manualDocCode,
@@ -525,6 +526,7 @@ export async function listSoftware() {
           name: module.name,
           code: module.code || null,
           group: module.group,
+          type: module.type || null, // own-software = the software's own manual (no hardware)
           fromVersion: link.fromVersion || '',
           softwareCount: (module.softwares || []).length,
           manuals,
@@ -1419,9 +1421,12 @@ const cleanSwName = (name) => String(name || '').trim();
  * Create a software: a new name in the release feed (softwares.json on main), optionally with
  * its first release and linked to modules right away. Software manuals of a module become
  * available once the module is linked to a software.
- * { name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}] }
+ * { name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}], ownManual?: {group?} }
+ * ownManual: the software also gets its OWN manual — an own-software module named after it
+ * (see createOwnSoftwareModule), so an application without hardware is documented in the
+ * same editor as everything else.
  */
-export async function createSoftware({ name, version, manualAffecting, note, modules = [] }) {
+export async function createSoftware({ name, version, manualAffecting, note, modules = [], ownManual = null }) {
   name = cleanSwName(name);
   if (!name) throw new Error('Software name is required');
   const feed = await getSoftwareFeed();
@@ -1429,6 +1434,7 @@ export async function createSoftware({ name, version, manualAffecting, note, mod
   if (feed[name] || linked.length) {
     throw new Error(`Software "${name}" already exists${linked.length ? ` (linked to ${linked.map((m) => m.module.slug).join(', ')})` : ''} — register a release or link it to a module instead`);
   }
+  if (ownManual) await assertNoModule(name); // fail before the feed is touched
   const releases = version ? [{ version: String(version).trim(), date: now(), manualAffecting: !!manualAffecting, note: note || '' }] : [];
   feed[name] = releases;
   await mutate(async () => {
@@ -1441,7 +1447,47 @@ export async function createSoftware({ name, version, manualAffecting, note, mod
     if (!m || !m.slug) continue;
     links.push(await linkSoftware(m.slug, name, m.fromVersion || version || ''));
   }
-  return { name, releases, modules: links };
+  const ownModule = ownManual ? await createOwnSoftwareModule(name, { ...ownManual, fromVersion: version || '' }) : null;
+  return { name, releases, modules: links, ownModule };
+}
+
+async function assertNoModule(name) {
+  const slug = slugify(name);
+  if (!slug) throw new Error('Software name is required');
+  const existing = await readJson('main', moduleFile(slug));
+  const branches = await repo.branches();
+  if (existing || branches.some((b) => b.startsWith(`draft/${slug}-`))) {
+    throw new Error(`A module "${slug}" already exists — link the software to it instead`);
+  }
+}
+
+/**
+ * A software's OWN manual: an own-software module named after the software, linked to it,
+ * with blank drafts of the software customer + technician manuals. Everything else (editor,
+ * revisions, review, releases, translations, assembled manuals) is the module machinery.
+ * { group?: SIM|IOS, fromVersion?, startSummary? } → createModuleDoc result.
+ */
+export async function createOwnSoftwareModule(name, { group = 'SIM', fromVersion = '', startSummary } = {}) {
+  name = cleanSwName(name);
+  if (!name) throw new Error('Software name is required');
+  if (!['SIM', 'IOS', 'RACK'].includes(group)) throw new Error('Manual group must be SIM or IOS');
+  const feed = await getSoftwareFeed();
+  if (!feed[name]) {
+    const linked = (await collectAll()).modules.some(({ module }) => (module.softwares || []).some((s) => s.name === name));
+    if (!linked) throw new Error(`Software "${name}" not found — create it first`);
+  }
+  await assertNoModule(name);
+  // The manual covers the software from the given version, else from its latest registered release.
+  if (!fromVersion) fromVersion = (feed[name] || []).at(-1)?.version || '';
+  const softwares = [{ name, fromVersion: String(fromVersion || '').trim() }];
+  const input = { name, code: null, category: 'software', group, type: 'own-software', hardware: [], softwares };
+  const specs = MODULE_TYPES['own-software'].manuals.map((manual) => ({
+    manual,
+    content: blankContent(name, [], manual, softwares),
+    checklist: null,
+    startSummary: startSummary || `Own manual of the ${name} software`,
+  }));
+  return await createModuleDoc(input, specs);
 }
 
 /** Link a software to a module (appends to module.softwares; updates from-version when already linked).

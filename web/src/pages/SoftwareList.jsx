@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, MANUAL_TYPES, manualType, timeAgo } from '../api.js';
+import { api, MANUAL_TYPES, GROUPS, manualType, timeAgo } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
@@ -18,6 +18,7 @@ export default function SoftwareList() {
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const toast = useToast();
+  const navigate = useNavigate();
 
   const load = () => api.software().then(setRows).catch((e) => toast(e.message, 'err'));
   useEffect(() => {
@@ -61,11 +62,14 @@ export default function SoftwareList() {
           onCreated={(r) => {
             setCreating(false);
             toast(
-              r.modules.length
-                ? t('{name} created and linked to {modules}', { name: r.name, modules: r.modules.map((m) => m.name).join(', ') })
-                : t('{name} created', { name: r.name })
+              r.ownModule
+                ? t('{name} created with its own manual — opening the editor', { name: r.name })
+                : r.modules.length
+                  ? t('{name} created and linked to {modules}', { name: r.name, modules: r.modules.map((m) => m.name).join(', ') })
+                  : t('{name} created', { name: r.name })
             );
-            load();
+            if (r.ownModule) navigate(`/modules/${r.ownModule.slug}/docs/${r.ownModule.key}/edit`);
+            else load();
           }}
         />
       )}
@@ -164,10 +168,11 @@ function SoftwareBlock({ sw, reload }) {
         </button>
       </div>
 
+      {!sw.modules.some((m) => m.type === 'own-software') && <OwnManualRow sw={sw} />}
       <LinkModuleRow sw={sw} reload={reload} />
 
       {sw.modules.length === 0 ? (
-        <p className="muted small">{t('Not linked to any module yet — link one above to enable its software manuals.')}</p>
+        <p className="muted small">{t('No manual yet — write its own manual above (an application without hardware), or link a module whose manual covers it.')}</p>
       ) : (
         <table className="table">
           <thead>
@@ -187,6 +192,7 @@ function SoftwareBlock({ sw, reload }) {
                     <Link to={`/modules/${mod.slug}`} className="module-name">{mod.name}</Link>
                     <span className="module-sub">
                       {mod.code && <code>{mod.code}</code>} <span className="chip">{mod.group}</span>
+                      {mod.type === 'own-software' && <span className="chip" title={t('The software documented on its own — no hardware module')}>{t('own manual')}</span>}
                     </span>
                   </div>
                 </td>
@@ -309,6 +315,44 @@ function SoftwareBlock({ sw, reload }) {
   );
 }
 
+/** "Write its own manual" — the software documented on its own: an own-software module named
+ *  after it with blank software customer + technician drafts, opened straight in the editor. */
+function OwnManualRow({ sw }) {
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [group, setGroup] = useState('SIM');
+  const [busy, setBusy] = useState(false);
+  async function create() {
+    setBusy(true);
+    try {
+      const r = await api.createSoftwareManual(sw.name, { group, fromVersion: sw.releases[sw.releases.length - 1]?.version || '' });
+      toast(t('Own manual of {name} created — opening the editor', { name: sw.name }));
+      navigate(`/modules/${r.slug}/docs/${r.key}/edit`);
+    } catch (e) {
+      toast(e.message, 'err');
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="pair wrap" style={{ marginBottom: 6 }}>
+      <span className="hint">{t('Own manual')}</span>
+      <select value={group} onChange={(e) => setGroup(e.target.value)} title={t('Manual group')}>
+        {GROUPS.map(([id, label]) => (
+          <option key={id} value={id}>{t(label)}</option>
+        ))}
+      </select>
+      <button
+        className="btn btn-primary btn-sm"
+        disabled={busy}
+        title={t('Document {name} on its own, without a hardware module: software customer + technician manuals A1.0 in the same editor', { name: sw.name })}
+        onClick={create}
+      >
+        {busy ? t('Creating…') : t('Write its own manual')}
+      </button>
+    </div>
+  );
+}
+
 /** "Link to module" — attach this software to a module that does not have it yet (with a from-version). */
 function LinkModuleRow({ sw, reload }) {
   const toast = useToast();
@@ -361,6 +405,8 @@ function NewSoftwareModal({ onClose, onCreated }) {
   const [note, setNote] = useState('');
   const [modules, setModules] = useState([]);
   const [selected, setSelected] = useState([]);
+  const [ownManual, setOwnManual] = useState(true);
+  const [group, setGroup] = useState('SIM');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     api.modules().then(setModules).catch(() => setModules([]));
@@ -375,6 +421,7 @@ function NewSoftwareModal({ onClose, onCreated }) {
           manualAffecting,
           note,
           modules: selected.map((slug) => ({ slug })),
+          ownManual: ownManual ? { group } : null,
         })
       );
     } catch (e) {
@@ -412,6 +459,19 @@ function NewSoftwareModal({ onClose, onCreated }) {
                 {t('first version is manual-affecting')}
               </label>
             )}
+            <div className="pair">
+              <label className="check" style={{ flex: 1 }}>
+                <input type="checkbox" checked={ownManual} onChange={(e) => setOwnManual(e.target.checked)} />
+                {t('Write its own manual — software customer + technician manuals in the editor, no hardware module')}
+              </label>
+              {ownManual && (
+                <select value={group} onChange={(e) => setGroup(e.target.value)} title={t('Manual group')}>
+                  {GROUPS.map(([id, label]) => (
+                    <option key={id} value={id}>{t(label)}</option>
+                  ))}
+                </select>
+              )}
+            </div>
             <div className="field">
               <span className="field-label">{t('Link to modules (optional) — enables their software manuals; from-version = first version')}</span>
               <div className="picker-list" style={{ maxHeight: 220, overflow: 'auto' }}>

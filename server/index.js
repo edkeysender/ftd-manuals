@@ -397,9 +397,17 @@ app.get('/api/software', wrap(async (req, res) => {
   res.json(await store.listSoftware());
 }));
 
-/** Create a software: {name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}]} */
+/** Create a software: {name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}], ownManual?: {group?}}
+ *  ownManual → the software also gets its own manual (an own-software module named after it; result.ownModule). */
 app.post('/api/software', wrap(async (req, res) => {
   res.json(await store.createSoftware(req.body || {}));
+}));
+
+/** The own manual of an existing software: an own-software module named after it, linked to it,
+ *  with blank software customer + technician drafts. {group?: SIM|IOS, fromVersion?} */
+app.post('/api/software/:name/own-manual', wrap(async (req, res) => {
+  const { group, fromVersion } = req.body || {};
+  res.json(await store.createOwnSoftwareModule(req.params.name, { group: group || 'SIM', fromVersion: fromVersion || '' }));
 }));
 
 /** Delete a module: its draft branches, its folder on main and its chapter in every manual. */

@@ -998,6 +998,30 @@ try {
   const delUnknownSw = await req('DELETE', '/api/software/Nope').catch((e) => e);
   ok(delUnknownSw instanceof Error && /not found/.test(delUnknownSw.message), 'deleting an unknown software is refused');
 
+  // a software's OWN manual: an own-software module named after it, edited like any doc
+  await req('POST', '/api/software', { name: 'Deck Planner', version: 'v3.0.0' });
+  const own = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', { group: 'IOS' });
+  ok(own.slug === 'deck-planner' && own.key === 'software-customer:A1.0' && own.docs.length === 2 && own.docs.every((d) => d.manual.startsWith('software-')), 'own manual = own-software module with the software pair');
+  const ownRow = (await req('GET', '/api/software')).find((r) => r.name === 'Deck Planner');
+  ok(ownRow.modules.length === 1 && ownRow.modules[0].type === 'own-software' && ownRow.modules[0].fromVersion === 'v3.0.0' && ownRow.manualCount === 2, 'Software page row shows the own manual with its from-version');
+  const ownDoc = await req('GET', '/api/modules/deck-planner/docs/software-customer:A1.0');
+  ok(ownDoc.content.includes('<h2>Overview</h2>') && ownDoc.content.includes('Deck Planner') && ownDoc.doc.status === 'draft', 'own manual opens in the editor as a draft');
+  const ownDup = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', {}).catch((e) => e);
+  ok(ownDup instanceof Error && /already exists/.test(ownDup.message), 'a second own manual is refused');
+  const ownUnknown = await req('POST', '/api/software/Nope/own-manual', {}).catch((e) => e);
+  ok(ownUnknown instanceof Error && /not found/.test(ownUnknown.message), 'own manual of an unknown software is refused');
+  const ownMcp = await call(140, 'create_software', { name: 'Route Editor', own_manual: true, group: 'IOS', version: 'v1.0' });
+  ok(!(ownMcp instanceof Error) && ownMcp.ownModule?.slug === 'route-editor' && ownMcp.ownModule.docs.length === 2, 'MCP create_software own_manual creates the module too');
+  const ownMcp2 = await call(141, 'create_software_manual', { name: 'Route Editor' });
+  ok(ownMcp2 instanceof Error && /already exists/.test(ownMcp2.message), 'MCP create_software_manual refuses a duplicate');
+  const clash = await req('POST', '/api/software', { name: 'Starting Panel', ownManual: { group: 'SIM' } }).catch((e) => e);
+  ok(clash instanceof Error && /already exists/.test(clash.message) && !(await req('GET', '/api/software')).some((r) => r.name === 'Starting Panel'), 'own manual clashing with a module slug fails before the feed is touched');
+  await req('DELETE', '/api/modules/deck-planner');
+  await req('DELETE', '/api/modules/route-editor');
+  await req('DELETE', '/api/software/' + encodeURIComponent('Deck Planner'));
+  await req('DELETE', '/api/software/' + encodeURIComponent('Route Editor'));
+  ok(!(await req('GET', '/api/modules')).some((m) => ['deck-planner', 'route-editor'].includes(m.slug)), 'own-manual modules removed (cleanup)');
+
   // history exists
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.history.length >= 5, `history has ${detail.history.length} commits`);

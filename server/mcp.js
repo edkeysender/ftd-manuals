@@ -496,7 +496,7 @@ export const TOOLS = [
   {
     name: 'create_software',
     description:
-      'Create a NEW software: adds it to the release feed (softwares.json on main), optionally with its first version and linked to modules right away (each link uses from_version or the first version). A module\'s software-customer / software-technician manuals become available once it is linked — create them with create_doc_version. Fails if the name already exists: then use register_software_release (new version) or link_software.',
+      'Create a NEW software: adds it to the release feed (softwares.json on main), optionally with its first version and linked to modules right away (each link uses from_version or the first version). A module\'s software-customer / software-technician manuals become available once it is linked — create them with create_doc_version. own_manual: true also gives the software its OWN manual — an own-software module named after it (slug = slugified name) with blank software customer + technician drafts, edited like any module doc (the result\'s ownModule has slug + docs). Fails if the name already exists: then use register_software_release (new version), link_software, or create_software_manual for the own manual.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -509,10 +509,27 @@ export const TOOLS = [
           description: 'Modules to link now: [{slug, from_version?}]',
           items: { type: 'object', properties: { slug: { type: 'string' }, from_version: { type: 'string' } }, required: ['slug'] },
         },
+        own_manual: { type: 'boolean', description: 'Also create the software\'s own manual (an own-software module named after it) — for an application without hardware' },
+        group: { type: 'string', enum: ['SIM', 'IOS'], description: 'Manual group of the own manual (default SIM)' },
       },
       required: ['name'],
     },
     annotations: { title: 'Create software', ...RW },
+  },
+  {
+    name: 'create_software_manual',
+    description:
+      'Give an EXISTING software its own manual: creates an own-software module named after it (slug = slugified name, linked to the software) with blank software customer + technician drafts A1.0 r1. Use for an application without hardware that should be documented on its own rather than as part of a hardware module. Then edit with the doc tools (slug from the result, manual software-customer / software-technician). Fails when a module with that slug already exists.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Software name (see list_software)' },
+        group: { type: 'string', enum: ['SIM', 'IOS'], description: 'Manual group (default SIM)' },
+        from_version: { type: 'string', description: 'First software version the manual covers, e.g. v1.0.0' },
+      },
+      required: ['name'],
+    },
+    annotations: { title: 'Create the own manual of a software', ...RW },
   },
   {
     name: 'register_software_release',
@@ -757,7 +774,10 @@ async function callTool(name, args) {
         manualAffecting: !!args.manual_affecting,
         note: args.note,
         modules: (args.modules || []).map((m) => ({ slug: m.slug, fromVersion: m.from_version })),
+        ownManual: args.own_manual ? { group: args.group || 'SIM', startSummary: 'Created via MCP' } : null,
       });
+    case 'create_software_manual':
+      return await store.createOwnSoftwareModule(args.name, { group: args.group || 'SIM', fromVersion: args.from_version || '', startSummary: 'Created via MCP' });
     case 'delete_module':
       return await store.deleteModule(args.slug);
     case 'delete_software':

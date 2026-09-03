@@ -67,6 +67,8 @@ export const api = {
   /** Software page rows: {name, modules:[{slug, name, manuals, docs, uncovered}], releases:[{version, coveredBy}]} */
   software: () => request('/api/software'),
   createSoftware: (body) => request('/api/software', { method: 'POST', body }),
+  /** The software's own manual: an own-software module named after it with blank SW customer + technician drafts. */
+  createSoftwareManual: (name, body) => request(`/api/software/${encodeURIComponent(name)}/own-manual`, { method: 'POST', body }),
   /** Deletes the module: draft branches, folder on main, chapter in every manual. */
   deleteModule: (slug) => request(`/api/modules/${slug}`, { method: 'DELETE' }),
   /** Unlinks the software from every module and drops it (with its releases) from the feed. */

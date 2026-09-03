@@ -333,6 +333,19 @@ export const PL = {
   'New chat — clears this conversation (it is kept per doc across reloads)':
     'Nowy czat — czyści tę rozmowę (jest zachowywana dla dokumentu między odświeżeniami)',
   'Not linked to any module yet — link one above to enable its software manuals.': 'Niepowiązane z żadnym modułem — powiąż powyżej, aby włączyć instrukcje oprogramowania.',
+  'No manual yet — write its own manual above (an application without hardware), or link a module whose manual covers it.':
+    'Brak instrukcji — napisz własną instrukcję powyżej (aplikacja bez sprzętu) albo powiąż moduł, którego instrukcja ją obejmuje.',
+  'Own manual': 'Własna instrukcja',
+  'own manual': 'własna instrukcja',
+  'The software documented on its own — no hardware module': 'Oprogramowanie udokumentowane samodzielnie — bez modułu sprzętowego',
+  'Manual group': 'Grupa instrukcji',
+  'Write its own manual': 'Napisz własną instrukcję',
+  'Document {name} on its own, without a hardware module: software customer + technician manuals A1.0 in the same editor':
+    'Udokumentuj {name} samodzielnie, bez modułu sprzętowego: instrukcje oprogramowania dla klienta i technika A1.0 w tym samym edytorze',
+  'Own manual of {name} created — opening the editor': 'Utworzono własną instrukcję {name} — otwieram edytor',
+  '{name} created with its own manual — opening the editor': 'Utworzono {name} z własną instrukcją — otwieram edytor',
+  'Write its own manual — software customer + technician manuals in the editor, no hardware module':
+    'Napisz własną instrukcję — instrukcje oprogramowania dla klienta i technika w edytorze, bez modułu sprzętowego',
   'Linked from': 'Powiązane od',
   'Start {type} A1.0 for {module}': 'Rozpocznij {type} A1.0 dla {module}',
   '+ Create': '+ Utwórz',

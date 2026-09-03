@@ -57,7 +57,11 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Module types (`MODULE_TYPES` in `server/docgen.js`, mirrored in `web/src/api.js`): what a module IS decides
   which manuals are drafted on creation — `own-module` / `third-party-kit` → customer + technician,
   `own-software` → the software pair (a software named after the module is auto-created when none is picked),
-  `module-software` → all four. Doc codes derive as `<CODE>-TECH-HW` / `<CODE>-USER-SW` (`manualDocCode`,
+  `module-software` → all four. The reverse path — a software's **own manual**, documented without hardware —
+  is the same thing: `createOwnSoftwareModule()` (store) makes an `own-software` module named after the software
+  (Software page "Write its own manual" / new-software modal checkbox, `POST /api/software/:name/own-manual`,
+  `ownManual` on `POST /api/software`, MCP `create_software {own_manual}` / `create_software_manual`); the
+  Software page row carries `type` so the UI knows. There is no separate software-level doc store — never add one. Doc codes derive as `<CODE>-TECH-HW` / `<CODE>-USER-SW` (`manualDocCode`,
   `docCode` on every doc record, shown in generated section 3). "Parts" are the hardware catalog: a line with
   a trailing version ("Płyta czołowa v1") = made by FTD, without = bought COTS (`parseParts`; `parts` on
   POST /api/modules and MCP `create_module`). New-module modal is compact (no steps); groups offered: SIM, IOS.
