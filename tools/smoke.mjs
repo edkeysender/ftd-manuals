@@ -862,7 +862,7 @@ try {
   const techPl = await req('GET', '/api/manuals/b737-technician-manual?lang=pl');
   ok(techPl.lang === 'pl' && techPl.chapters[0].langFallback === false && techPl.html.includes('Spis treści') && techPl.html.includes('Instalacja') && techPl.html.includes('Przez MCP.'), 'manual compiles in Polish from the released translation');
   const techPlExport = await (await fetch(BASE + '/api/manuals/b737-technician-manual/export.html?lang=pl')).text();
-  ok(techPlExport.includes('<html lang="pl">') && techPlExport.includes('Rejestr zmian'), 'Polish export');
+  ok(techPlExport.includes('<html lang="pl">') && techPlExport.includes('Rejestr zmian') && techPlExport.includes('Wykaz obowiązujących stron') && techPlExport.includes('Informacje ogólne'), 'Polish export (incl. the General chapter)');
   const techNext = await req('POST', '/api/modules/starting-panel/docs', { manual: 'technician', bump: 'minor' });
   const techNextPl = await req('GET', `/api/modules/starting-panel/docs/${techNext.key}?lang=pl`);
   // the A1.0 translation was already stale (English edited after it) — the copy keeps that status
@@ -923,6 +923,10 @@ try {
     'manual compiles the released A1.1 as chapter 1');
   ok(compiled.html.includes('class="chapter"') && compiled.html.includes('Table of contents') && compiled.html.includes('Grounding check added'),
     'compiled html has chapter, TOC and module content');
+  ok(compiled.html.includes('id="ch-general"') && compiled.html.includes('General Info') && compiled.html.includes('office@ftd.aero') && compiled.html.includes('List of Effective Pages'),
+    'manual opens with the General chapter: General Info, manufacturer address, List of Effective Pages');
+  ok(compiled.html.indexOf('id="ch-general"') < compiled.html.indexOf('id="revision-record"') && compiled.html.indexOf('id="revision-record"') < compiled.html.indexOf('id="toc"') && compiled.html.indexOf('id="toc"') < compiled.html.indexOf('id="lep"'),
+    'General chapter order: 1.1 General Info, 1.2 Revision record, 1.3 Table of contents, 1.4 List of Effective Pages');
   // a released software manual of the same audience joins the bundle as its own chapter
   const swcNew = await req('POST', '/api/modules/starting-panel/docs', { manual: 'software-customer' });
   await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`);
@@ -935,8 +939,8 @@ try {
   const fatHtml = await fatRes.text();
   ok(fatRes.status === 200 && fatHtml.includes('Factory Acceptance Test protocol') && fatHtml.includes('id="fat-starting-panel"') && fatHtml.includes('Modules under test'),
     'manual FAT protocol compiles the module checklists');
-  ok(compiled.html.includes('href="#c1-s4"') && compiled.html.includes('id="c1-s4"') && compiled.html.includes('href="#ch-starting-panel"'),
-    'TOC links point at anchored headings');
+  ok(compiled.html.includes('href="#c2-s4"') && compiled.html.includes('id="c2-s4"') && compiled.html.includes('href="#ch-starting-panel"') && compiled.html.includes('href="#general-info"'),
+    'TOC links point at anchored headings; General is chapter 1, module chapters number from 2');
   ok(compiled.html.includes('proprietary material protected by international law') && compiled.html.includes('class="head-box"'),
     'manual has header box and proprietary footer');
   // cover + logo upload, then export inlines them
@@ -950,9 +954,11 @@ try {
   const exp2 = await (await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html')).text();
   ok(!exp2.includes('/api/settings/logo') && !exp2.includes('/api/manuals/') && exp2.includes('data:image/png;base64,'),
     'export inlines logo and cover as data URIs');
+  ok(exp2.includes('class="lep-pages"') && exp2.includes('pagedjs_pages') && exp2.includes('font-family: Verdana'),
+    'export paginates itself (paged.js inlined) to fill the List of Effective Pages, in Verdana');
   const exp = await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html');
   const expHtml = await exp.text();
-  ok(exp.ok && expHtml.startsWith('<!doctype html>') && expHtml.includes('<style>'), 'standalone export served');
+  ok(exp.ok && expHtml.startsWith('<!doctype html>') && expHtml.includes('<style id="manual-css">'), 'standalone export served');
   const mlist = await req('GET', '/api/manuals');
   ok(mlist.length === 1 && mlist[0].unreleased === 0, 'manual listed as all released');
   await req('PUT', '/api/manuals/b737-simulator-manual', { modules: [] });
