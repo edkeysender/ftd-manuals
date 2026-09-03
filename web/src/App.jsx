@@ -12,16 +12,9 @@ import PartsList from './pages/PartsList.jsx';
 import Login from './pages/Login.jsx';
 import { t, plural, useLocale, LanguageSwitch } from './i18n.jsx';
 
-/* UI theme: stored choice wins, else the OS preference. Applied at import time so
-   the login screen and the first paint already have it (documents stay print-white). */
-const initTheme = () => {
-  try {
-    return localStorage.getItem('ftd-theme') || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  } catch {
-    return 'light';
-  }
-};
-document.documentElement.dataset.theme = initTheme();
+/* UI theme: decided by the inline script in web/index.html (stored choice, else the OS preference)
+   before the first paint — here we only read what it stamped on <html>. Documents stay print-white. */
+const initTheme = () => document.documentElement.dataset.theme || 'light';
 
 function ThemeSwitch() {
   const [theme, setTheme] = useState(initTheme);
