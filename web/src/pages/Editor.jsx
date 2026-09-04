@@ -245,6 +245,7 @@ export default function Editor({ review: reviewProp = false }) {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
+  const [queue, setQueue] = useState([]); // chat messages typed while the assistant was busy — sent in order
   const [busyKind, setBusyKind] = useState('chat'); // 'chat' | 'illustrate'
   const [aiStart, setAiStart] = useState(null);
   const [dropOver, setDropOver] = useState(false);
@@ -905,15 +906,31 @@ export default function Editor({ review: reviewProp = false }) {
     sendChat(instruction, c.id);
   }
 
-  async function sendChat(overrideText, commentId = null) {
+  /** Send now — or, while the assistant works or an edit awaits accept/discard, queue it; the queue drains in order. */
+  function sendChat(overrideText, commentId = null) {
     const text = typeof overrideText === 'string' ? overrideText.trim() : chatInput.trim();
-    if ((!text && attachments.length === 0) || aiBusy || pending) return;
-    const sent = attachments;
+    if (!text && attachments.length === 0) return;
+    const item = { text, attachments, commentId };
+    setChatInput('');
+    setAttachments([]);
+    if (aiBusy || pending) {
+      setQueue((q) => [...q, item]);
+      return;
+    }
+    runChat(item);
+  }
+
+  useEffect(() => {
+    if (aiBusy || pending || !queue.length) return;
+    const [next, ...rest] = queue;
+    setQueue(rest);
+    runChat(next);
+  }, [aiBusy, pending, queue]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function runChat({ text, attachments: sent, commentId }) {
     const label = sent.length ? `${text}${text ? '\n' : ''}📎 ${sent.map((a) => a.name).join(', ')}` : text;
     const next = [...messages, { role: 'user', content: label }];
     setMessages(next);
-    setChatInput('');
-    setAttachments([]);
     setAiBusy(true);
     setBusyKind('chat');
     setAiStart(Date.now());
@@ -927,6 +944,11 @@ export default function Editor({ review: reviewProp = false }) {
         attachments: sent,
       });
       setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
+      if (res.generated) {
+        // The model changed module data (software relation) — sections 1–3 were re-rendered server-side.
+        setData((d) => (d ? { ...d, generated: res.generated, module: res.module || d.module } : d));
+        if (res.doc) setDocMeta(res.doc);
+      }
       if (res.html) {
         const instruction = text || t('use {files}', { files: sent.map((a) => a.name).join(', ') });
         saveSnapshot(slug, snapId, { original: htmlRef.current, instruction, commentId });
@@ -1493,11 +1515,22 @@ export default function Editor({ review: reviewProp = false }) {
                   ))}
                 </div>
               )}
+              {queue.length > 0 && (
+                <div className="attach-chips queue-chips">
+                  {queue.map((q, i) => (
+                    <span key={i} className="attach-chip queued" title={q.text}>
+                      <span className="muted">{i + 1}.</span>{' '}
+                      {(q.text || t('attachments only')).slice(0, 60)}
+                      {q.attachments.length ? ` 📎${q.attachments.length}` : ''}
+                      <button title={t('Remove from queue')} onClick={() => setQueue((qq) => qq.filter((_, j) => j !== i))}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="chat-input">
                 <button
                   className="btn btn-sm attach-btn"
                   title={t("Attach images or text files — images are stored in the module's assets")}
-                  disabled={aiBusy || !!pending}
                   onClick={() => fileRef.current?.click()}
                 >
                   📎
@@ -1517,16 +1550,26 @@ export default function Editor({ review: reviewProp = false }) {
                   value={chatInput}
                   placeholder={
                     pending
-                      ? t('Accept or discard the pending edit first')
-                      : t('e.g. add a grounding check to 4.1 — paste a URL to source a website, attach photos to embed them')
+                      ? t('Accept or discard the pending edit — the next instruction waits in the queue meanwhile')
+                      : aiBusy
+                        ? t('Type the next instruction — it is sent as soon as this one finishes')
+                        : t('e.g. add a grounding check to 4.1 — paste a URL to source a website, paste or attach pictures to use them')
                   }
-                  disabled={aiBusy || !!pending}
                   onChange={(e) => setChatInput(e.target.value)}
                   onPaste={(e) => {
+                    // A pasted picture becomes an attachment of the next message (the assistant
+                    // then describes / places / redraws it as asked) — not a line-art job by itself.
                     const imgs = [...(e.clipboardData?.files || [])].filter(isImageFile);
                     if (imgs.length) {
                       e.preventDefault();
-                      illustrateFiles(imgs);
+                      const stamp = Date.now();
+                      addFiles(
+                        imgs.map((f, i) => {
+                          const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+                          const generic = !f.name || /^image\.\w+$/i.test(f.name);
+                          return generic ? new File([f], `pasted-${stamp}${i ? `-${i + 1}` : ''}.${ext}`, { type: f.type }) : f;
+                        })
+                      );
                     }
                   }}
                   onKeyDown={(e) => {
@@ -1538,10 +1581,11 @@ export default function Editor({ review: reviewProp = false }) {
                 />
                 <button
                   className="btn btn-primary btn-sm"
-                  disabled={aiBusy || !!pending || (!chatInput.trim() && !attachments.length)}
-                  onClick={sendChat}
+                  disabled={!chatInput.trim() && !attachments.length}
+                  title={aiBusy || pending ? t('Queued — sent when the assistant is free') : ''}
+                  onClick={() => sendChat()}
                 >
-                  {t('Send')}
+                  {aiBusy || pending ? t('Queue') : t('Send')}
                 </button>
               </div>
             </div>

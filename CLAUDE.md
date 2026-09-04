@@ -78,7 +78,9 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
   `list_assets {thumbnails}`, MCP resources `ftd://modules/<slug>/assets/<file>`), fetch server-side
   (`upload_photo_from_url`; optional per-host credentials `FTD_URL_CREDENTIALS` in `server/sources.js`), or
-  hand the user the Assets-tab drop link (`request_upload` → inbox → `import_local_files`). Documents are a
+  hand the user the Assets-tab drop link (`request_upload` → inbox → `import_local_files`), or find what the user
+  saved on the console machine themselves (`find_local_files` searches `FTD_IMPORT_ROOTS`, then `import_local_files`
+  by path). Documents are a
   source of pictures: every drop point runs `expandDocuments()` (`server/extract.js`) so Word / PowerPoint /
   PDF / zip files become the pictures inside them (+ `<doc>.html` with the Word content as semantic HTML —
   headings, inline formatting, lists, tables, `[figure: …]` markers naming the extracted pictures — so an

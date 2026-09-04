@@ -648,6 +648,39 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
   }
   delete result.generateImages;
 
+  // 5. Module-data changes the model asked for (the generated section 3.2 "Software relation"):
+  //    software links go to the module, covered releases to this doc; then sections 1–3 are
+  //    re-rendered so the editor can swap them in.
+  let dataChanged = false;
+  const mu = result.moduleUpdate;
+  if (editable && mu && Array.isArray(mu.softwares)) {
+    const softwares = mu.softwares
+      .filter((s) => s && typeof s.name === 'string' && s.name.trim())
+      .map((s) => ({ name: s.name.trim(), fromVersion: String(s.from_version ?? s.fromVersion ?? '').trim() }));
+    try {
+      await store.updateModule(slug, { softwares });
+      dataChanged = true;
+      notes.push(`Software relation updated: ${softwares.map((s) => `${s.name}${s.fromVersion ? ` from ${s.fromVersion}` : ''}`).join(', ') || 'no software linked'}.`);
+    } catch (e) {
+      notes.push(`Software relation not updated: ${e.message}`);
+    }
+  }
+  for (const c of editable ? result.coverReleases || [] : []) {
+    try {
+      await store.linkReleaseToDoc(slug, version, String(c.name), String(c.version));
+      dataChanged = true;
+      notes.push(`This doc now covers ${c.name} ${c.version}.`);
+    } catch (e) {
+      notes.push(`Could not cover ${c.name} ${c.version}: ${e.message}`);
+    }
+  }
+  delete result.moduleUpdate;
+  delete result.coverReleases;
+  if (dataChanged) {
+    const fresh = await store.getDoc(slug, version, { lang });
+    if (fresh) Object.assign(result, { generated: fresh.generated, module: fresh.module, doc: fresh.doc });
+  }
+
   if (notes.length) result.reply = `${result.reply}\n\n${notes.join('\n')}`;
   res.json(result);
 }));

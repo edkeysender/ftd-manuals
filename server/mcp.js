@@ -344,6 +344,19 @@ export const TOOLS = [
     annotations: { title: 'List inbox', ...RO },
   },
   {
+    name: 'find_local_files',
+    description:
+      "Search the console machine's allowed import roots (FTD_IMPORT_ROOTS — typically the user's Desktop / Documents / Downloads or a document share) for pictures and Word / PowerPoint / PDF / zip files, newest first. Use it BEFORE asking the user to drop or upload anything: when they say they saved or downloaded a file, find it here and pass its path to import_local_files (documents are expanded into their pictures + an .html rendering). Query words must all appear in the file name; empty query lists recent files.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Words of the file name, e.g. "intercom lock" or "docx"' },
+        depth: { type: 'integer', description: 'Sub-folder depth to search (default 3)' },
+      },
+    },
+    annotations: { title: 'Find local files', ...RO },
+  },
+  {
     name: 'read_inbox_text',
     description:
       'Read a .html / .txt / .md inbox entry — typically "<doc>.html", the content of a dropped Word file as semantic HTML: headings, strong/em/u/sup/sub, hyperlinks, nested ul/ol, tables (colspan/rowspan, th header rows) and "[figure: <inbox file>]" markers naming the extracted pictures. To recreate the document in a manual: write the sections from this HTML keeping the formatting and tables (save_doc_content / insert_into_section), import_local_files the pictures the markers name, then attach_figure each picture where its marker sits.',
@@ -1036,6 +1049,8 @@ async function callTool(name, args) {
     }
     case 'list_inbox':
       return { dir: inbox.INBOX_DIR, files: await inbox.listInbox() };
+    case 'find_local_files':
+      return await inbox.findLocalFiles(args.query || '', { depth: Math.min(Math.max(Number(args.depth) || 3, 0), 6) });
     case 'read_inbox_text': {
       const text = await inbox.readInboxText(args.name);
       if (text === null) throw new Error(`"${args.name}" is not in the inbox — see list_inbox`);

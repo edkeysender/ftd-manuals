@@ -149,8 +149,23 @@ ${pages.map((p) => `=== ${p.url}${p.title ? ` — ${p.title}` : ''} ===\n${p.tex
   const hwLine = (module.hardwareItems || []).length
     ? `\nHardware units this manual describes: ${module.hardwareItems.map((h) => `${h.name} (${h.type === 'ftd' ? `FTD.aero ${h.version || 'v1'}` : `COTS ${[h.manufacturer, h.model].filter(Boolean).join(' ')}`})${h.notes ? ` — ${h.notes}` : ''}`).join('; ')}. When several units are listed, keep each one described in its own subsection.`
     : '';
+  const swRelation = (module.softwares || []).length
+    ? module.softwares
+        .map((s) => {
+          const cov = (doc.covers || []).find((c) => c.name === s.name);
+          const range = cov ? (cov.to && cov.to !== cov.from ? `${cov.from} – ${cov.to}` : cov.from) : null;
+          return `${s.name} (linked from version ${s.fromVersion || '—'}; this doc covers ${range || 'no release yet'})`;
+        })
+        .join('; ')
+    : 'none — the module is not software-related';
+  const generatedBlock = `GENERATED SECTIONS 1–3 (revision record, introduction, general information incl. 3.2 "Software relation" and 3.3 hardware) are rendered from module data — they are NOT in the body html and cannot be edited there. Current software relation: ${swRelation}.
+To change section 3.2, add to your JSON instead of editing html:
+- "module_update": {"softwares": [{"name": "<software>", "from_version": "<version or empty>"}]} — replaces the module's software links; list EVERY link that must remain (a link left out is removed).
+- "cover_releases": [{"name": "<software>", "version": "<release>"}] — records that THIS doc version covers that release (extends the covered range; the software must be linked).
+Use them when the user asks to link/unlink a software, change its from-version, or mark a release as covered; describe the change in the reply. Other generated data (module name, code, category, group, hardware units) is changed on the module page — say so instead of pretending to edit it.`;
   const sys = `You are the AI assistant of the FTD.aero Documentation Console, working inside the manual editor for module "${module.name}" (${manualTypeOf(doc.manual).label.toLowerCase()}, doc ${doc.version} r${doc.revision}, status ${doc.status}).${hwLine}
 You receive the CURRENT DOCUMENT BODY (sections 4–7 HTML) and the user's instruction.
+${generatedBlock}
 ${HTML_RULES}
 ${manualBlock(doc.manual)}${langBlock}
 When source material mixes audiences (e.g. a wiki page with both wiring/configuration and everyday use), take only what belongs in THIS manual type and tell the user in the reply what belongs in the other manual instead.
@@ -170,7 +185,7 @@ HOUSE STYLE: FTD.aero manual illustrations use the "Technical Aviation Manual Li
 ${(illustrationStyle || '').trim()}
 The console generates each image with an image model (the reference asset is supplied to it as the visual base) and saves it into the asset store BEFORE your edit is displayed — so you may embed it in the html immediately as <img src="/api/modules/${module.slug}/assets/<name>">. Assets named *-lineart.png are already in the house style — embed them directly instead of regenerating. Use at most 3 per turn. Use this whenever the user asks for an illustration, a technical drawing, or a photo converted to a drawing style — never refuse such requests and never claim you cannot transform images.
 
-Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences>", "html": "<full updated body HTML>", "generate_images": [...] } — set "html" to null when no change is made, omit "generate_images" when none are needed.`;
+Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences>", "html": "<full updated body HTML>", "generate_images": [...], "module_update": {...}, "cover_releases": [...] } — set "html" to null when no change is made, omit "generate_images", "module_update" and "cover_releases" when not needed.`;
 
   const convo = messages.slice(-12).map((m) => ({ role: m.role, content: m.content }));
   const user = {
@@ -189,6 +204,10 @@ Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences
     html: typeof parsed.html === 'string' && parsed.html.trim() ? parsed.html : null,
     generateImages: Array.isArray(parsed.generate_images)
       ? parsed.generate_images.filter((g) => g && g.name && (g.prompt || g.style)).slice(0, 3)
+      : [],
+    moduleUpdate: parsed.module_update && typeof parsed.module_update === 'object' ? parsed.module_update : null,
+    coverReleases: Array.isArray(parsed.cover_releases)
+      ? parsed.cover_releases.filter((c) => c && c.name && c.version).slice(0, 10)
       : [],
   };
 }
