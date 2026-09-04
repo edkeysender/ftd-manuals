@@ -180,6 +180,7 @@ app.post('/api/modules', wrap(async (req, res) => {
     input.softwares = [{ name: input.software.trim(), fromVersion: input.softwareFrom || '' }];
   }
   if (mtype?.needsSoftware && !(input.softwares || []).length) {
+    await store.ensureSoftware(input.name.trim()); // created on the Software page like any software
     input.softwares = [{ name: input.name.trim(), fromVersion: '' }];
   }
 
@@ -413,6 +414,11 @@ app.post('/api/software/:name/own-manual', wrap(async (req, res) => {
 /** Delete a module: its draft branches, its folder on main and its chapter in every manual. */
 app.delete('/api/modules/:slug', wrap(async (req, res) => {
   res.json(await store.deleteModule(req.params.slug));
+}));
+
+/** Repair a software known from module links only: merge it into a registered one — {into}. */
+app.post('/api/software/:name/merge', wrap(async (req, res) => {
+  res.json(await store.mergeSoftware(req.params.name, (req.body || {}).into));
 }));
 
 /** Delete a software: unlinked from every module, dropped from the feed with its releases. */

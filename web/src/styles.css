@@ -251,6 +251,10 @@ label.inline { font-weight: 400; color: var(--muted); }
 .doc-page img { max-width: 100%; height: auto; }
 .doc-page figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; min-height: 60px; background: #f6f8fb; }
 .doc-page figcaption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+/* a software known from module links only — repair prompt */
+.hint.warn { color: #b45309; }
+.sw-repair { margin: 8px 0 12px; padding: 10px 12px; border: 1px dashed var(--orange, #f59e0b); border-radius: 8px; }
+.sw-repair .pair { margin-top: 6px; align-items: center; }
 /* attachment: a file the reader downloads (config, firmware…) — a chip, not a bare link */
 .doc-page a.attachment { display: inline-block; padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel, #f6f8fb); color: var(--accent); text-decoration: none; font-family: ui-monospace, Consolas, monospace; font-size: 13px; cursor: pointer; }
 .doc-page a.attachment::before { content: '📎 '; }

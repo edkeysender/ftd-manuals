@@ -1156,6 +1156,12 @@ function SoftwareTab({ data, slug, reload }) {
           <h3>
             {sw.name} <span className="muted">{t('linked from {version}', { version: sw.fromVersion || '—' })}</span>
           </h3>
+          {!softwareFeed[sw.name] && (
+            <p className="hint warn">
+              {t('"{name}" was never created on the Software page, so its manuals cannot relate to a software version.', { name: sw.name })}{' '}
+              <Link to="/software">{t('Repair it on the Software page')}</Link>
+            </p>
+          )}
           <table className="table">
             <thead>
               <tr>
@@ -1235,7 +1241,7 @@ function SoftwareTab({ data, slug, reload }) {
         <h3>{t('Register software release')}</h3>
         <div className="pair wrap">
           <select value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}>
-            {module.softwares.map((s) => (
+            {module.softwares.filter((s) => softwareFeed[s.name]).map((s) => (
               <option key={s.name}>{s.name}</option>
             ))}
           </select>

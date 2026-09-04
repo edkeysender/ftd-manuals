@@ -73,6 +73,8 @@ export const api = {
   deleteModule: (slug) => request(`/api/modules/${slug}`, { method: 'DELETE' }),
   /** Unlinks the software from every module and drops it (with its releases) from the feed. */
   deleteSoftware: (name) => request(`/api/software/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  /** Repair: a name modules link that was never created as a software → merged into a registered one. */
+  mergeSoftware: (name, into) => request(`/api/software/${encodeURIComponent(name)}/merge`, { method: 'POST', body: { into } }),
   linkSoftware: (slug, body) => request(`/api/modules/${slug}/software`, { method: 'POST', body }),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
   coverRelease: (slug, version, name, swVersion) =>

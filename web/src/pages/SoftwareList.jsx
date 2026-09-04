@@ -87,13 +87,13 @@ export default function SoftwareList() {
       ) : visible.length === 0 ? (
         <div className="empty"><p>{t('No software matches “{query}”.', { query: query.trim() })}</p></div>
       ) : (
-        visible.map((sw) => <SoftwareBlock key={sw.name} sw={sw} reload={load} />)
+        visible.map((sw) => <SoftwareBlock key={sw.name} sw={sw} all={rows} reload={load} />)
       )}
     </div>
   );
 }
 
-function SoftwareBlock({ sw, reload }) {
+function SoftwareBlock({ sw, all = [], reload }) {
   const toast = useToast();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(null); // "<slug>:<manual>"
@@ -168,8 +168,9 @@ function SoftwareBlock({ sw, reload }) {
         </button>
       </div>
 
-      {!sw.modules.some((m) => m.type === 'own-software') && <OwnManualRow sw={sw} />}
-      <LinkModuleRow sw={sw} reload={reload} />
+      {!sw.registered && <RepairRow sw={sw} all={all} reload={reload} />}
+      {sw.registered && !sw.modules.some((m) => m.type === 'own-software') && <OwnManualRow sw={sw} />}
+      {sw.registered && <LinkModuleRow sw={sw} reload={reload} />}
 
       {sw.modules.length === 0 ? (
         <p className="muted small">{t('No manual yet — write its own manual above (an application without hardware), or link a module whose manual covers it.')}</p>
@@ -317,6 +318,73 @@ function SoftwareBlock({ sw, reload }) {
 
 /** "Write its own manual" — the software documented on its own: an own-software module named
  *  after it with blank software customer + technician drafts, opened straight in the editor. */
+/**
+ * A name modules link that was never created as a software (data from before a manual had to relate
+ * to a software version): create it with the version the links use, or merge it into a registered one.
+ */
+function RepairRow({ sw, all, reload }) {
+  const toast = useToast();
+  const registered = all.filter((r) => r.registered && r.name !== sw.name);
+  const [into, setInto] = useState(registered[0]?.name || '');
+  const [busy, setBusy] = useState(null);
+  const version = sw.modules.map((m) => m.fromVersion).find(Boolean) || '';
+  const modules = sw.modules.map((m) => m.name).join(', ');
+
+  async function create() {
+    setBusy('create');
+    try {
+      await api.createSoftware({ name: sw.name, version: version || undefined, ownManual: null });
+      toast(version ? t('{name} created with first version {version}', { name: sw.name, version }) : t('{name} created', { name: sw.name }));
+      reload();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function merge() {
+    if (!into) return;
+    if (!confirm(t('Merge "{name}" into "{into}"?\n\nThe links of {modules} and the covered ranges of their docs are renamed. A from-version that is not a release of {into} is cleared.', { name: sw.name, into, modules }))) return;
+    setBusy('merge');
+    try {
+      const r = await api.mergeSoftware(sw.name, into);
+      toast(t('{name} merged into {into} — {modules} relinked', { name: sw.name, into, modules: plural(r.modules.length, 'module') }));
+      reload();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="sw-row sw-repair">
+      <p className="hint warn">
+        {t('"{name}" was never created as a software — {modules} link it by name only, so their manuals cannot relate to a software version. Repair it:', { name: sw.name, modules })}
+      </p>
+      <div className="pair wrap">
+        <button className="btn btn-sm btn-primary" disabled={busy !== null} onClick={create} title={t('Creates the software on this page; the version the modules link becomes its first release')}>
+          {busy === 'create' ? t('Creating…') : version ? t('Create "{name}" with version {version}', { name: sw.name, version }) : t('Create "{name}"', { name: sw.name })}
+        </button>
+        {registered.length > 0 && (
+          <>
+            <span className="hint">{t('— or merge it into')}</span>
+            <select value={into} onChange={(e) => setInto(e.target.value)}>
+              {registered.map((r) => (
+                <option key={r.name} value={r.name}>{r.name}</option>
+              ))}
+            </select>
+            <button className="btn btn-sm" disabled={busy !== null || !into} onClick={merge} title={t('Renames every module link and doc coverage of this name to the chosen software')}>
+              {busy === 'merge' ? t('Merging…') : t('Merge')}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function OwnManualRow({ sw }) {
   const toast = useToast();
   const navigate = useNavigate();

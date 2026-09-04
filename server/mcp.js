@@ -74,7 +74,7 @@ export const TOOLS = [
   {
     name: 'list_software',
     description:
-      'Software-centric view: every software linked to a module, with the modules linked to it, their software manuals (software-customer / software-technician: key, version, status), and the registered releases with which docs cover each. Use it to manage software manuals across modules and to find releases nobody documents yet.',
+      'Software-centric view: every software linked to a module, with the modules linked to it, their software manuals (software-customer / software-technician: key, version, status), and the registered releases with which docs cover each. Use it to manage software manuals across modules and to find releases nobody documents yet. `registered: false` marks a name modules link that was never created as a software — repair it with merge_software (into a registered one) or create_software (with the version the links use).',
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Optional software name filter' } } },
     annotations: { title: 'List software', ...RO },
   },
@@ -150,6 +150,8 @@ export const TOOLS = [
         },
         softwares: {
           type: 'array',
+          description:
+            'Software relations. Each name must be a software that already exists (list_software; create it with create_software first) and fromVersion one of its registered releases (register_software_release) — a manual relates to a software version.',
           items: { type: 'object', properties: { name: { type: 'string' }, fromVersion: { type: 'string' } }, required: ['name'] },
         },
         content_html: { type: 'string', description: 'Optional starting body HTML (sections 4–7) for the FIRST listed manual. Other manuals start from their blank template.' },
@@ -193,7 +195,11 @@ export const TOOLS = [
         category: { type: 'string', enum: ['software', 'cockpit-hardware', 'structure', 'peripherals', 'rack'] },
         group: { type: 'string', enum: ['SIM', 'IOS', 'RACK'] },
         hardware: { type: 'array', items: { type: 'object' } },
-        softwares: { type: 'array', items: { type: 'object' } },
+        softwares: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'Full list of software relations [{name, fromVersion}] — each an existing software (create_software) with a registered release as fromVersion.',
+        },
       },
       required: ['slug'],
     },
@@ -601,12 +607,26 @@ export const TOOLS = [
       properties: {
         slug: { type: 'string', description: 'Module slug' },
         name: { type: 'string', description: 'Software name (see list_software / create_software)' },
-        from_version: { type: 'string', description: 'First version this module ships with, e.g. v2.0.0' },
+        from_version: { type: 'string', description: 'First version this module ships with — a registered release of the software (register_software_release), e.g. v2.0.0' },
         unlink: { type: 'boolean', description: 'Remove the link instead of adding it' },
       },
       required: ['slug', 'name'],
     },
     annotations: { title: 'Link software to module', ...RW },
+  },
+  {
+    name: 'merge_software',
+    description:
+      'Repair a software that modules link under a name never created on the Software page (list_software shows it with registered: false): merge it into a registered software — every module link and every doc\'s covered range is renamed to `into`; a from-version that is not a release of the target is cleared. Register the versions those docs cover afterwards.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'The unregistered name as modules link it' },
+        into: { type: 'string', description: 'The registered software to merge into (see list_software)' },
+      },
+      required: ['name', 'into'],
+    },
+    annotations: { title: 'Merge software', ...RW },
   },
   {
     name: 'cover_release',
@@ -811,6 +831,8 @@ async function callTool(name, args) {
       return await store.deleteSoftware(args.name);
     case 'link_software':
       return args.unlink ? await store.unlinkSoftware(args.slug, args.name) : await store.linkSoftware(args.slug, args.name, args.from_version);
+    case 'merge_software':
+      return await store.mergeSoftware(args.name, args.into);
     case 'register_software_release':
       return await store.registerSoftwareRelease({ name: args.name, version: args.version, manualAffecting: !!args.manual_affecting, note: args.note });
     case 'cover_release':

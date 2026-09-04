@@ -167,6 +167,14 @@ try {
   // empty list
   ok((await req('GET', '/api/modules')).length === 0, 'starts with no modules');
 
+  // a manual relates to a software created on the Software page — with a registered version
+  const ghost = await req('POST', '/api/modules', { name: 'Ghost Panel', group: 'SIM', softwares: [{ name: 'Nobody Made Me', fromVersion: 'v1' }] }).catch((e) => e);
+  ok(ghost instanceof Error && /not found — create it on the Software page/.test(ghost.message), 'a module cannot link a software that was not created on the Software page');
+  await req('POST', '/api/software', { name: 'STP Core', version: 'v2.0.0' });
+  const ghostVer = await req('POST', '/api/modules', { name: 'Ghost Panel', group: 'SIM', softwares: [{ name: 'STP Core', fromVersion: 'v9.9' }] }).catch((e) => e);
+  ok(ghostVer instanceof Error && /not a registered release/.test(ghostVer.message), 'a from-version must be a registered release');
+  ok((await req('GET', '/api/modules')).length === 0, 'nothing was created by the refused links');
+
   // create module via wizard payload (blank template)
   const created = await req('POST', '/api/modules', {
     name: 'Starting Panel',
@@ -791,8 +799,12 @@ try {
   ok(!(relink instanceof Error) && relink.linked === false && relink.softwares.find((s) => s.name === '2N Access Unit').fromVersion === 'v1.1.0', 'link_software updates the from-version of an existing link');
   const emptySw = await call(125, 'create_software', { name: 'Orphan Tool' });
   ok(!(emptySw instanceof Error) && emptySw.releases.length === 0 && (await req('GET', '/api/software')).some((s) => s.name === 'Orphan Tool' && s.modules.length === 0), 'a software with no version and no module still lists on the Software page');
-  const linkApi = await req('POST', '/api/modules/starting-panel/software', { name: 'Orphan Tool', fromVersion: 'v0.1' });
-  ok(linkApi.linked === true && linkApi.softwares.length === 3, 'API link endpoint');
+  const linkBadVer = await req('POST', '/api/modules/starting-panel/software', { name: 'Orphan Tool', fromVersion: 'v0.1' }).catch((e) => e);
+  ok(linkBadVer instanceof Error && /not a registered release/.test(linkBadVer.message), 'linking with a version the software never released is refused');
+  const linkApi = await req('POST', '/api/modules/starting-panel/software', { name: 'Orphan Tool' });
+  ok(linkApi.linked === true && linkApi.softwares.length === 3, 'API link endpoint (no release yet → no from-version)');
+  const badRel = await req('POST', '/api/softwares', { name: 'Never Created', version: 'v1.0' }).catch((e) => e);
+  ok(badRel instanceof Error && /not found — create it on the Software page/.test(badRel.message), 'a release cannot be registered for a software that was not created');
   const unlinkOk = await call(126, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });
   ok(!(unlinkOk instanceof Error) && unlinkOk.softwares.length === 2, 'link_software unlink removes the link');
   const unlinkMissing = await call(127, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });

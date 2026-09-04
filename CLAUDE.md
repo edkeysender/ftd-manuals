@@ -72,7 +72,13 @@ The functional spec lives in this file's history and in the Modules spec provide
   cover several unit types (three camera models): each gets its own `<h3>` in Installation/Operation, a row
   in section 3 and in the FAT header. Old modules with an inline `hardware` object still resolve on read. Software links: N rows of name + from-version; one doc version
   may cover a range of software releases; a **manual-affecting** release stays unlinked until a new
-  doc version is released for it (orange dot on the modules list).
+  doc version is released for it (orange dot on the modules list). **A manual relates to a software
+  version**: a link must name a software created on the Software page (the feed `softwares.json`) and its
+  from-version must be a registered release (`assertSoftwareLinks` in `store.js` — create, update, link, own
+  manual; `registerSoftwareRelease` refuses unknown names; the modal's "software named after the module" goes
+  through `ensureSoftware`). Names only known from old links show `registered: false` on the Software page with
+  two repairs: create the software with the version the links use, or `mergeSoftware` (`POST
+  /api/software/:name/merge {into}`, MCP `merge_software`) which renames links and doc `covers`.
 - Manual tone: operating-manual English, present tense, numbered procedures with expected indication,
   warnings/notes as admonitions, no invented facts — use `TODO(author): …` markers.
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
