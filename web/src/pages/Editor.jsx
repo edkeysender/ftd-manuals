@@ -39,6 +39,19 @@ const isImageFile = (f) => (f.type || '').startsWith('image/') || /\.(png|jpe?g|
 const escapeAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const figureHtml = (url, alt) =>
   `<figure><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}"><figcaption>TODO(author): figure caption</figcaption></figure><p></p>`;
+/** A file the reader downloads from the manual (config, firmware…) — a link chip on its own line. */
+const attachmentHtml = (url, name) =>
+  `<p><a class="attachment" href="${escapeAttr(url)}" download="${escapeAttr(name)}">${String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</a></p><p></p>`;
+/** Caret position under the mouse (drop point). */
+const rangeAtPoint = (x, y) => {
+  if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+  const p = document.caretPositionFromPoint?.(x, y);
+  if (!p) return null;
+  const r = document.createRange();
+  r.setStart(p.offsetNode, p.offset);
+  r.collapse(true);
+  return r;
+};
 
 /* TODO(author) markers are highlighted with the CSS Custom Highlight API so the
    stored HTML stays untouched — nothing is wrapped, nothing leaks into exports. */
@@ -654,6 +667,18 @@ export default function Editor({ review: reviewProp = false }) {
       t('Insert figure'),
     ],
     [
+      t('📎 File'),
+      () => {
+        if (!editable) return;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.onchange = () => insertFiles(input.files);
+        input.click();
+      },
+      t('Attach a file the reader downloads (ready-to-use configuration, firmware…) — or paste / drop it into the text'),
+    ],
+    [
       t('⚠ Warning'),
       () =>
         insertHtml(
@@ -850,15 +875,61 @@ export default function Editor({ review: reviewProp = false }) {
     }
   }
 
+  /**
+   * Non-image files pasted or dropped into the body (a ready-to-use configuration,
+   * firmware, a spreadsheet) become attachments: stored as they are in the module's
+   * assets and linked at the caret as a download — like attaching a file in Confluence.
+   */
+  async function insertAttachmentFiles(fileList) {
+    const files = [...fileList].filter((f) => !isImageFile(f));
+    if (!files.length) return;
+    if (!editable) return toast(t('Read-only doc — files can only be attached to a draft'), 'err');
+    if (pending) return toast(t('Accept or discard the pending AI edit first'), 'err');
+    try {
+      setSaving(true);
+      const payload = await Promise.all(files.map(readFileAsBase64));
+      const saved = await api.uploadAssets(slug, version, payload, { attachments: true });
+      for (const s of saved) insertAtCaret(attachmentHtml(s.url, s.name));
+      toast(t('{what} attached — the reader downloads it from the manual', { what: saved.length > 1 ? plural(saved.length, 'file') : saved[0].name }));
+    } catch (e) {
+      toast(t('Attachment failed: {error}', { error: e.message }), 'err');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Files pasted / dropped into the body: pictures become figures, everything else an attachment. */
+  async function insertFiles(fileList) {
+    const files = [...fileList];
+    await insertImageFiles(files);
+    await insertAttachmentFiles(files);
+  }
+
+  const onEditorDrop = (e) => {
+    if (!e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    const r = rangeAtPoint(e.clientX, e.clientY);
+    if (r && editorRef.current?.contains(r.commonAncestorContainer)) selRef.current = r;
+    insertFiles(e.dataTransfer.files);
+  };
+
+  // Links do not navigate inside a contentEditable — open the attachment (a download) explicitly.
+  const onEditorClick = (e) => {
+    const a = e.target.closest?.('a.attachment');
+    if (!a) return;
+    e.preventDefault();
+    window.open(a.getAttribute('href'), '_blank');
+  };
+
   const onEditorPaste = (e) => {
     const cd = e.clipboardData;
     if (!cd) return;
-    const files = [...(cd.files || [])].filter(isImageFile);
+    const files = [...(cd.files || [])];
     const htmlData = cd.getData('text/html');
     if (files.length) {
       e.preventDefault();
       rememberSelection();
-      insertImageFiles(files);
+      insertFiles(files);
     } else if (/<img[^>]+src="data:image\//i.test(htmlData)) {
       e.preventDefault();
       rememberSelection();
@@ -1266,6 +1337,11 @@ export default function Editor({ review: reviewProp = false }) {
                   suppressContentEditableWarning
                   onInput={onInput}
                   onPaste={onEditorPaste}
+                  onDragOver={(e) => {
+                    if (editable && e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+                  }}
+                  onDrop={onEditorDrop}
+                  onClick={onEditorClick}
                   onKeyUp={rememberSelection}
                   onMouseUp={rememberSelection}
                   onBlur={rememberSelection}

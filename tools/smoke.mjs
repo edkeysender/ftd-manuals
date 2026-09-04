@@ -268,6 +268,24 @@ try {
   const stamped = assetList.find((a) => a.name === 'panel-photo.png');
   ok(stamped.meta?.addedIn === 'A1.0' && stamped.stale.length === 0, 'upload stamps the asset with the doc version');
   ok(stamped.meta.software[0]?.name === 'STP Core' && stamped.meta.software[0].version === 'v2.0.0', `stamp records software as of upload: ${stamped.meta.software[0]?.version}`);
+
+  // attachments: files the reader downloads (config, firmware) — stored as they are, served as downloads
+  const cfg = Buffer.from('{"brightness": 80, "channel": 2}\n');
+  const attUp = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', {
+    files: [
+      { name: 'Intercom Config.JSON', dataBase64: cfg.toString('base64') },
+      { name: 'firmware.zip', dataBase64: Buffer.from('PK not really a zip').toString('base64') },
+    ],
+    attachments: true,
+  });
+  ok(attUp.length === 2 && attUp[0].name === 'intercom-config.json' && attUp[1].name === 'firmware.zip', `attachments stored as they are (zip not expanded): ${attUp.map((a) => a.name).join(', ')}`);
+  const attRes = await fetch(BASE + attUp[0].url);
+  ok(attRes.ok && attRes.headers.get('content-type').startsWith('application/json') && attRes.headers.get('content-disposition') === 'attachment; filename="intercom-config.json"', `attachment served as a download with its type: ${attRes.headers.get('content-disposition')}`);
+  ok((await attRes.text()) === cfg.toString(), 'attachment bytes intact');
+  const attList = await req('GET', '/api/modules/starting-panel/assets');
+  ok(attList.find((a) => a.name === 'intercom-config.json')?.kind === 'attachment' && attList.find((a) => a.name === 'panel-photo.png')?.kind === 'image', 'asset list tells attachments from images (kind)');
+  const noExt = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', { files: [{ name: 'README', dataBase64: cfg.toString('base64') }], attachments: true }).catch((e) => e);
+  ok(noExt instanceof Error && /extension/.test(noExt.message), 'an attachment without a file extension is refused');
   ok(stamped.meta.hardware[0]?.id === 'starting-panel' && stamped.meta.hardware[0].version === 'v2', `stamp records hardware version: ${stamped.meta.hardware[0]?.version}`);
   const badApplies = await req('PUT', '/api/modules/starting-panel/docs/A1.0/assets/panel-photo.png/meta', { appliesTo: ['nope'] }).catch((e) => e);
   ok(badApplies instanceof Error && /not linked/.test(badApplies.message), 'appliesTo must name linked hardware');
@@ -454,6 +472,8 @@ try {
   ok(gaFull.content.find((c) => c.type === 'image')?.mimeType === 'image/png' && gaFull.content.find((c) => c.type === 'image').data === png1x1, 'get_asset size=full returns the original bytes');
   const laThumbs = await mcpCall({ jsonrpc: '2.0', id: 83, method: 'tools/call', params: { name: 'list_assets', arguments: { slug: 'starting-panel', thumbnails: true } } });
   ok(!laThumbs.isError && laThumbs.content.filter((c) => c.type === 'image').length >= 1 && JSON.parse(laThumbs.content[0].text).some((a) => a.name === 'panel-photo.png'), 'list_assets thumbnails=true carries a picture per asset');
+  const attGet = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'get_asset', arguments: { slug: 'starting-panel', name: 'intercom-config.json' } } });
+  ok(!attGet.isError && attGet.content.every((c) => c.type === 'text') && attGet.content.some((c) => c.text.includes('"brightness": 80')), 'get_asset returns the text of an attachment');
   const resized = await fetch(BASE + uploaded[0].url + '?w=64');
   ok(resized.status === 200 && resized.headers.get('content-type') === 'image/png', 'asset route serves a resized same-format variant with ?w=');
   const resList = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'resources/list', params: {} });
@@ -591,7 +611,10 @@ try {
   ok(afterAuto.doc.revision === 7, 'autosave keeps revision (r7)');
 
   await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
-    html: afterAuto.content + `<p>Grounding check added.</p><figure><img src="${uploaded[0].url}" alt="Panel"><figcaption>Panel</figcaption></figure>`,
+    html:
+      afterAuto.content +
+      `<p>Grounding check added.</p><figure><img src="${uploaded[0].url}" alt="Panel"><figcaption>Panel</figcaption></figure>` +
+      `<p><a class="attachment" href="${attUp[0].url}" download="intercom-config.json">intercom-config.json</a></p>`,
     bump: true,
     summary: 'Add grounding check',
   });
@@ -950,6 +973,11 @@ try {
   const exp2 = await (await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html')).text();
   ok(!exp2.includes('/api/settings/logo') && !exp2.includes('/api/manuals/') && exp2.includes('data:image/png;base64,'),
     'export inlines logo and cover as data URIs');
+  ok(
+    !exp2.includes('/api/modules/starting-panel/assets/intercom-config.json') &&
+      /<a class="attachment" href="data:application\/json;base64,[A-Za-z0-9+/=]+" download="intercom-config\.json">/.test(exp2),
+    'export inlines an attachment as a downloadable data URI'
+  );
   const exp = await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html');
   const expHtml = await exp.text();
   ok(exp.ok && expHtml.startsWith('<!doctype html>') && expHtml.includes('<style>'), 'standalone export served');

@@ -25,7 +25,7 @@ import {
   langOf,
 } from './docgen.js';
 import { normalizeChecklist } from './checklist.js';
-import { validateAsset } from './images.js';
+import { validateAsset, isImageName } from './images.js';
 import { expandDocuments } from './extract.js';
 import * as inbox from './inbox.js';
 
@@ -1245,15 +1245,32 @@ export function sanitizeAssetName(name) {
 
 export const assetUrl = (slug, name) => `/api/modules/${slug}/assets/${encodeURIComponent(name)}`;
 
-/** Commit files into the draft's assets folder. files: [{name, buffer}] */
-export async function saveAssets(slug, key, files) {
+/** Kind of an asset by name: a picture the manual embeds, a PDF, or an attachment — a file the
+ *  reader downloads from the manual (ready-to-use configuration, firmware, spreadsheet…). */
+export const assetKind = (name) => (isImageName(name) ? 'image' : /\.pdf$/i.test(String(name)) ? 'pdf' : 'attachment');
+
+const ATTACHMENT_MAX = 25 * 1024 * 1024;
+
+function validateAttachment(name, buffer) {
+  if (!buffer || !buffer.length) throw new Error(`${name}: file is empty`);
+  if (buffer.length > ATTACHMENT_MAX) throw new Error(`${name}: attachments are limited to 25 MB`);
+  if (!/\.[a-z0-9]+$/i.test(sanitizeAssetName(name))) throw new Error(`${name}: an attachment needs a file extension`);
+}
+
+/** Commit files into the draft's assets folder. files: [{name, buffer}].
+ *  attachments: true stores every file as it is (a zip or PDF stays a download instead of
+ *  being expanded into its pictures) — the editor's paste / drop of non-image files. */
+export async function saveAssets(slug, key, files, { attachments = false } = {}) {
   const { branch, meta: docMeta, manual } = await loadDraftDoc(slug, key);
   const version = docMeta.version;
   if (!files.length) throw new Error('No files to save');
-  // Word / PowerPoint / PDF / zip → the pictures inside (a Word text sidecar is not an asset)
-  files = (await expandDocuments(files)).filter((f) => !f.text);
-  if (!files.length) throw new Error('No pictures to save');
-  for (const f of files) validateAsset(f.name, f.buffer); // reject truncated / mislabelled files before anything is committed
+  if (!attachments) {
+    // Word / PowerPoint / PDF / zip → the pictures inside (a Word text sidecar is not an asset)
+    files = (await expandDocuments(files)).filter((f) => !f.text);
+    if (!files.length) throw new Error('No pictures to save');
+  }
+  // reject truncated / mislabelled files before anything is committed; non-image files are attachments
+  for (const f of files) validateAsset(f.name, f.buffer) || validateAttachment(f.name, f.buffer);
   const entry = await moduleOf(slug);
   const stamp = currentStamp(entry?.module || {}, await getSoftwareFeed());
   const ts = now();
@@ -1407,7 +1424,7 @@ export async function listAssets(slug) {
   const module = entry?.module || {};
   return [...names].map((n) => {
     const m = meta[n] || null;
-    return { name: n, url: assetUrl(slug, n), meta: m, stale: assetStaleness(m, module, feed) };
+    return { name: n, url: assetUrl(slug, n), kind: assetKind(n), meta: m, stale: assetStaleness(m, module, feed) };
   });
 }
 

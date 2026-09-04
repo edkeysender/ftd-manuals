@@ -112,7 +112,7 @@ export const TOOLS = [
   {
     name: 'list_assets',
     description:
-      "List the files in a module's assets folder with their served URLs (use these URLs in <img src>). Each entry carries `meta` — the version stamp taken when the file was added (doc version, newest software release per linked software, hardware unit versions, appliesTo hardware ids; null for files added before stamping) — and `stale`: reasons the picture may be out of date (a newer manual-affecting software release or a changed hardware version). Do not embed stale assets for new content without telling the user; fix stamps with update_asset. With thumbnails: true the result also carries a small picture of every raster asset (in list order) so you can see what is there; get_asset gives one picture at a larger size.",
+      "List the files in a module's assets folder with their served URLs (use these URLs in <img src>). `kind` is image, pdf or attachment — an attachment is a file the reader downloads from the manual (ready-to-use configuration, firmware, spreadsheet); link it in the body as <p><a class=\"attachment\" href=\"URL\" download>file name</a></p> and read its text with get_asset. Each entry carries `meta` — the version stamp taken when the file was added (doc version, newest software release per linked software, hardware unit versions, appliesTo hardware ids; null for files added before stamping) — and `stale`: reasons the picture may be out of date (a newer manual-affecting software release or a changed hardware version). Do not embed stale assets for new content without telling the user; fix stamps with update_asset. With thumbnails: true the result also carries a small picture of every raster asset (in list order) so you can see what is there; get_asset gives one picture at a larger size.",
     inputSchema: { type: 'object', properties: { slug: SLUG_VER.slug, thumbnails: { type: 'boolean', description: 'Also return a ≤160 px thumbnail of each image (about 100 tokens each)' } }, required: ['slug'] },
     annotations: { title: 'List assets', ...RO },
   },
@@ -357,6 +357,20 @@ export const TOOLS = [
     annotations: { title: 'Find local files', ...RO },
   },
   {
+    name: 'fetch_to_inbox',
+    description:
+      'Download a file from a URL into the console inbox — the console fetches it server-side (no bytes through you), with credentials for hosts configured in .env FTD_URL_CREDENTIALS (Confluence/Jira attachments, SharePoint/OneDrive/NAS share links, an internal web server). Word / PowerPoint / PDF / zip files are expanded on arrival into the pictures inside them (+ "<doc>.html" for Word content); pictures land as they are. Returns the inbox entries — then import_local_files by bare name (or read_inbox_text). This is the hands-off way to bring source material in: prefer it over asking the user to drop files whenever the material has a URL you can see (e.g. Confluence attachment URLs give the full-size originals, unlike a Word export).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'http(s) URL of the picture or document' },
+        name: { type: 'string', description: 'Optional file name (with extension); defaults to the download name' },
+      },
+      required: ['url'],
+    },
+    annotations: { title: 'Fetch URL into inbox', ...RW, openWorldHint: true },
+  },
+  {
     name: 'read_inbox_text',
     description:
       'Read a .html / .txt / .md inbox entry — typically "<doc>.html", the content of a dropped Word file as semantic HTML: headings, strong/em/u/sup/sub, hyperlinks, nested ul/ol, tables (colspan/rowspan, th header rows) and "[figure: <inbox file>]" markers naming the extracted pictures. To recreate the document in a manual: write the sections from this HTML keeping the formatting and tables (save_doc_content / insert_into_section), import_local_files the pictures the markers name, then attach_figure each picture where its marker sits.',
@@ -388,7 +402,7 @@ export const TOOLS = [
   {
     name: 'get_asset',
     description:
-      'LOOK at a module asset: returns the picture itself as image content (a downscaled JPEG preview, ~300–600 tokens) plus its metadata (pixel size, bytes, version stamp, stale reasons). Use it to pick the right photo for a figure, to write a factual caption, to check a line-art result, or to verify a figure still matches the hardware. size: "preview" (default, ≤768 px), "thumb" (≤256 px), "full" (original bytes — large; only when detail matters).',
+      'LOOK at a module asset: returns the picture itself as image content (a downscaled JPEG preview, ~300–600 tokens) plus its metadata (pixel size, bytes, version stamp, stale reasons). For an attachment (kind "attachment" in list_assets — a config, firmware or data file) it returns the file text when it is text. Use it to pick the right photo for a figure, to write a factual caption, to check a line-art result, or to verify a figure still matches the hardware. size: "preview" (default, ≤768 px), "thumb" (≤256 px), "full" (original bytes — large; only when detail matters).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -432,7 +446,7 @@ export const TOOLS = [
   {
     name: 'upload_photo_from_url',
     description:
-      "Download an image from a URL into the module draft's assets folder (the console fetches it — no bytes through you). Public URLs work as-is; hosts configured in .env FTD_URL_CREDENTIALS (\"host=basic:user:pass;host=bearer:TOKEN\") are fetched with credentials. For pictures behind a login you cannot link to (e.g. wiki attachments), use request_upload so the user drops them into the inbox. Returns the served URL to use in <img src=\"…\">.",
+      "Download an image from a URL into the module draft's assets folder (the console fetches it — no bytes through you). Public URLs work as-is; hosts configured in .env FTD_URL_CREDENTIALS (\"host=basic:user:pass;host=bearer:TOKEN\") are fetched with credentials. For documents (Word / PowerPoint / PDF / zip) or anything that should go through the inbox, use fetch_to_inbox instead; for pictures the console cannot reach at all, request_upload so the user drops them. Returns the served URL to use in <img src=\"…\">.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -963,6 +977,14 @@ async function callTool(name, args) {
       const buf = await store.getAsset(args.slug, args.name);
       if (!buf) throw new Error(`Asset "${args.name}" not found — see list_assets`);
       const meta = (await store.listAssets(args.slug)).find((a) => a.name === args.name) || { name: args.name };
+      if (store.assetKind(args.name) === 'attachment') {
+        // A file the reader downloads (config, firmware…): its text when it is text, else just the facts.
+        const text = isTextBuffer(buf) ? buf.toString('utf8') : null;
+        return richContent([
+          { type: 'text', text: JSON.stringify({ ...meta, bytes: buf.length, note: text ? 'attachment — text content follows' : 'binary attachment — no preview' }, null, 2) },
+          ...(text ? [{ type: 'text', text }] : []),
+        ]);
+      }
       const size = args.size || 'preview';
       const info = images.sniff(buf);
       if (size === 'full') {
@@ -1051,6 +1073,11 @@ async function callTool(name, args) {
       return { dir: inbox.INBOX_DIR, files: await inbox.listInbox() };
     case 'find_local_files':
       return await inbox.findLocalFiles(args.query || '', { depth: Math.min(Math.max(Number(args.depth) || 3, 0), 6) });
+    case 'fetch_to_inbox': {
+      const f = await sources.fetchFile(args.url);
+      const saved = await inbox.saveToInbox([{ name: args.name || f.name, buffer: f.buffer, from: args.url }]);
+      return { fetched: { name: f.name, size: f.buffer.length, type: f.type }, inbox: saved, ...(saved.notes ? { notes: saved.notes } : {}) };
+    }
     case 'read_inbox_text': {
       const text = await inbox.readInboxText(args.name);
       if (text === null) throw new Error(`"${args.name}" is not in the inbox — see list_inbox`);
@@ -1112,8 +1139,32 @@ let currentBaseUrl = '';
 const ASSET_URI = /^ftd:\/\/modules\/([^/]+)\/assets\/(.+)$/;
 const mimeOf = (name) => {
   const ext = path.extname(name).toLowerCase();
-  return { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.pdf': 'application/pdf' }[ext] || 'application/octet-stream';
+  return (
+    {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.pdf': 'application/pdf',
+      '.json': 'application/json',
+      '.xml': 'application/xml',
+      '.yaml': 'application/yaml',
+      '.yml': 'application/yaml',
+      '.csv': 'text/csv',
+      '.md': 'text/markdown',
+      '.txt': 'text/plain',
+      '.ini': 'text/plain',
+      '.cfg': 'text/plain',
+      '.conf': 'text/plain',
+      '.zip': 'application/zip',
+    }[ext] || 'application/octet-stream'
+  );
 };
+
+/** Attachments an agent can read: text without NUL bytes, up to 2 MB. */
+const isTextBuffer = (b) => b.length <= 2 * 1024 * 1024 && !b.subarray(0, 8192).includes(0);
 
 function buildServer() {
   const server = new Server({ name: 'ftd-docs-console', version: '0.3.0' }, { capabilities: { tools: {}, resources: {} } });

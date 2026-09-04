@@ -42,7 +42,7 @@ async function callOpenAI(messages, { json = false } = {}) {
   return data.choices?.[0]?.message?.content || '';
 }
 
-const HTML_RULES = `Allowed HTML only: <h2> (top-level sections), <h3> (subsections), <p>, <ol>, <ul>, <li>, <strong>, <em>, <table>/<thead>/<tbody>/<tr>/<th>/<td>, <figure>/<img>/<figcaption>, and admonitions as <div class="admonition warning"><p class="admonition-title">Warning</p><p>…</p></div> (or class "note" with title "Note").
+const HTML_RULES = `Allowed HTML only: <h2> (top-level sections), <h3> (subsections), <p>, <ol>, <ul>, <li>, <strong>, <em>, <table>/<thead>/<tbody>/<tr>/<th>/<td>, <figure>/<img>/<figcaption>, and admonitions as <div class="admonition warning"><p class="admonition-title">Warning</p><p>…</p></div> (or class "note" with title "Note"). A file the reader downloads (a ready-to-use configuration, firmware) is linked as <p><a class="attachment" href="URL" download>file name</a></p> — only URLs from the ATTACHMENTS list, never invented.
 Style: operating-manual English, present tense, no marketing language. Procedures are numbered lists (<ol>), one action per step, with the expected indication after the action. Do not invent behaviour, timings, part numbers or limits — write TODO(author): … where facts are missing. Never write passwords or other credentials into a manual — refer to the credentials sheet instead.`;
 
 /** Which manual is being written, for whom, and what its sections 4–7 are. */
@@ -130,12 +130,19 @@ export async function chatEdit({ module, doc, content, messages, context = {}, g
     ? ''
     : `\nLANGUAGE: this is the ${language.label} (${language.code}) translation of the document. Write every reply and every edit in ${language.label}; keep the section headings in ${language.label} as they are in the body. The English source is a separate document — do not switch to English.`;
 
-  const assetBlock = assets.length
-    ? `IMAGES available in the module's asset store — these files exist and are served by the console. Embed images ONLY from this list, using the src exactly as given, as <figure><img src="URL" alt="…"><figcaption>…</figcaption></figure>:
-${assets.map((a) => `- ${a.url}${a.alt ? ` — alt: ${a.alt}` : ''}${a.from ? ` — origin: ${a.from}` : ''}${a.version ? ` — version: ${a.version}` : ''}`).join('\n')}
+  const pictures = assets.filter((a) => a.kind !== 'attachment');
+  const attachments = assets.filter((a) => a.kind === 'attachment');
+  const attachmentBlock = attachments.length
+    ? `\nATTACHMENTS in the module's asset store — files the reader downloads from the manual (ready-to-use configuration, firmware, data). Link one as <p><a class="attachment" href="URL" download>file name</a></p>, with the href exactly as given:
+${attachments.map((a) => `- ${a.url}${a.name ? ` — ${a.name}` : ''}${a.version ? ` — version: ${a.version}` : ''}`).join('\n')}`
+    : '';
+  const assetBlock =
+    (pictures.length
+      ? `IMAGES available in the module's asset store — these files exist and are served by the console. Embed images ONLY from this list, using the src exactly as given, as <figure><img src="URL" alt="…"><figcaption>…</figcaption></figure>:
+${pictures.map((a) => `- ${a.url}${a.alt ? ` — alt: ${a.alt}` : ''}${a.from ? ` — origin: ${a.from}` : ''}${a.version ? ` — version: ${a.version}` : ''}`).join('\n')}
 Never invent an image path. If no listed asset fits, write TODO(author): figure needed — no <img> tag.
 Each asset's "version" is what the picture showed when it was added (doc version, software release, hardware version). An asset marked OUT OF DATE shows an older release than the one this doc must describe: do not embed it for new content unless the user explicitly asks; instead write TODO(author): figure <name> shows <old version>, retake for <new version>. When you must keep such a figure, say so in its <figcaption>.`
-    : 'No images are available in the asset store — never insert <img> tags; write TODO(author): figure needed instead.';
+      : 'No images are available in the asset store — never insert <img> tags; write TODO(author): figure needed instead.') + attachmentBlock;
 
   const pageBlock = pages.length
     ? `SOURCE PAGES — the console has fetched these URLs for you (you do have this content; do not claim you cannot open websites). Use them as the factual source and cite the URL in data-ai-source:

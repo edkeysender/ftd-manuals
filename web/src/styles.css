@@ -251,6 +251,10 @@ label.inline { font-weight: 400; color: var(--muted); }
 .doc-page img { max-width: 100%; height: auto; }
 .doc-page figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; min-height: 60px; background: #f6f8fb; }
 .doc-page figcaption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+/* attachment: a file the reader downloads (config, firmware…) — a chip, not a bare link */
+.doc-page a.attachment { display: inline-block; padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel, #f6f8fb); color: var(--accent); text-decoration: none; font-family: ui-monospace, Consolas, monospace; font-size: 13px; cursor: pointer; }
+.doc-page a.attachment::before { content: '📎 '; }
+.doc-page a.attachment:hover { border-color: var(--accent); }
 
 .doc-page .admonition { border-left: 4px solid; border-radius: 6px; padding: 10px 14px; margin: 14px 0; }
 .doc-page .admonition-title { font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.05em; margin: 0 0 4px; }

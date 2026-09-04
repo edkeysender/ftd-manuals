@@ -445,6 +445,19 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.pdf': 'application/pdf',
   '.txt': 'text/plain; charset=utf-8',
+  // attachments — files the reader downloads from the manual
+  '.json': 'application/json',
+  '.xml': 'application/xml',
+  '.yaml': 'application/yaml',
+  '.yml': 'application/yaml',
+  '.csv': 'text/csv; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.ini': 'text/plain; charset=utf-8',
+  '.cfg': 'text/plain; charset=utf-8',
+  '.conf': 'text/plain; charset=utf-8',
+  '.zip': 'application/zip',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
 app.get('/api/modules/:slug/assets/:file', async (req, res) => {
@@ -475,6 +488,11 @@ app.get('/api/modules/:slug/assets/:file', async (req, res) => {
   }
   res.set('Content-Type', MIME[ext] || 'application/octet-stream');
   res.set('Cache-Control', 'no-cache');
+  if (store.assetKind(req.params.file) === 'attachment') {
+    // A download, never a page: the reader gets the file, the browser does not render it.
+    res.set('Content-Disposition', `attachment; filename="${req.params.file.replace(/["\r\n]/g, '')}"`);
+    res.set('X-Content-Type-Options', 'nosniff');
+  }
   res.send(buf);
 });
 
@@ -529,7 +547,8 @@ app.post('/api/modules/:slug/docs/:version/assets', wrap(async (req, res) => {
     .map((f) => ({ name: f.name, buffer: Buffer.from(f.dataBase64 || '', 'base64') }))
     .filter((f) => f.buffer.length > 0);
   if (!files.length) throw new Error('No files provided');
-  res.json(await store.saveAssets(req.params.slug, req.params.version, files));
+  // attachments: true — keep every file as it is (the editor's paste / drop of non-image files)
+  res.json(await store.saveAssets(req.params.slug, req.params.version, files, { attachments: !!req.body.attachments }));
 }));
 
 /* ---------- photo → house-style line-art (same engine as the AI chat and MCP) ---------- */
@@ -607,7 +626,7 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
     saved.forEach((s, i) => ctx.assets.push({ url: s.url, alt: uploads[i].alt || '', from: uploads[i].from || '' }));
   }
   for (const a of await store.listAssets(slug)) {
-    if (!ctx.assets.some((x) => x.url === a.url)) ctx.assets.push({ url: a.url, alt: '', from: 'asset store', version: store.describeAssetVersion(a) });
+    if (!ctx.assets.some((x) => x.url === a.url)) ctx.assets.push({ url: a.url, name: a.name, kind: a.kind, alt: '', from: 'asset store', version: store.describeAssetVersion(a) });
   }
 
   const result = await ai.chatEdit({

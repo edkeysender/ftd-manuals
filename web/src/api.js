@@ -88,8 +88,9 @@ export const api = {
   aiSettings: () => request('/api/settings/ai'),
   saveAiSettings: (guidelines) => request('/api/settings/ai', { method: 'PUT', body: { guidelines } }),
   mcpInfo: () => request('/api/mcp-info'),
-  uploadAssets: (slug, version, files) =>
-    request(`/api/modules/${slug}/docs/${version}/assets`, { method: 'POST', body: { files } }),
+  // opts.attachments: keep every file as it is (a download), instead of expanding documents into pictures
+  uploadAssets: (slug, version, files, opts = {}) =>
+    request(`/api/modules/${slug}/docs/${version}/assets`, { method: 'POST', body: { files, ...opts } }),
   listAssets: (slug) => request(`/api/modules/${slug}/assets`),
   deleteAsset: (slug, version, name) =>
     request(`/api/modules/${slug}/docs/${version}/assets/${encodeURIComponent(name)}`, { method: 'DELETE' }),

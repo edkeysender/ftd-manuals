@@ -77,7 +77,8 @@ The functional spec lives in this file's history and in the Modules spec provide
   warnings/notes as admonitions, no invented facts — use `TODO(author): …` markers.
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
   `list_assets {thumbnails}`, MCP resources `ftd://modules/<slug>/assets/<file>`), fetch server-side
-  (`upload_photo_from_url`; optional per-host credentials `FTD_URL_CREDENTIALS` in `server/sources.js`), or
+  (`upload_photo_from_url` for a picture into the assets, `fetch_to_inbox` for any file incl. documents/zips into the
+  inbox — both with optional per-host credentials `FTD_URL_CREDENTIALS` in `server/sources.js`), or
   hand the user the Assets-tab drop link (`request_upload` → inbox → `import_local_files`), or find what the user
   saved on the console machine themselves (`find_local_files` searches `FTD_IMPORT_ROOTS`, then `import_local_files`
   by path). Documents are a
@@ -88,7 +89,12 @@ The functional spec lives in this file's history and in the Modules spec provide
   logs into Confluence/Jira itself — the agent reads those through its own connector and pictures come via
   the inbox. `attach_figure` places `<figure>`s; `describe_asset` is the vision model. Resizing is `sharp`
   (`server/images.js` `preview`/`resizeSameFormat`, asset route `?w=`). There is no base64 upload tool any
-  more — do not add one.
+  more — do not add one. **Attachments** live in the same asset store: a non-image file (ready-to-use config,
+  firmware, spreadsheet) is `kind: attachment` (`assetKind` in `store.js`; `attachments: true` on the upload keeps a
+  zip/PDF as a download instead of expanding it into pictures) and is linked in the body as
+  `<p><a class="attachment" href download>name</a></p>` — pasted/dropped into the editor body, the toolbar 📎 button,
+  the Assets tab's Copy link, or by the agent (ATTACHMENTS list in the chat prompt; MCP `get_asset` returns its text).
+  Served with `Content-Disposition: attachment`; export.html inlines it as a data URI like a picture.
 - Illustrations: one house style, **Technical Aviation Manual Line-Art** (`server/illustrate.js`, editable in
   Settings → `settings/illustration-style.md`, plus **style exemplar images** in `settings/illustration-style/`
   that are sent to the image model with every photo — they, not the text, define the look). Default output is

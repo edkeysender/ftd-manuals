@@ -847,4 +847,14 @@ export const PL = {
   '{email} deleted': '{email} usunięty',
   'Add user': 'Dodaj użytkownika',
   'User {email} added': 'Dodano użytkownika {email}',
+  // ----- attachments -----
+  'Drop images, documents or files to attach here': 'Upuść tu obrazy, dokumenty lub pliki do załączenia',
+  'A file the reader downloads from the manual — the link HTML goes into the HTML source view': 'Plik, który czytelnik pobiera z instrukcji — HTML linku wklej w widoku źródła HTML',
+  'Attachment link copied — paste it in the HTML source view': 'Skopiowano link załącznika — wklej go w widoku źródła HTML',
+  'Copy link': 'Kopiuj link',
+  '📎 File': '📎 Plik',
+  'Attach a file the reader downloads (ready-to-use configuration, firmware…) — or paste / drop it into the text': 'Załącz plik, który czytelnik pobiera (gotowa konfiguracja, firmware…) — albo wklej / upuść go w tekście',
+  '{what} attached — the reader downloads it from the manual': '{what} — załączono, czytelnik pobiera to z instrukcji',
+  'Attachment failed: {error}': 'Załączanie nie powiodło się: {error}',
+  'Read-only doc — files can only be attached to a draft': 'Dokument tylko do odczytu — pliki można załączać tylko do wersji roboczej',
 };

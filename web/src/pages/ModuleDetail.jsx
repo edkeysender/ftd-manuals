@@ -962,13 +962,13 @@ function AssetsTab({ slug, docs, module, onChanged }) {
           upload(e.dataTransfer.files);
         }}
       >
-        <strong>{busy ? t('Uploading…') : t('Drop images or documents here')}</strong>
+        <strong>{busy ? t('Uploading…') : t('Drop images, documents or files to attach here')}</strong>
         <span className="muted">
           {draft ? t(' — or ') : t(' — no open draft; ')}
           {draft && (
             <label className="link">
               {t('choose files')}
-              <input type="file" multiple accept="image/*,.pdf,.svg,.docx,.pptx,.xlsx,.zip" hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
+              <input type="file" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
             </label>
           )}
           {draft ? t('. Files are committed to {branch}.', { branch: draft.branch }) : t('create a doc draft to add assets.')}
@@ -1047,15 +1047,28 @@ function AssetsTab({ slug, docs, module, onChanged }) {
                 </button>
               )}
               <div className="btn-row">
-                <button
-                  className="btn btn-sm"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(`<figure><img src="${a.url}" alt="${a.name}"><figcaption>TODO(author): caption</figcaption></figure>`);
-                    toast(t('Figure HTML copied — paste it in the HTML source view'));
-                  }}
-                >
-                  {t('Copy <figure>')}
-                </button>
+                {a.kind === 'attachment' ? (
+                  <button
+                    className="btn btn-sm"
+                    title={t('A file the reader downloads from the manual — the link HTML goes into the HTML source view')}
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`<p><a class="attachment" href="${a.url}" download="${a.name}">${a.name}</a></p>`);
+                      toast(t('Attachment link copied — paste it in the HTML source view'));
+                    }}
+                  >
+                    {t('Copy link')}
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`<figure><img src="${a.url}" alt="${a.name}"><figcaption>TODO(author): caption</figcaption></figure>`);
+                      toast(t('Figure HTML copied — paste it in the HTML source view'));
+                    }}
+                  >
+                    {t('Copy <figure>')}
+                  </button>
+                )}
                 {/.(png|jpe?g|webp|gif)$/i.test(a.name) && !/-lineart.png$/i.test(a.name) && (
                   <button
                     className="btn btn-sm"

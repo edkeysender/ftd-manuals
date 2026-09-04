@@ -503,6 +503,8 @@ export const MANUAL_CSS = `
 .manual-doc img { max-width: 100%; height: auto; }
 .manual-doc figure img { max-width: 100%; border: 1px solid #dde3ea; border-radius: 4px; }
 .manual-doc figcaption { color: #64748b; font-size: 12.5px; margin-top: 6px; }
+.manual-doc a.attachment { display: inline-block; padding: 4px 10px 4px 8px; border: 1px solid #c8d1db; border-radius: 6px; background: #f6f8fb; color: #16324f; text-decoration: none; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.manual-doc a.attachment::before { content: '📎 '; }
 .manual-doc .admonition { border-left: 4px solid; border-radius: 6px; padding: 10px 14px; margin: 14px 0; }
 .manual-doc .admonition-title { font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.05em; margin: 0 0 4px; }
 .manual-doc .admonition.warning { background: #fff7ed; border-color: #f97316; }
