@@ -1006,6 +1006,46 @@ try {
   await req('DELETE', '/api/manuals/b737-simulator-manual');
   ok((await req('GET', '/api/manuals')).length === 0, 'manual deleted');
 
+  // import a simulator configuration: one manual per "simulator" / "ios" section
+  let impErr = null;
+  try {
+    await req('POST', '/api/manuals/import', { config: { simulator: { modules: ['starting-panel', 'no-such-module'] } } });
+  } catch (e) { impErr = e.message; }
+  ok(/no-such-module/.test(impErr || ''), 'import rejects a config naming an unknown module');
+  ok((await req('GET', '/api/manuals')).length === 0, 'a rejected import writes nothing');
+
+  let sectErr = null;
+  try { await req('POST', '/api/manuals/import', { config: { modules: ['starting-panel'] } }); } catch (e) { sectErr = e.message; }
+  ok(/simulator/.test(sectErr || ''), 'import needs a simulator or ios section');
+
+  const imported = await req('POST', '/api/manuals/import', {
+    config: {
+      name: 'Acme B737',
+      manual: 'customer',
+      simulator: { code: 'ACME-SIM', modules: ['starting-panel'] },
+      ios: { code: 'ACME-IOS', modules: ['Starting Panel'] },
+    },
+  });
+  ok(imported.manuals.length === 2, 'import creates one manual per section');
+  const sim = imported.manuals.find((m) => m.section === 'simulator');
+  const ios = imported.manuals.find((m) => m.section === 'ios');
+  ok(sim.group === 'SIM' && ios.group === 'IOS', 'sections map to the SIM and IOS groups');
+  ok(sim.name === 'Acme B737 — Simulator Manual' && sim.code === 'ACME-SIM', 'section name and code are taken from the config');
+  ok(ios.modules.length === 1 && ios.modules[0] === 'starting-panel', 'a module named by its name resolves to its slug');
+  ok((await req('GET', `/api/manuals/${sim.slug}`)).chapters[0].slug === 'starting-panel', 'an imported manual compiles');
+
+  let dupErr = null;
+  try { await req('POST', '/api/manuals/import', { config: { simulator: { name: sim.name, modules: ['starting-panel'] } } }); } catch (e) { dupErr = e.message; }
+  ok(/already exist/.test(dupErr || ''), 'importing over an existing manual needs replace');
+  const again = await req('POST', '/api/manuals/import', {
+    replace: true,
+    config: { simulator: { name: sim.name, code: 'ACME-SIM2', modules: ['starting-panel'] } },
+  });
+  ok(again.manuals[0].action === 'updated' && again.manuals[0].code === 'ACME-SIM2', 'replace updates an existing manual in place');
+
+  for (const m of await req('GET', '/api/manuals')) await req('DELETE', `/api/manuals/${m.slug}`);
+  ok((await req('GET', '/api/manuals')).length === 0, 'imported manuals cleaned up');
+
   // module types: what the module is decides which manuals are drafted
   const mst = await req('POST', '/api/modules', { name: 'Starter Kit', code: 'SK', category: 'instructor-station', group: 'IOS', type: 'module-software', software: 'STP Core', parts: 'Płyta czołowa v1\nEncoder', checklist: { mode: 'template' } });
   ok(mst.docs.length === 4 && mst.docs.map((d) => d.manual).join(',') === 'customer,technician,software-customer,software-technician', 'module-software drafts all four manuals');

@@ -83,6 +83,7 @@ export const api = {
   manuals: () => request('/api/manuals'),
   manual: (slug, lang = 'en') => request(`/api/manuals/${slug}${lang && lang !== 'en' ? `?lang=${lang}` : ''}`),
   createManual: (body) => request('/api/manuals', { method: 'POST', body }),
+  importManuals: (config, replace) => request('/api/manuals/import', { method: 'POST', body: { config, replace } }),
   updateManual: (slug, body) => request(`/api/manuals/${slug}`, { method: 'PUT', body }),
   deleteManual: (slug) => request(`/api/manuals/${slug}`, { method: 'DELETE' }),
   uploadManualCover: (slug, file) => request(`/api/manuals/${slug}/cover`, { method: 'POST', body: file }),
