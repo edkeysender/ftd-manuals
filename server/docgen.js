@@ -351,7 +351,7 @@ const STRINGS = {
     intro2: (version, draftRev) => `Document version ${version}${draftRev ? ` (draft, revision ${draftRev})` : ''}. Only released document versions are compiled into simulator manuals.`,
     // assembled manual
     tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
-    draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', compiled: 'compiled', modules: (n) => `${n} module${n === 1 ? '' : 's'}`, assembled: 'Assembled manual', draft: 'draft',
+    draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', draft: 'draft',
     // chapter 1 — General (FTD manual template)
     general: 'General', generalIntro: 'In this section the overall information about the document itself is provided.', generalInfoHeading: 'General Info',
     generalText1: (title) => `This document contains ${title} for Flight and Navigation Procedures Trainer (FNPT).`,
@@ -376,7 +376,7 @@ const STRINGS = {
     intro1: (typeLabel, subject, audience, group) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience} Jest samodzielną mini-instrukcją i po wydaniu tej wersji dokumentu wchodzi w skład dokumentu ${group} (${typeLabel}).`,
     intro2: (version, draftRev) => `Wersja dokumentu ${version}${draftRev ? ` (robocza, rewizja ${draftRev})` : ''}. Do instrukcji symulatora kompilowane są wyłącznie wydane wersje dokumentów.`,
     tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
-    draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', compiled: 'skompilowano', modules: (n) => `${n} ${n === 1 ? 'moduł' : n < 5 ? 'moduły' : 'modułów'}`, assembled: 'Instrukcja złożona', draft: 'robocza',
+    draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
     general: 'Ogólne', generalIntro: 'W tej sekcji podano ogólne informacje o samym dokumencie.', generalInfoHeading: 'Informacje ogólne',
     generalText1: (title) => `Niniejszy dokument zawiera ${title} dla urządzenia FNPT (Flight and Navigation Procedures Trainer).`,
     generalText2: 'Wszelkie zmiany lub modyfikacje niniejszego dokumentu są niedozwolone, jeżeli nie zostały wprowadzone przez producenta FNPT i zatwierdzone przez CAA.',
@@ -508,7 +508,6 @@ export const MANUAL_CSS = `
 .manual-doc .cover { text-align: center; padding: 10px 0 40px; }
 .manual-doc .cover-image img { max-width: 92%; max-height: 560px; margin: 26px auto 10px; display: block; }
 .manual-doc .cover-placeholder { margin: 40px auto; width: 70%; height: 240px; border: 1px dashed #c8d1db; border-radius: 8px; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 14px; }
-.manual-doc .cover .sub { color: #64748b; margin-top: 24px; font-size: 14px; }
 .manual-doc .manufacturer { line-height: 1.7; margin: 8px 0 0 24px; }
 .manual-doc .lep-note { color: #64748b; font-size: 12px; }
 .manual-doc .lep-pages { display: none; }
@@ -734,9 +733,6 @@ ${c.html}
 <section class="cover" id="cover"${lepAttrs(frontLep)}>
   ${headerBox(manual, logoHtml)}
   ${cover}
-  <div class="sub">${esc(T.groups[manual.group] || (manual.group ? manual.group : T.assembled))} · ${esc(
-    T.manualTypes[manualTypeOf(manual.manual).id]
-  )} · ${T.compiled} ${date} · ${T.modules(chapters.length)}</div>
 </section>
 ${general}
 ${body}
