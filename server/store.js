@@ -1904,7 +1904,9 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       slug: entry.module.slug,
       module: entry.module,
       doc,
-      generated: generatedSections(entry.module, doc, lang),
+      // An assembled manual has one consolidated revision record in chapter 1, so the
+      // per-chapter history is dropped — the chapter states only the version in effect.
+      generated: generatedSections(entry.module, doc, lang, { revisionHistory: false }),
       content,
       checklist,
       isDraft: doc.status !== 'released',
