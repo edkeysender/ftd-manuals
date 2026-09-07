@@ -340,7 +340,7 @@ const STRINGS = {
     groups: GROUP_LABELS,
     categories: CATEGORY_LABELS,
     audiences: { customer: 'customer', technician: 'technician' },
-    revisionRecord: 'Revision record', documentRevisions: 'Document revisions', revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
+    revisionRecord: 'Revision record', documentRevisions: 'Document revisions', versionInEffect: (v, d) => `Document version ${v}, released ${d}.`, revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
     introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualGroup: 'Manual group', manualType: 'Manual type', docCode: 'Document code',
     hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes', notHardware: 'No parts — not a hardware module',
     softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', notSoftware: 'Not software-related',
@@ -366,7 +366,7 @@ const STRINGS = {
     groups: { SIM: 'Instrukcja symulatora', IOS: 'Instrukcja IOS', RACK: 'Instrukcja szaf RACK' },
     categories: { software: 'Oprogramowanie', 'cockpit-hardware': 'Sprzęt kokpitu', structure: 'Konstrukcja', peripherals: 'Urządzenia peryferyjne', rack: 'Rack' },
     audiences: { customer: 'klient', technician: 'technik' },
-    revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
+    revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', versionInEffect: (v, d) => `Wersja dokumentu ${v}, wydana ${d}.`, revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
     introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualGroup: 'Grupa instrukcji', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
     hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi', notHardware: 'Brak części — moduł bez sprzętu',
     softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', notSoftware: 'Nie dotyczy oprogramowania',
@@ -393,7 +393,7 @@ export const manualTypeLabel = (id, lang = DEFAULT_LANG) => strings(lang).manual
 export const groupLabel = (g, lang = DEFAULT_LANG) => strings(lang).groups[g] || GROUP_LABELS[g] || g;
 
 /** Sections 1–3 as read-only HTML, generated from module + doc metadata, in `lang`. */
-export function generatedSections(module, doc, lang = DEFAULT_LANG) {
+export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHistory = true } = {}) {
   const T = strings(lang);
   const record = (doc.revisionRecord || [])
     .map(
@@ -434,13 +434,15 @@ export function generatedSections(module, doc, lang = DEFAULT_LANG) {
 
   return `<section class="auto-section" data-auto="1">
 <h2>${T.revisionRecord}</h2>
-<h3>${T.documentRevisions}</h3>
+${revisionHistory
+  ? `<h3>${T.documentRevisions}</h3>
 <table>
 <thead><tr><th>${T.revision}</th><th>${T.date}</th><th>${T.change}</th></tr></thead>
 <tbody>
 ${record || `<tr><td colspan="3">${T.noRevisions}</td></tr>`}
 </tbody>
-</table>
+</table>`
+  : `<p>${T.versionInEffect(esc(doc.version), fmtDate(doc.releasedAt || doc.updatedAt))}</p>`}
 </section>
 <section class="auto-section" data-auto="2">
 <h2>${T.introduction}</h2>
