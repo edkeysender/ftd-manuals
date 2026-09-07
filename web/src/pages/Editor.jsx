@@ -1604,6 +1604,7 @@ export default function Editor({ review: reviewProp = false }) {
                 </div>
               )}
               <div className="chat-input">
+                <Dictate onText={(text) => setChatInput((v) => (v ? v.replace(/\s*$/, ' ') : '') + text)} />
                 <button
                   className="btn btn-sm attach-btn"
                   title={t("Attach images or text files — images are stored in the module's assets")}
@@ -1673,3 +1674,77 @@ export default function Editor({ review: reviewProp = false }) {
     </div>
   );
 }
+
+
+/**
+ * Dictation for the chat box: records a clip in the browser and has the server turn it
+ * into text (OpenAI transcription). Works anywhere getUserMedia does, iOS Safari included,
+ * which needs a secure context — the tunnel URL, not a plain http:// address.
+ *
+ * On iOS the system keyboard's own microphone also types straight into the box; this
+ * button exists so the same gesture works on every device and in the Polish UI.
+ */
+function Dictate({ onText }) {
+  const toast = useToast();
+  const [state, setState] = useState('idle'); // idle | recording | working
+  const rec = useRef(null);
+
+  const supported =
+    typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
+  if (!supported) return null;
+
+  async function start() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Safari records audio/mp4; Chrome and Firefox webm. Send the extension that matches.
+      const mime = ['audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const chunks = [];
+      mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const type = mr.mimeType || mime || 'audio/webm';
+        const blob = new Blob(chunks, { type });
+        if (blob.size < 1200) return setState('idle'); // a tap, not speech
+        setState('working');
+        try {
+          const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm';
+          const { dataBase64, name } = await readFileAsBase64(new File([blob], `speech.${ext}`, { type }));
+          const { text } = await api.transcribe({ dataBase64, name, lang: locale() });
+          if (text) onText(text);
+          else toast(t('Nothing was recognised — try again closer to the microphone'), 'err');
+        } catch (e) {
+          toast(e.message, 'err');
+        }
+        setState('idle');
+      };
+      rec.current = mr;
+      mr.start();
+      setState('recording');
+    } catch (e) {
+      toast(
+        /denied|NotAllowed/i.test(e.name + e.message)
+          ? t('Microphone access was refused — allow it for this site in the browser settings')
+          : e.message,
+        'err'
+      );
+      setState('idle');
+    }
+  }
+
+  function stop() {
+    try { rec.current?.stop(); } catch {}
+  }
+
+  return (
+    <button
+      className={`btn btn-sm mic-btn${state === 'recording' ? ' recording' : ''}`}
+      disabled={state === 'working'}
+      title={state === 'recording' ? t('Stop and insert the text') : t('Dictate — speak instead of typing')}
+      onClick={() => (state === 'recording' ? stop() : start())}
+    >
+      {state === 'working' ? '…' : state === 'recording' ? '⏹' : '🎤'}
+    </button>
+  );
+}
+

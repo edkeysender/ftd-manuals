@@ -327,6 +327,14 @@ try {
   });
   const illBody = await illRes.json();
   ok(illRes.status === 400 && /OPENAI_API_KEY/.test(illBody.error), 'illustrate endpoint reports missing image API key');
+
+  // chat dictation: speech to text for the chat box
+  let noAudio = null;
+  try { await req('POST', '/api/transcribe', { dataBase64: '' }); } catch (e) { noAudio = e.message; }
+  ok(/No audio data/.test(noAudio || ''), 'transcribe endpoint rejects an empty recording');
+  let noKey = null;
+  try { await req('POST', '/api/transcribe', { dataBase64: Buffer.from('not really audio').toString('base64'), name: 'speech.webm' }); } catch (e) { noKey = e.message; }
+  ok(/OPENAI_API_KEY/.test(noKey || ''), 'transcribe endpoint reports the missing API key');
   const illMissing = await fetch(BASE + '/api/modules/starting-panel/docs/A1.0/illustrate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

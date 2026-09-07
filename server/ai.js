@@ -7,10 +7,39 @@
 import { manualTypeOf, DEFAULT_MANUAL, LANGUAGES, DEFAULT_LANG, langOf } from './docgen.js';
 
 const API_URL = 'https://api.openai.com/v1/chat/completions';
+const TRANSCRIBE_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const MODEL = process.env.OPENAI_MODEL || 'gpt-5';
+const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
 
 export function aiAvailable() {
   return !!process.env.OPENAI_API_KEY;
+}
+
+/**
+ * Speech to text for the chat box: the browser records a short clip, the server hands it
+ * to the transcription model. `lang` is an optional ISO-639-1 hint ("pl") — dictation in
+ * Polish is markedly better with it. Returns the plain transcript.
+ */
+export async function transcribe(buffer, filename = 'speech.webm', lang = '') {
+  if (!aiAvailable()) throw new Error('OPENAI_API_KEY is not set — speech to text is unavailable');
+  if (!buffer?.length) throw new Error('No audio to transcribe');
+  const form = new FormData();
+  form.append('file', new Blob([buffer]), filename);
+  form.append('model', TRANSCRIBE_MODEL);
+  if (lang) form.append('language', lang);
+  const res = await fetch(TRANSCRIBE_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: form,
+    signal: AbortSignal.timeout(120000),
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    let detail = body;
+    try { detail = JSON.parse(body).error?.message || body; } catch {}
+    throw new Error(`Transcription failed (${res.status}): ${detail}`);
+  }
+  try { return (JSON.parse(body).text || '').trim(); } catch { return body.trim(); }
 }
 
 async function callOpenAI(messages, { json = false } = {}) {

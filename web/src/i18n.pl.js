@@ -874,4 +874,10 @@ export const PL = {
   'Merging…': 'Scalanie…',
   'Merge "{name}" into "{into}"?\n\nThe links of {modules} and the covered ranges of their docs are renamed. A from-version that is not a release of {into} is cleared.': 'Scalić „{name}” z „{into}”?\n\nPowiązania modułów {modules} i zakresy pokrycia ich dokumentów zostaną przemianowane. Wersja „od”, która nie jest wydaniem {into}, zostanie wyczyszczona.',
   '{name} merged into {into} — {modules} relinked': '{name} scalono z {into} — przepięto {modules}',
+
+  // chat dictation
+  "Dictate — speak instead of typing": "Dyktuj — mów zamiast pisać",
+  "Stop and insert the text": "Zatrzymaj i wstaw tekst",
+  "Nothing was recognised — try again closer to the microphone": "Nic nie rozpoznano — spróbuj bliżej mikrofonu",
+  "Microphone access was refused — allow it for this site in the browser settings": "Odmówiono dostępu do mikrofonu — zezwól dla tej strony w ustawieniach przeglądarki",
 };
