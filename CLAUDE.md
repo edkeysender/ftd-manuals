@@ -52,6 +52,12 @@ The functional spec lives in this file's history and in the Modules spec provide
   software-technician) it compiles as an extra chapter right after, titled after the linked software. The FAT checklist sits on the
   technician manual when the module has one, else the customer manual. Module metadata edits are written
   identically on main (when released) and on every open draft branch.
+- An assembled manual opens with a generated **chapter 1 General** (1.1 General Info + manufacturer address,
+  1.2 revision record, 1.3 TOC, 1.4 List of Effective Pages — `STRINGS.general*` / `lep*` in `docgen.js`);
+  module chapters number from 2. The HTML export paginates itself with **paged.js** (inlined; `PAGED_CSS` +
+  `LEP_SCRIPT` in `docgen.js`) and fills the List of Effective Pages from the real A4 pages — every section
+  carries `data-lep-issue/rev/date` (A1.0 → issue 1, rev 0, release date); the web view shows the per-chapter
+  effectivity table instead. Manual pages (web view, editor page, export) render in Verdana.
 - Sections 1–3 (revision record, introduction, general info) are **generated** from module data —
   they are never hand-edited; the editor stores only sections 4–7 as semantic HTML.
 - Module types (`MODULE_TYPES` in `server/docgen.js`, mirrored in `web/src/api.js`): what a module IS decides
