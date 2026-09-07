@@ -10,7 +10,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { sniff, validateAsset } from './images.js';
-import { expandDocuments } from './extract.js';
+import { expandDocuments, isDocumentName } from './extract.js';
 
 export const INBOX_DIR = path.resolve(process.env.FTD_INBOX_DIR || path.join('data', 'inbox'));
 export const IMPORT_ROOTS = [
@@ -67,6 +67,43 @@ export async function listInbox() {
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
+}
+
+const SKIP_DIRS = /^(\.|node_modules$|AppData$|\$RECYCLE\.BIN$|System Volume Information$)/i;
+const PICTURE_OR_DOC = (name) => /\.(png|jpe?g|gif|webp|svg)$/i.test(name) || isDocumentName(name);
+
+/**
+ * Find importable files (pictures, Word / PowerPoint / PDF / zip) under the import roots so an
+ * agent can locate what the user saved there without asking for the path. `query` words must all
+ * appear in the file name (case-insensitive); empty = everything recent. Newest first, capped.
+ */
+export async function findLocalFiles(query = '', { depth = 3, limit = 50 } = {}) {
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = [];
+  const walk = async (dir, root, level) => {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (level < depth && !SKIP_DIRS.test(e.name)) await walk(p, root, level + 1);
+        continue;
+      }
+      if (!e.isFile() || !PICTURE_OR_DOC(e.name)) continue;
+      const lower = e.name.toLowerCase();
+      if (!words.every((w) => lower.includes(w))) continue;
+      const st = await fs.stat(p).catch(() => null);
+      if (!st) continue;
+      hits.push({ path: p, name: e.name, root, size: st.size, modified: st.mtime.toISOString(), kind: isDocumentName(e.name) ? 'document' : 'picture' });
+    }
+  };
+  for (const root of IMPORT_ROOTS) await walk(root, root, 0);
+  hits.sort((a, b) => b.modified.localeCompare(a.modified));
+  return { roots: IMPORT_ROOTS, files: hits.slice(0, limit), truncated: hits.length > limit };
 }
 
 /** Write files into the inbox after validation; a name that exists gets a numeric suffix. files: [{name, buffer}].

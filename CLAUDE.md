@@ -63,7 +63,11 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Module types (`MODULE_TYPES` in `server/docgen.js`, mirrored in `web/src/api.js`): what a module IS decides
   which manuals are drafted on creation — `own-module` / `third-party-kit` → customer + technician,
   `own-software` → the software pair (a software named after the module is auto-created when none is picked),
-  `module-software` → all four. Doc codes derive as `<CODE>-TECH-HW` / `<CODE>-USER-SW` (`manualDocCode`,
+  `module-software` → all four. The reverse path — a software's **own manual**, documented without hardware —
+  is the same thing: `createOwnSoftwareModule()` (store) makes an `own-software` module named after the software
+  (Software page "Write its own manual" / new-software modal checkbox, `POST /api/software/:name/own-manual`,
+  `ownManual` on `POST /api/software`, MCP `create_software {own_manual}` / `create_software_manual`); the
+  Software page row carries `type` so the UI knows. There is no separate software-level doc store — never add one. Doc codes derive as `<CODE>-TECH-HW` / `<CODE>-USER-SW` (`manualDocCode`,
   `docCode` on every doc record, shown in generated section 3). "Parts" are the hardware catalog: a line with
   a trailing version ("Płyta czołowa v1") = made by FTD, without = bought COTS (`parseParts`; `parts` on
   POST /api/modules and MCP `create_module`). New-module modal is compact (no steps); groups offered: SIM, IOS.
@@ -74,13 +78,22 @@ The functional spec lives in this file's history and in the Modules spec provide
   cover several unit types (three camera models): each gets its own `<h3>` in Installation/Operation, a row
   in section 3 and in the FAT header. Old modules with an inline `hardware` object still resolve on read. Software links: N rows of name + from-version; one doc version
   may cover a range of software releases; a **manual-affecting** release stays unlinked until a new
-  doc version is released for it (orange dot on the modules list).
+  doc version is released for it (orange dot on the modules list). **A manual relates to a software
+  version**: a link must name a software created on the Software page (the feed `softwares.json`) and its
+  from-version must be a registered release (`assertSoftwareLinks` in `store.js` — create, update, link, own
+  manual; `registerSoftwareRelease` refuses unknown names; the modal's "software named after the module" goes
+  through `ensureSoftware`). Names only known from old links show `registered: false` on the Software page with
+  two repairs: create the software with the version the links use, or `mergeSoftware` (`POST
+  /api/software/:name/merge {into}`, MCP `merge_software`) which renames links and doc `covers`.
 - Manual tone: operating-manual English, present tense, numbered procedures with expected indication,
   warnings/notes as admonitions, no invented facts — use `TODO(author): …` markers.
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
   `list_assets {thumbnails}`, MCP resources `ftd://modules/<slug>/assets/<file>`), fetch server-side
-  (`upload_photo_from_url`; optional per-host credentials `FTD_URL_CREDENTIALS` in `server/sources.js`), or
-  hand the user the Assets-tab drop link (`request_upload` → inbox → `import_local_files`). Documents are a
+  (`upload_photo_from_url` for a picture into the assets, `fetch_to_inbox` for any file incl. documents/zips into the
+  inbox — both with optional per-host credentials `FTD_URL_CREDENTIALS` in `server/sources.js`), or
+  hand the user the Assets-tab drop link (`request_upload` → inbox → `import_local_files`), or find what the user
+  saved on the console machine themselves (`find_local_files` searches `FTD_IMPORT_ROOTS`, then `import_local_files`
+  by path). Documents are a
   source of pictures: every drop point runs `expandDocuments()` (`server/extract.js`) so Word / PowerPoint /
   PDF / zip files become the pictures inside them (+ `<doc>.html` with the Word content as semantic HTML —
   headings, inline formatting, lists, tables, `[figure: …]` markers naming the extracted pictures — so an
@@ -88,7 +101,12 @@ The functional spec lives in this file's history and in the Modules spec provide
   logs into Confluence/Jira itself — the agent reads those through its own connector and pictures come via
   the inbox. `attach_figure` places `<figure>`s; `describe_asset` is the vision model. Resizing is `sharp`
   (`server/images.js` `preview`/`resizeSameFormat`, asset route `?w=`). There is no base64 upload tool any
-  more — do not add one.
+  more — do not add one. **Attachments** live in the same asset store: a non-image file (ready-to-use config,
+  firmware, spreadsheet) is `kind: attachment` (`assetKind` in `store.js`; `attachments: true` on the upload keeps a
+  zip/PDF as a download instead of expanding it into pictures) and is linked in the body as
+  `<p><a class="attachment" href download>name</a></p>` — pasted/dropped into the editor body, the toolbar 📎 button,
+  the Assets tab's Copy link, or by the agent (ATTACHMENTS list in the chat prompt; MCP `get_asset` returns its text).
+  Served with `Content-Disposition: attachment`; export.html inlines it as a data URI like a picture.
 - Illustrations: one house style, **Technical Aviation Manual Line-Art** (`server/illustrate.js`, editable in
   Settings → `settings/illustration-style.md`, plus **style exemplar images** in `settings/illustration-style/`
   that are sent to the image model with every photo — they, not the text, define the look). Default output is

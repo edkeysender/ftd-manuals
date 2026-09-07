@@ -167,6 +167,14 @@ try {
   // empty list
   ok((await req('GET', '/api/modules')).length === 0, 'starts with no modules');
 
+  // a manual relates to a software created on the Software page — with a registered version
+  const ghost = await req('POST', '/api/modules', { name: 'Ghost Panel', group: 'SIM', softwares: [{ name: 'Nobody Made Me', fromVersion: 'v1' }] }).catch((e) => e);
+  ok(ghost instanceof Error && /not found — create it on the Software page/.test(ghost.message), 'a module cannot link a software that was not created on the Software page');
+  await req('POST', '/api/software', { name: 'STP Core', version: 'v2.0.0' });
+  const ghostVer = await req('POST', '/api/modules', { name: 'Ghost Panel', group: 'SIM', softwares: [{ name: 'STP Core', fromVersion: 'v9.9' }] }).catch((e) => e);
+  ok(ghostVer instanceof Error && /not a registered release/.test(ghostVer.message), 'a from-version must be a registered release');
+  ok((await req('GET', '/api/modules')).length === 0, 'nothing was created by the refused links');
+
   // create module via wizard payload (blank template)
   const created = await req('POST', '/api/modules', {
     name: 'Starting Panel',
@@ -268,6 +276,24 @@ try {
   const stamped = assetList.find((a) => a.name === 'panel-photo.png');
   ok(stamped.meta?.addedIn === 'A1.0' && stamped.stale.length === 0, 'upload stamps the asset with the doc version');
   ok(stamped.meta.software[0]?.name === 'STP Core' && stamped.meta.software[0].version === 'v2.0.0', `stamp records software as of upload: ${stamped.meta.software[0]?.version}`);
+
+  // attachments: files the reader downloads (config, firmware) — stored as they are, served as downloads
+  const cfg = Buffer.from('{"brightness": 80, "channel": 2}\n');
+  const attUp = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', {
+    files: [
+      { name: 'Intercom Config.JSON', dataBase64: cfg.toString('base64') },
+      { name: 'firmware.zip', dataBase64: Buffer.from('PK not really a zip').toString('base64') },
+    ],
+    attachments: true,
+  });
+  ok(attUp.length === 2 && attUp[0].name === 'intercom-config.json' && attUp[1].name === 'firmware.zip', `attachments stored as they are (zip not expanded): ${attUp.map((a) => a.name).join(', ')}`);
+  const attRes = await fetch(BASE + attUp[0].url);
+  ok(attRes.ok && attRes.headers.get('content-type').startsWith('application/json') && attRes.headers.get('content-disposition') === 'attachment; filename="intercom-config.json"', `attachment served as a download with its type: ${attRes.headers.get('content-disposition')}`);
+  ok((await attRes.text()) === cfg.toString(), 'attachment bytes intact');
+  const attList = await req('GET', '/api/modules/starting-panel/assets');
+  ok(attList.find((a) => a.name === 'intercom-config.json')?.kind === 'attachment' && attList.find((a) => a.name === 'panel-photo.png')?.kind === 'image', 'asset list tells attachments from images (kind)');
+  const noExt = await req('POST', '/api/modules/starting-panel/docs/A1.0/assets', { files: [{ name: 'README', dataBase64: cfg.toString('base64') }], attachments: true }).catch((e) => e);
+  ok(noExt instanceof Error && /extension/.test(noExt.message), 'an attachment without a file extension is refused');
   ok(stamped.meta.hardware[0]?.id === 'starting-panel' && stamped.meta.hardware[0].version === 'v2', `stamp records hardware version: ${stamped.meta.hardware[0]?.version}`);
   const badApplies = await req('PUT', '/api/modules/starting-panel/docs/A1.0/assets/panel-photo.png/meta', { appliesTo: ['nope'] }).catch((e) => e);
   ok(badApplies instanceof Error && /not linked/.test(badApplies.message), 'appliesTo must name linked hardware');
@@ -454,6 +480,8 @@ try {
   ok(gaFull.content.find((c) => c.type === 'image')?.mimeType === 'image/png' && gaFull.content.find((c) => c.type === 'image').data === png1x1, 'get_asset size=full returns the original bytes');
   const laThumbs = await mcpCall({ jsonrpc: '2.0', id: 83, method: 'tools/call', params: { name: 'list_assets', arguments: { slug: 'starting-panel', thumbnails: true } } });
   ok(!laThumbs.isError && laThumbs.content.filter((c) => c.type === 'image').length >= 1 && JSON.parse(laThumbs.content[0].text).some((a) => a.name === 'panel-photo.png'), 'list_assets thumbnails=true carries a picture per asset');
+  const attGet = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'tools/call', params: { name: 'get_asset', arguments: { slug: 'starting-panel', name: 'intercom-config.json' } } });
+  ok(!attGet.isError && attGet.content.every((c) => c.type === 'text') && attGet.content.some((c) => c.text.includes('"brightness": 80')), 'get_asset returns the text of an attachment');
   const resized = await fetch(BASE + uploaded[0].url + '?w=64');
   ok(resized.status === 200 && resized.headers.get('content-type') === 'image/png', 'asset route serves a resized same-format variant with ?w=');
   const resList = await mcpCall({ jsonrpc: '2.0', id: 84, method: 'resources/list', params: {} });
@@ -591,7 +619,10 @@ try {
   ok(afterAuto.doc.revision === 7, 'autosave keeps revision (r7)');
 
   await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
-    html: afterAuto.content + `<p>Grounding check added.</p><figure><img src="${uploaded[0].url}" alt="Panel"><figcaption>Panel</figcaption></figure>`,
+    html:
+      afterAuto.content +
+      `<p>Grounding check added.</p><figure><img src="${uploaded[0].url}" alt="Panel"><figcaption>Panel</figcaption></figure>` +
+      `<p><a class="attachment" href="${attUp[0].url}" download="intercom-config.json">intercom-config.json</a></p>`,
     bump: true,
     summary: 'Add grounding check',
   });
@@ -768,8 +799,12 @@ try {
   ok(!(relink instanceof Error) && relink.linked === false && relink.softwares.find((s) => s.name === '2N Access Unit').fromVersion === 'v1.1.0', 'link_software updates the from-version of an existing link');
   const emptySw = await call(125, 'create_software', { name: 'Orphan Tool' });
   ok(!(emptySw instanceof Error) && emptySw.releases.length === 0 && (await req('GET', '/api/software')).some((s) => s.name === 'Orphan Tool' && s.modules.length === 0), 'a software with no version and no module still lists on the Software page');
-  const linkApi = await req('POST', '/api/modules/starting-panel/software', { name: 'Orphan Tool', fromVersion: 'v0.1' });
-  ok(linkApi.linked === true && linkApi.softwares.length === 3, 'API link endpoint');
+  const linkBadVer = await req('POST', '/api/modules/starting-panel/software', { name: 'Orphan Tool', fromVersion: 'v0.1' }).catch((e) => e);
+  ok(linkBadVer instanceof Error && /not a registered release/.test(linkBadVer.message), 'linking with a version the software never released is refused');
+  const linkApi = await req('POST', '/api/modules/starting-panel/software', { name: 'Orphan Tool' });
+  ok(linkApi.linked === true && linkApi.softwares.length === 3, 'API link endpoint (no release yet → no from-version)');
+  const badRel = await req('POST', '/api/softwares', { name: 'Never Created', version: 'v1.0' }).catch((e) => e);
+  ok(badRel instanceof Error && /not found — create it on the Software page/.test(badRel.message), 'a release cannot be registered for a software that was not created');
   const unlinkOk = await call(126, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });
   ok(!(unlinkOk instanceof Error) && unlinkOk.softwares.length === 2, 'link_software unlink removes the link');
   const unlinkMissing = await call(127, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });
@@ -954,6 +989,11 @@ try {
   const exp2 = await (await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html')).text();
   ok(!exp2.includes('/api/settings/logo') && !exp2.includes('/api/manuals/') && exp2.includes('data:image/png;base64,'),
     'export inlines logo and cover as data URIs');
+  ok(
+    !exp2.includes('/api/modules/starting-panel/assets/intercom-config.json') &&
+      /<a class="attachment" href="data:application\/json;base64,[A-Za-z0-9+/=]+" download="intercom-config\.json">/.test(exp2),
+    'export inlines an attachment as a downloadable data URI'
+  );
   ok(exp2.includes('class="lep-pages"') && exp2.includes('pagedjs_pages') && exp2.includes('font-family: Verdana'),
     'export paginates itself (paged.js inlined) to fill the List of Effective Pages, in Verdana');
   const exp = await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html');
@@ -1003,6 +1043,30 @@ try {
   ok(spRow.softwares.some((s) => s.name === 'STP Core') && !spRow.softwares.some((s) => s.name === 'Tmp Tool'), 'module keeps STP Core, loses Tmp Tool');
   const delUnknownSw = await req('DELETE', '/api/software/Nope').catch((e) => e);
   ok(delUnknownSw instanceof Error && /not found/.test(delUnknownSw.message), 'deleting an unknown software is refused');
+
+  // a software's OWN manual: an own-software module named after it, edited like any doc
+  await req('POST', '/api/software', { name: 'Deck Planner', version: 'v3.0.0' });
+  const own = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', { group: 'IOS' });
+  ok(own.slug === 'deck-planner' && own.key === 'software-customer:A1.0' && own.docs.length === 2 && own.docs.every((d) => d.manual.startsWith('software-')), 'own manual = own-software module with the software pair');
+  const ownRow = (await req('GET', '/api/software')).find((r) => r.name === 'Deck Planner');
+  ok(ownRow.modules.length === 1 && ownRow.modules[0].type === 'own-software' && ownRow.modules[0].fromVersion === 'v3.0.0' && ownRow.manualCount === 2, 'Software page row shows the own manual with its from-version');
+  const ownDoc = await req('GET', '/api/modules/deck-planner/docs/software-customer:A1.0');
+  ok(ownDoc.content.includes('<h2>Overview</h2>') && ownDoc.content.includes('Deck Planner') && ownDoc.doc.status === 'draft', 'own manual opens in the editor as a draft');
+  const ownDup = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', {}).catch((e) => e);
+  ok(ownDup instanceof Error && /already exists/.test(ownDup.message), 'a second own manual is refused');
+  const ownUnknown = await req('POST', '/api/software/Nope/own-manual', {}).catch((e) => e);
+  ok(ownUnknown instanceof Error && /not found/.test(ownUnknown.message), 'own manual of an unknown software is refused');
+  const ownMcp = await call(140, 'create_software', { name: 'Route Editor', own_manual: true, group: 'IOS', version: 'v1.0' });
+  ok(!(ownMcp instanceof Error) && ownMcp.ownModule?.slug === 'route-editor' && ownMcp.ownModule.docs.length === 2, 'MCP create_software own_manual creates the module too');
+  const ownMcp2 = await call(141, 'create_software_manual', { name: 'Route Editor' });
+  ok(ownMcp2 instanceof Error && /already exists/.test(ownMcp2.message), 'MCP create_software_manual refuses a duplicate');
+  const clash = await req('POST', '/api/software', { name: 'Starting Panel', ownManual: { group: 'SIM' } }).catch((e) => e);
+  ok(clash instanceof Error && /already exists/.test(clash.message) && !(await req('GET', '/api/software')).some((r) => r.name === 'Starting Panel'), 'own manual clashing with a module slug fails before the feed is touched');
+  await req('DELETE', '/api/modules/deck-planner');
+  await req('DELETE', '/api/modules/route-editor');
+  await req('DELETE', '/api/software/' + encodeURIComponent('Deck Planner'));
+  await req('DELETE', '/api/software/' + encodeURIComponent('Route Editor'));
+  ok(!(await req('GET', '/api/modules')).some((m) => ['deck-planner', 'route-editor'].includes(m.slug)), 'own-manual modules removed (cleanup)');
 
   // history exists
   detail = await req('GET', '/api/modules/starting-panel');

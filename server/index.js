@@ -180,6 +180,7 @@ app.post('/api/modules', wrap(async (req, res) => {
     input.softwares = [{ name: input.software.trim(), fromVersion: input.softwareFrom || '' }];
   }
   if (mtype?.needsSoftware && !(input.softwares || []).length) {
+    await store.ensureSoftware(input.name.trim()); // created on the Software page like any software
     input.softwares = [{ name: input.name.trim(), fromVersion: '' }];
   }
 
@@ -397,14 +398,27 @@ app.get('/api/software', wrap(async (req, res) => {
   res.json(await store.listSoftware());
 }));
 
-/** Create a software: {name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}]} */
+/** Create a software: {name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}], ownManual?: {group?}}
+ *  ownManual → the software also gets its own manual (an own-software module named after it; result.ownModule). */
 app.post('/api/software', wrap(async (req, res) => {
   res.json(await store.createSoftware(req.body || {}));
+}));
+
+/** The own manual of an existing software: an own-software module named after it, linked to it,
+ *  with blank software customer + technician drafts. {group?: SIM|IOS, fromVersion?} */
+app.post('/api/software/:name/own-manual', wrap(async (req, res) => {
+  const { group, fromVersion } = req.body || {};
+  res.json(await store.createOwnSoftwareModule(req.params.name, { group: group || 'SIM', fromVersion: fromVersion || '' }));
 }));
 
 /** Delete a module: its draft branches, its folder on main and its chapter in every manual. */
 app.delete('/api/modules/:slug', wrap(async (req, res) => {
   res.json(await store.deleteModule(req.params.slug));
+}));
+
+/** Repair a software known from module links only: merge it into a registered one — {into}. */
+app.post('/api/software/:name/merge', wrap(async (req, res) => {
+  res.json(await store.mergeSoftware(req.params.name, (req.body || {}).into));
 }));
 
 /** Delete a software: unlinked from every module, dropped from the feed with its releases. */
@@ -437,6 +451,19 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.pdf': 'application/pdf',
   '.txt': 'text/plain; charset=utf-8',
+  // attachments — files the reader downloads from the manual
+  '.json': 'application/json',
+  '.xml': 'application/xml',
+  '.yaml': 'application/yaml',
+  '.yml': 'application/yaml',
+  '.csv': 'text/csv; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  '.ini': 'text/plain; charset=utf-8',
+  '.cfg': 'text/plain; charset=utf-8',
+  '.conf': 'text/plain; charset=utf-8',
+  '.zip': 'application/zip',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
 app.get('/api/modules/:slug/assets/:file', async (req, res) => {
@@ -467,6 +494,11 @@ app.get('/api/modules/:slug/assets/:file', async (req, res) => {
   }
   res.set('Content-Type', MIME[ext] || 'application/octet-stream');
   res.set('Cache-Control', 'no-cache');
+  if (store.assetKind(req.params.file) === 'attachment') {
+    // A download, never a page: the reader gets the file, the browser does not render it.
+    res.set('Content-Disposition', `attachment; filename="${req.params.file.replace(/["\r\n]/g, '')}"`);
+    res.set('X-Content-Type-Options', 'nosniff');
+  }
   res.send(buf);
 });
 
@@ -521,7 +553,8 @@ app.post('/api/modules/:slug/docs/:version/assets', wrap(async (req, res) => {
     .map((f) => ({ name: f.name, buffer: Buffer.from(f.dataBase64 || '', 'base64') }))
     .filter((f) => f.buffer.length > 0);
   if (!files.length) throw new Error('No files provided');
-  res.json(await store.saveAssets(req.params.slug, req.params.version, files));
+  // attachments: true — keep every file as it is (the editor's paste / drop of non-image files)
+  res.json(await store.saveAssets(req.params.slug, req.params.version, files, { attachments: !!req.body.attachments }));
 }));
 
 /* ---------- photo → house-style line-art (same engine as the AI chat and MCP) ---------- */
@@ -599,7 +632,7 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
     saved.forEach((s, i) => ctx.assets.push({ url: s.url, alt: uploads[i].alt || '', from: uploads[i].from || '' }));
   }
   for (const a of await store.listAssets(slug)) {
-    if (!ctx.assets.some((x) => x.url === a.url)) ctx.assets.push({ url: a.url, alt: '', from: 'asset store', version: store.describeAssetVersion(a) });
+    if (!ctx.assets.some((x) => x.url === a.url)) ctx.assets.push({ url: a.url, name: a.name, kind: a.kind, alt: '', from: 'asset store', version: store.describeAssetVersion(a) });
   }
 
   const result = await ai.chatEdit({
@@ -639,6 +672,39 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
     }
   }
   delete result.generateImages;
+
+  // 5. Module-data changes the model asked for (the generated section 3.2 "Software relation"):
+  //    software links go to the module, covered releases to this doc; then sections 1–3 are
+  //    re-rendered so the editor can swap them in.
+  let dataChanged = false;
+  const mu = result.moduleUpdate;
+  if (editable && mu && Array.isArray(mu.softwares)) {
+    const softwares = mu.softwares
+      .filter((s) => s && typeof s.name === 'string' && s.name.trim())
+      .map((s) => ({ name: s.name.trim(), fromVersion: String(s.from_version ?? s.fromVersion ?? '').trim() }));
+    try {
+      await store.updateModule(slug, { softwares });
+      dataChanged = true;
+      notes.push(`Software relation updated: ${softwares.map((s) => `${s.name}${s.fromVersion ? ` from ${s.fromVersion}` : ''}`).join(', ') || 'no software linked'}.`);
+    } catch (e) {
+      notes.push(`Software relation not updated: ${e.message}`);
+    }
+  }
+  for (const c of editable ? result.coverReleases || [] : []) {
+    try {
+      await store.linkReleaseToDoc(slug, version, String(c.name), String(c.version));
+      dataChanged = true;
+      notes.push(`This doc now covers ${c.name} ${c.version}.`);
+    } catch (e) {
+      notes.push(`Could not cover ${c.name} ${c.version}: ${e.message}`);
+    }
+  }
+  delete result.moduleUpdate;
+  delete result.coverReleases;
+  if (dataChanged) {
+    const fresh = await store.getDoc(slug, version, { lang });
+    if (fresh) Object.assign(result, { generated: fresh.generated, module: fresh.module, doc: fresh.doc });
+  }
 
   if (notes.length) result.reply = `${result.reply}\n\n${notes.join('\n')}`;
   res.json(result);

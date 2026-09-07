@@ -67,10 +67,14 @@ export const api = {
   /** Software page rows: {name, modules:[{slug, name, manuals, docs, uncovered}], releases:[{version, coveredBy}]} */
   software: () => request('/api/software'),
   createSoftware: (body) => request('/api/software', { method: 'POST', body }),
+  /** The software's own manual: an own-software module named after it with blank SW customer + technician drafts. */
+  createSoftwareManual: (name, body) => request(`/api/software/${encodeURIComponent(name)}/own-manual`, { method: 'POST', body }),
   /** Deletes the module: draft branches, folder on main, chapter in every manual. */
   deleteModule: (slug) => request(`/api/modules/${slug}`, { method: 'DELETE' }),
   /** Unlinks the software from every module and drops it (with its releases) from the feed. */
   deleteSoftware: (name) => request(`/api/software/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  /** Repair: a name modules link that was never created as a software → merged into a registered one. */
+  mergeSoftware: (name, into) => request(`/api/software/${encodeURIComponent(name)}/merge`, { method: 'POST', body: { into } }),
   linkSoftware: (slug, body) => request(`/api/modules/${slug}/software`, { method: 'POST', body }),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
   coverRelease: (slug, version, name, swVersion) =>
@@ -86,8 +90,9 @@ export const api = {
   aiSettings: () => request('/api/settings/ai'),
   saveAiSettings: (guidelines) => request('/api/settings/ai', { method: 'PUT', body: { guidelines } }),
   mcpInfo: () => request('/api/mcp-info'),
-  uploadAssets: (slug, version, files) =>
-    request(`/api/modules/${slug}/docs/${version}/assets`, { method: 'POST', body: { files } }),
+  // opts.attachments: keep every file as it is (a download), instead of expanding documents into pictures
+  uploadAssets: (slug, version, files, opts = {}) =>
+    request(`/api/modules/${slug}/docs/${version}/assets`, { method: 'POST', body: { files, ...opts } }),
   listAssets: (slug) => request(`/api/modules/${slug}/assets`),
   deleteAsset: (slug, version, name) =>
     request(`/api/modules/${slug}/docs/${version}/assets/${encodeURIComponent(name)}`, { method: 'DELETE' }),

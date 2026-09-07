@@ -254,6 +254,14 @@ label.inline { font-weight: 400; color: var(--muted); }
 .doc-page img { max-width: 100%; height: auto; }
 .doc-page figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; min-height: 60px; background: #f6f8fb; }
 .doc-page figcaption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+/* a software known from module links only — repair prompt */
+.hint.warn { color: #b45309; }
+.sw-repair { margin: 8px 0 12px; padding: 10px 12px; border: 1px dashed var(--orange, #f59e0b); border-radius: 8px; }
+.sw-repair .pair { margin-top: 6px; align-items: center; }
+/* attachment: a file the reader downloads (config, firmware…) — a chip, not a bare link */
+.doc-page a.attachment { display: inline-block; padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel, #f6f8fb); color: var(--accent); text-decoration: none; font-family: ui-monospace, Consolas, monospace; font-size: 13px; cursor: pointer; }
+.doc-page a.attachment::before { content: '📎 '; }
+.doc-page a.attachment:hover { border-color: var(--accent); }
 
 .doc-page .admonition { border-left: 4px solid; border-radius: 6px; padding: 10px 14px; margin: 14px 0; }
 .doc-page .admonition-title { font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.05em; margin: 0 0 4px; }
@@ -291,6 +299,8 @@ label.inline { font-weight: 400; color: var(--muted); }
 .attach-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
 .attach-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--code-bg); border-radius: 12px; padding: 3px 10px; font-size: 12.5px; }
 .attach-chip button { border: none; background: none; color: var(--muted); padding: 0; }
+.queue-chips { border-top: 1px dashed var(--line); padding-top: 8px; }
+.attach-chip.queued { background: var(--accent-soft-2); border: 1px dashed var(--accent-border); max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* thinking animation */
 .thinking { display: flex; align-items: center; gap: 10px; }
@@ -444,7 +454,42 @@ label.inline { font-weight: 400; color: var(--muted); }
 .manual-pill.mp-superseded { color: var(--muted); }
 .manual-pill.mp-missing { border-style: dashed; color: var(--muted); background: transparent; }
 .manual-pill.mp-missing .mp-type { font-weight: 400; }
-.manual-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
+/* Manuals tab: one flat table — a group row per manual type, the working draft and last release under it, older versions folded. */
+.manuals-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 0 0 12px; }
+.manuals-head h2 { margin: 0; font-size: 18px; display: flex; align-items: baseline; gap: 10px; }
+.manual-filter { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.manual-filter .mode-toggle button { padding: 4px 11px; font-size: 12.5px; display: inline-flex; align-items: center; gap: 6px; }
+.manual-filter .mf-count { font-size: 10.5px; font-weight: 600; border-radius: 9px; padding: 0 5px; background: var(--code-bg); color: var(--muted); min-width: 16px; text-align: center; }
+.manual-filter button.active .mf-count { background: rgba(255,255,255,0.25); color: #fff; }
+.manual-filter .mf-hint { margin-left: auto; }
+.manuals-table th.col-manual { padding-left: 52px; }
+.manuals-table .actions-cell { text-align: right; }
+.manuals-table .row-actions { justify-content: flex-end; flex-wrap: nowrap; }
+.manuals-table .group-row td { background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.manuals-table .group-row strong { font-size: 14px; }
+.manuals-table .group-row .hint { margin-left: 8px; }
+.manuals-table .chev { border: none; background: none; color: var(--muted); padding: 0 6px; font-size: 11px; transition: transform 0.12s; }
+.manuals-table .chev.open { transform: rotate(90deg); }
+.manuals-table .row-label { padding-left: 52px; font-size: 12.5px; }
+.manuals-table .older-row td { padding: 6px 14px 8px 52px; }
+.manuals-table .link-btn { border: none; background: none; color: var(--accent); padding: 0; font-size: 13px; }
+.manuals-table .link-btn:hover { text-decoration: underline; }
+.create-manual { position: relative; }
+.create-manual .caret { font-size: 11px; margin-left: 4px; }
+.create-manual-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 300px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.create-manual-menu .cm-title { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 4px 8px 6px; }
+.create-manual-menu .cm-item { display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; border: none; background: none; border-radius: 8px; padding: 8px 10px; color: var(--ink); font: inherit; }
+.create-manual-menu .cm-item:hover:not(:disabled) { background: var(--code-bg); }
+.create-manual-menu .cm-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.create-manual-menu .cm-item .manual-kind { flex: 0 0 auto; }
+.create-manual-menu .cm-text { display: flex; flex-direction: column; gap: 1px; }
+.create-manual-menu .cm-text strong { font-size: 13.5px; }
+.manuals-table .actions-cell { white-space: nowrap; width: 1%; }
+.manuals-table .group-cell { display: flex; align-items: center; gap: 8px; }
+.action-menu-wrap .btn { letter-spacing: 1px; }
+.action-menu { min-width: 190px; }
+.action-menu .cm-item { text-decoration: none; }
+.action-menu .cm-item.danger strong { color: var(--red); }
 .manual-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .manual-card.missing { border-style: dashed; background: transparent; }
 .manual-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

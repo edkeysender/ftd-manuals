@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64 } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -164,10 +164,124 @@ export default function ModuleDetail() {
   );
 }
 
+const MANUAL_FILTER_KEY = 'ftd-manuals-filter';
+/** Filters over the manual cards: by what the manual documents (hardware / software) or for whom (customer / technician). */
+const MANUAL_FILTERS = [
+  { id: 'all', label: 'All', match: () => true },
+  { id: 'hardware', label: 'Hardware', match: (mt) => mt.kind === 'hardware' },
+  { id: 'software', label: 'Software', match: (mt) => mt.kind === 'software' },
+  { id: 'customer', label: 'Customer', match: (mt) => mt.audience === 'customer' },
+  { id: 'technician', label: 'Technician', match: (mt) => mt.audience === 'technician' },
+];
+
+/** The row's "···" overflow: secondary actions (review, back to draft, FAT, discard). */
+function ActionMenu({ items }) {
+  // The menu is fixed-positioned from the button's rect (the table clips overflow for its rounded
+  // corners, so an absolute menu on the last row would be cut off); it flips upward near the bottom.
+  const [pos, setPos] = useState(null);
+  const open = !!pos;
+  const ref = useRef(null);
+  const btnRef = useRef(null);
+  const place = () => {
+    const r = btnRef.current.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom;
+    const up = below < 220 && r.top > below;
+    setPos(up ? { right: window.innerWidth - r.right, top: 'auto', bottom: window.innerHeight - r.top + 6 } : { right: window.innerWidth - r.right, top: r.bottom + 6 });
+  };
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setPos(null); };
+    const esc = (e) => { if (e.key === 'Escape') setPos(null); };
+    const away = () => setPos(null);
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    window.addEventListener('scroll', away, true);
+    window.addEventListener('resize', away);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc);
+      window.removeEventListener('scroll', away, true);
+      window.removeEventListener('resize', away);
+    };
+  }, [open]);
+  return (
+    <div className="create-manual action-menu-wrap" ref={ref}>
+      <button ref={btnRef} className="btn btn-sm" title={t('More actions')} aria-haspopup="menu" aria-expanded={open} onClick={() => (open ? setPos(null) : place())}>···</button>
+      {open && (
+        <div className="create-manual-menu action-menu" role="menu" style={{ position: 'fixed', ...pos }}>
+          {items.map((it) => it.href ? (
+            <a key={it.label} className="cm-item" role="menuitem" href={it.href} target="_blank" rel="noreferrer" title={it.hint || ''} onClick={() => setOpen(false)}>
+              <span className="cm-text"><strong>{it.label}</strong>{it.hint && <span className="muted small">{it.hint}</span>}</span>
+            </a>
+          ) : (
+            <button key={it.label} className={`cm-item ${it.danger ? 'danger' : ''}`} role="menuitem" title={it.hint || ''} onClick={() => { setOpen(false); it.onClick(); }}>
+              <span className="cm-text">
+                <strong>{it.label}{it.count > 0 && <span className="count-pill" style={{ marginLeft: 6 }}>{it.count}</span>}</strong>
+                {it.hint && <span className="muted small">{it.hint}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
- * One card per manual type (customer / technician / software-customer / software-technician):
- * its versions with the draft → review → release actions, a "New version" per type when no
- * draft of that type is open, and "Create" for the types the module does not have yet.
+ * The one "+ Create manual" button: a menu over the four manual types. Types the module already
+ * has (or software types while no software is linked) are listed but disabled, with the reason.
+ */
+function CreateManualMenu({ docs, hasSoftware, onPick }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const allTaken = MANUAL_TYPES.every((mt) => docs.some((d) => d.manual === mt.id));
+  return (
+    <div className="create-manual" ref={ref}>
+      <button className="btn btn-primary" disabled={allTaken} title={allTaken ? t('Every manual type already exists — use New version on its card') : ''} onClick={() => setOpen((o) => !o)}>
+        {t('+ Create manual')} <span className="caret">▾</span>
+      </button>
+      {open && (
+        <div className="create-manual-menu" role="menu">
+          <div className="cm-title">{t('Choose manual type')}</div>
+          {MANUAL_TYPES.map((mt) => {
+            const existing = docs.find((d) => d.manual === mt.id);
+            const noSoftware = mt.kind === 'software' && !hasSoftware;
+            const disabled = !!existing || noSoftware;
+            const why = existing
+              ? t('Already created — {version} r{rev}', { version: existing.version, rev: existing.revision || 1 })
+              : noSoftware
+                ? t('Link the module to a software first (Software versions tab)')
+                : mt.sections.map((s) => t(s)).join(' · ');
+            return (
+              <button key={mt.id} className="cm-item" role="menuitem" disabled={disabled} onClick={() => { setOpen(false); onPick(mt.id); }}>
+                <span className={`manual-kind ${mt.kind}`}>{mt.kind === 'software' ? 'SW' : 'HW'}</span>
+                <span className="cm-text">
+                  <strong>{t(mt.label)}</strong>
+                  <span className="muted small">{why}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One flat table: a group row per manual type the module has (customer / technician /
+ * software-customer / software-technician), under it the working draft and the last release with
+ * the draft → review → release actions (secondary ones behind "···"), older versions folded away.
+ * "New version" sits on the group row when no draft of that type is open; the types the module
+ * does not have yet come from the single "+ Create manual" menu above the table.
  */
 function ManualsTab({ data, slug, act, reload }) {
   const { module, docs, uncovered } = data;
@@ -176,154 +290,200 @@ function ManualsTab({ data, slug, act, reload }) {
   const toast = useToast();
   const { isAdmin } = useAuth();
   const hasSoftware = (module.softwares || []).length > 0;
+  // Which manual cards to show — remembered in this browser (the strip scrolls sideways, so narrowing it helps).
+  const [filter, setFilter] = useState(() => {
+    try { return localStorage.getItem(MANUAL_FILTER_KEY) || 'all'; } catch { return 'all'; }
+  });
+  const pickFilter = (id) => {
+    setFilter(id);
+    try { localStorage.setItem(MANUAL_FILTER_KEY, id); } catch { /* private mode */ }
+  };
+  const shownTypes = MANUAL_TYPES.filter((mt) => {
+    const f = MANUAL_FILTERS.find((x) => x.id === filter) || MANUAL_FILTERS[0];
+    return f.match(mt);
+  });
 
-  const versionRows = (typed, mt) =>
-    typed.map((d) => (
-      <tr key={d.key}>
-        <td><strong>{d.version}</strong></td>
-        <td>r{d.revision}</td>
-        <td><StatusBadge status={d.status} /></td>
-        <td className="muted" title={d.branch || 'main'}>{d.branch ? d.branch.replace(/^draft\//, '') : 'main'}</td>
-        <td className="muted">{timeAgo(d.updatedAt)}</td>
-        <td className="btn-row">
-          {isOpenDoc(d) && (
-            <>
-              <button className="btn btn-primary btn-sm" onClick={() => navigate(`/modules/${slug}/docs/${d.key}/edit`)}>
-                {t('Edit')}
-              </button>
-              <button className="btn btn-sm" title={t('Read-only view where reviewers select text and comment')} onClick={() => navigate(`/modules/${slug}/docs/${d.key}/review`)}>
-                {t('Review')}
-                {d.openComments > 0 && <span className="count-pill" style={{ marginLeft: 6 }}>{d.openComments}</span>}
-              </button>
-              {d.status === 'draft' && (
-                <button className="btn btn-sm" onClick={() => act(() => api.submitReview(slug, d.key), t('{doc} submitted for review', { doc: docLabel(d) }))}>
-                  {t('Submit for review')}
-                </button>
-              )}
-              {d.status === 'in-review' && (
-                <>
-                  <button className="btn btn-sm" onClick={() => act(() => api.release(slug, d.key), t('{doc} released — merged to main', { doc: docLabel(d) }))}>
-                    {t('Approve & release')}
-                  </button>
-                  <button className="btn btn-sm" onClick={() => act(() => api.backToDraft(slug, d.key), t('{doc} back to draft', { doc: docLabel(d) }))}>
-                    {t('Back to draft')}
-                  </button>
-                </>
-              )}
-              {isAdmin && <button
-                className="btn btn-sm btn-danger"
-                onClick={() => {
-                  if (confirm(t('Discard {manual} draft {version}? The branch {branch} will be deleted.', { manual: t(mt.label).toLowerCase(), version: d.version, branch: d.branch }))) {
-                    act(() => api.discard(slug, d.key), t('{doc} discarded', { doc: docLabel(d) })).then(() => {
-                      // module may be gone entirely if nothing of it was ever released
-                      api.module(slug).catch(() => navigate('/'));
-                    });
-                  }
-                }}
-              >
-                {t('Discard')}
-              </button>}
-            </>
-          )}
-          {(d.status === 'released' || d.status === 'superseded') && (
-            <button className="btn btn-sm" onClick={() => navigate(`/modules/${slug}/docs/${d.key}/edit`)}>
-              {t('View')}
-            </button>
-          )}
-          {d.fat && (
-            <a className="btn btn-sm" href={`/api/modules/${slug}/docs/${d.key}/checklist.html`} target="_blank" rel="noreferrer" title={t('Blank FAT protocol for this doc version')}>
-              {t('FAT')}
-            </a>
-          )}
-        </td>
-      </tr>
-    ));
+  const [collapsed, setCollapsed] = useState({}); // manual type id → group folded
+  const [older, setOlder] = useState({}); // manual type id → older versions shown
+  const toggle = (setter, id) => setter((m) => ({ ...m, [id]: !m[id] }));
+
+  const rowActions = (d, mt) => {
+    const go = (view) => navigate(`/modules/${slug}/docs/${d.key}/${view}`);
+    const primary = [];
+    const more = [];
+    if (isOpenDoc(d)) {
+      if (d.status === 'draft') {
+        primary.push(<button key="edit" className="btn btn-primary btn-sm" onClick={() => go('edit')}>{t('Edit')}</button>);
+        primary.push(
+          <button key="submit" className="btn btn-sm" onClick={() => act(() => api.submitReview(slug, d.key), t('{doc} submitted for review', { doc: docLabel(d) }))}>
+            {t('Submit')}
+          </button>
+        );
+        more.push({ label: t('Review'), hint: t('Read-only view where reviewers select text and comment'), count: d.openComments, onClick: () => go('review') });
+      } else {
+        primary.push(
+          <button key="review" className="btn btn-primary btn-sm" title={t('Read-only view where reviewers select text and comment')} onClick={() => go('review')}>
+            {t('Review')}
+            {d.openComments > 0 && <span className="count-pill" style={{ marginLeft: 6 }}>{d.openComments}</span>}
+          </button>
+        );
+        primary.push(
+          <button key="release" className="btn btn-sm" onClick={() => act(() => api.release(slug, d.key), t('{doc} released — merged to main', { doc: docLabel(d) }))}>
+            {t('Approve & release')}
+          </button>
+        );
+        more.push({ label: t('Edit'), onClick: () => go('edit') });
+        more.push({ label: t('Back to draft'), onClick: () => act(() => api.backToDraft(slug, d.key), t('{doc} back to draft', { doc: docLabel(d) })) });
+      }
+      if (d.fat) more.push({ label: t('FAT'), hint: t('Blank FAT protocol for this doc version'), href: `/api/modules/${slug}/docs/${d.key}/checklist.html` });
+      if (isAdmin) {
+        more.push({
+          label: t('Discard'),
+          danger: true,
+          onClick: () => {
+            if (confirm(t('Discard {manual} draft {version}? The branch {branch} will be deleted.', { manual: t(mt.label).toLowerCase(), version: d.version, branch: d.branch }))) {
+              act(() => api.discard(slug, d.key), t('{doc} discarded', { doc: docLabel(d) })).then(() => {
+                // module may be gone entirely if nothing of it was ever released
+                api.module(slug).catch(() => navigate('/'));
+              });
+            }
+          },
+        });
+      }
+    } else {
+      primary.push(<button key="view" className="btn btn-primary btn-sm" onClick={() => go('edit')}>{t('View')}</button>);
+      if (d.fat) {
+        primary.push(
+          <a key="fat" className="btn btn-sm" href={`/api/modules/${slug}/docs/${d.key}/checklist.html`} target="_blank" rel="noreferrer" title={t('Blank FAT protocol for this doc version')}>
+            {t('FAT')}
+          </a>
+        );
+      }
+    }
+    return (
+      <div className="btn-row row-actions">
+        {primary}
+        {more.length > 0 && <ActionMenu items={more} />}
+      </div>
+    );
+  };
+
+  const versionRow = (d, mt, label) => (
+    <tr key={d.key} className="version-row">
+      <td className="muted row-label" title={d.branch || 'main'}>{label}</td>
+      <td><strong>{d.version}</strong></td>
+      <td className="muted">r{d.revision}</td>
+      <td><StatusBadge status={d.status} /></td>
+      <td className="muted">{timeAgo(d.updatedAt)}</td>
+      <td className="actions-cell">{rowActions(d, mt)}</td>
+    </tr>
+  );
+
+  const created = MANUAL_TYPES.filter((mt) => docs.some((d) => d.manual === mt.id));
+  const shownGroups = shownTypes.filter((mt) => docs.some((d) => d.manual === mt.id));
 
   return (
     <>
-      <div className="manual-grid">
-        {MANUAL_TYPES.map((mt) => {
-          const typed = docs.filter((d) => d.manual === mt.id);
-          const open = typed.find(isOpenDoc);
-          const unc = (uncovered || []).filter((u) => u.manual === mt.id);
-          const canHave = mt.kind !== 'software' || hasSoftware;
-          if (!typed.length) {
-            return (
-              <div className="manual-card missing" key={mt.id}>
-                <div className="manual-card-head">
-                  <div>
-                    <h3>
-                      {t(mt.label)} <span className={`manual-kind ${mt.kind}`}>{t(mt.kind)}</span>
-                    </h3>
-                    <p className="muted small">{t(mt.desc)}</p>
-                  </div>
-                  <button
-                    className="btn btn-sm"
-                    disabled={!canHave}
-                    title={canHave ? t('Start {manual} A1.0', { manual: t(mt.label).toLowerCase() }) : t('Link the module to a software first (Software versions tab)')}
-                    onClick={() => setAdding(mt.id)}
-                  >
-                    {t('+ Create')}
-                  </button>
-                </div>
-                {!canHave && <span className="hint">{t('Software manuals need a software relation — add one in the Software versions tab.')}</span>}
-              </div>
-            );
-          }
-          return (
-            <div className="manual-card" key={mt.id}>
-              <div className="manual-card-head">
-                <div>
-                  <h3>
-                    {t(mt.label)} <span className={`manual-kind ${mt.kind}`}>{t(mt.kind)}</span> <StatusBadge status={typed[0].status} />
-                  </h3>
-                  <p className="muted small">
-                    {t(mt.desc)} {t('Sections: {sections}.', { sections: mt.sections.map((s) => t(s)).join(' · ') })}
-                  </p>
-                </div>
-                {!open && (
-                  <div className="btn-col">
-                    <div className="btn-row">
-                      <button
-                        className="btn btn-sm"
-                        title={t('Next minor version of the {manual}, based on {version}', { manual: t(mt.label).toLowerCase(), version: typed[0].version })}
-                        onClick={() => act(() => api.nextDocVersion(slug, { manual: mt.id, bump: 'minor' }), t('New {manual} draft (minor) created', { manual: t(mt.label).toLowerCase() }))}
-                      >
-                        {t('New version (minor)')}
-                      </button>
-                      <button
-                        className="btn btn-sm"
-                        title={t('Next major version of the {manual}', { manual: t(mt.label).toLowerCase() })}
-                        onClick={() => act(() => api.nextDocVersion(slug, { manual: mt.id, bump: 'major' }), t('New {manual} draft (major) created', { manual: t(mt.label).toLowerCase() }))}
-                      >
-                        {t('major')}
-                      </button>
-                    </div>
-                    {unc.length > 0 && (
-                      <span className="hint">
-                        {t('The new version becomes the manual for {releases}', { releases: unc.map((u) => `${u.name} ${u.version}`).join(', ') })}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t('Version')}</th>
-                    <th>{t('Rev')}</th>
-                    <th>{t('Status')}</th>
-                    <th>{t('Branch')}</th>
-                    <th>{t('Updated')}</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>{versionRows(typed, mt)}</tbody>
-              </table>
-            </div>
-          );
-        })}
+      <div className="manuals-head">
+        <h2>
+          {t('Manuals')} <span className="muted small">{t('{n} of {total} types created', { n: created.length, total: MANUAL_TYPES.length })}</span>
+        </h2>
+        <CreateManualMenu docs={docs} hasSoftware={hasSoftware} onPick={setAdding} />
       </div>
+      <div className="manual-filter">
+        <div className="mode-toggle" role="tablist" title={t('Which manuals to show — remembered in this browser')}>
+          {MANUAL_FILTERS.map((f) => {
+            const n = created.filter(f.match).length;
+            return (
+              <button key={f.id} className={f.id === filter ? 'active' : ''} onClick={() => pickFilter(f.id)}>
+                {t(f.label)}{n > 0 && <span className="mf-count">{n}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <span className="muted small mf-hint">{t('{shown} of {have} manuals shown', { shown: shownGroups.length, have: created.length })}</span>
+      </div>
+      <table className="table manuals-table">
+        <thead>
+          <tr>
+            <th className="col-manual">{t('Manual')}</th>
+            <th>{t('Version')}</th>
+            <th>{t('Rev')}</th>
+            <th>{t('Status')}</th>
+            <th>{t('Updated')}</th>
+            <th className="actions-cell">{t('Actions')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shownGroups.length === 0 && (
+            <tr>
+              <td colSpan={6} className="muted">
+                {created.length === 0 ? t('No manual yet — use "+ Create manual" above.') : t('No manuals of this kind yet.')}
+              </td>
+            </tr>
+          )}
+          {shownGroups.map((mt) => {
+            const typed = docs.filter((d) => d.manual === mt.id);
+            const open = typed.find(isOpenDoc);
+            const release = typed.find((d) => d.status === 'released');
+            const rest = typed.filter((d) => d !== open && d !== release);
+            const unc = (uncovered || []).filter((u) => u.manual === mt.id);
+            const folded = !!collapsed[mt.id];
+            const showOlder = !!older[mt.id];
+            return (
+              <React.Fragment key={mt.id}>
+                <tr className="group-row">
+                  <td colSpan={5}>
+                    <div className="group-cell">
+                      <button className={`chev ${folded ? '' : 'open'}`} onClick={() => toggle(setCollapsed, mt.id)} title={folded ? t('Expand') : t('Collapse')} aria-expanded={!folded}>▸</button>
+                      <span className={`manual-kind ${mt.kind}`}>{mt.kind === 'software' ? 'SW' : 'HW'}</span>
+                      <strong>{t(mt.label)}</strong>
+                      <span className="muted small">{typed.length === 1 ? t('1 version') : t('{n} versions', { n: typed.length })}</span>
+                      {!open && unc.length > 0 && (
+                        <span className="hint">{t('The new version becomes the manual for {releases}', { releases: unc.map((u) => `${u.name} ${u.version}`).join(', ') })}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="actions-cell">
+                    {!open && (
+                      <div className="btn-row row-actions">
+                        <button
+                          className="btn btn-sm"
+                          title={t('Next minor version of the {manual}, based on {version}', { manual: t(mt.label).toLowerCase(), version: typed[0].version })}
+                          onClick={() => act(() => api.nextDocVersion(slug, { manual: mt.id, bump: 'minor' }), t('New {manual} draft (minor) created', { manual: t(mt.label).toLowerCase() }))}
+                        >
+                          {t('New version (minor)')}
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          title={t('Next major version of the {manual}', { manual: t(mt.label).toLowerCase() })}
+                          onClick={() => act(() => api.nextDocVersion(slug, { manual: mt.id, bump: 'major' }), t('New {manual} draft (major) created', { manual: t(mt.label).toLowerCase() }))}
+                        >
+                          {t('major')}
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+                {!folded && open && versionRow(open, mt, t('Working draft'))}
+                {!folded && release && versionRow(release, mt, t('Last release'))}
+                {!folded && showOlder && rest.map((d) => versionRow(d, mt, t('Older')))}
+                {!folded && rest.length > 0 && (
+                  <tr className="older-row">
+                    <td colSpan={6}>
+                      <button className="link-btn" onClick={() => toggle(setOlder, mt.id)}>
+                        {showOlder
+                          ? t('Hide older versions')
+                          : rest.length === 1 ? t('Show 1 older version') : t('Show {n} older versions', { n: rest.length })}
+                      </button>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
       {adding && (
         <AddManualModal
           slug={slug}
@@ -802,13 +962,13 @@ function AssetsTab({ slug, docs, module, onChanged }) {
           upload(e.dataTransfer.files);
         }}
       >
-        <strong>{busy ? t('Uploading…') : t('Drop images or documents here')}</strong>
+        <strong>{busy ? t('Uploading…') : t('Drop images, documents or files to attach here')}</strong>
         <span className="muted">
           {draft ? t(' — or ') : t(' — no open draft; ')}
           {draft && (
             <label className="link">
               {t('choose files')}
-              <input type="file" multiple accept="image/*,.pdf,.svg,.docx,.pptx,.xlsx,.zip" hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
+              <input type="file" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ''; }} />
             </label>
           )}
           {draft ? t('. Files are committed to {branch}.', { branch: draft.branch }) : t('create a doc draft to add assets.')}
@@ -887,15 +1047,28 @@ function AssetsTab({ slug, docs, module, onChanged }) {
                 </button>
               )}
               <div className="btn-row">
-                <button
-                  className="btn btn-sm"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(`<figure><img src="${a.url}" alt="${a.name}"><figcaption>TODO(author): caption</figcaption></figure>`);
-                    toast(t('Figure HTML copied — paste it in the HTML source view'));
-                  }}
-                >
-                  {t('Copy <figure>')}
-                </button>
+                {a.kind === 'attachment' ? (
+                  <button
+                    className="btn btn-sm"
+                    title={t('A file the reader downloads from the manual — the link HTML goes into the HTML source view')}
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`<p><a class="attachment" href="${a.url}" download="${a.name}">${a.name}</a></p>`);
+                      toast(t('Attachment link copied — paste it in the HTML source view'));
+                    }}
+                  >
+                    {t('Copy link')}
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(`<figure><img src="${a.url}" alt="${a.name}"><figcaption>TODO(author): caption</figcaption></figure>`);
+                      toast(t('Figure HTML copied — paste it in the HTML source view'));
+                    }}
+                  >
+                    {t('Copy <figure>')}
+                  </button>
+                )}
                 {/.(png|jpe?g|webp|gif)$/i.test(a.name) && !/-lineart.png$/i.test(a.name) && (
                   <button
                     className="btn btn-sm"
@@ -983,6 +1156,12 @@ function SoftwareTab({ data, slug, reload }) {
           <h3>
             {sw.name} <span className="muted">{t('linked from {version}', { version: sw.fromVersion || '—' })}</span>
           </h3>
+          {!softwareFeed[sw.name] && (
+            <p className="hint warn">
+              {t('"{name}" was never created on the Software page, so its manuals cannot relate to a software version.', { name: sw.name })}{' '}
+              <Link to="/software">{t('Repair it on the Software page')}</Link>
+            </p>
+          )}
           <table className="table">
             <thead>
               <tr>
@@ -1062,7 +1241,7 @@ function SoftwareTab({ data, slug, reload }) {
         <h3>{t('Register software release')}</h3>
         <div className="pair wrap">
           <select value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}>
-            {module.softwares.map((s) => (
+            {module.softwares.filter((s) => softwareFeed[s.name]).map((s) => (
               <option key={s.name}>{s.name}</option>
             ))}
           </select>

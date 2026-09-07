@@ -123,7 +123,7 @@ export default function Wizard({ onClose, onCreated }) {
             {mtype?.needsSoftware && !software && (
               <div className="form-row">
                 <span />
-                <span className="hint">{t('No software selected — one named after the module will be created and linked.')}</span>
+                <span className="hint">{t('No software selected — one named after the module will be created on the Software page and linked.')}</span>
               </div>
             )}
             <label className="form-row">

@@ -39,6 +39,19 @@ const isImageFile = (f) => (f.type || '').startsWith('image/') || /\.(png|jpe?g|
 const escapeAttr = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 const figureHtml = (url, alt) =>
   `<figure><img src="${escapeAttr(url)}" alt="${escapeAttr(alt)}"><figcaption>TODO(author): figure caption</figcaption></figure><p></p>`;
+/** A file the reader downloads from the manual (config, firmware…) — a link chip on its own line. */
+const attachmentHtml = (url, name) =>
+  `<p><a class="attachment" href="${escapeAttr(url)}" download="${escapeAttr(name)}">${String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</a></p><p></p>`;
+/** Caret position under the mouse (drop point). */
+const rangeAtPoint = (x, y) => {
+  if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+  const p = document.caretPositionFromPoint?.(x, y);
+  if (!p) return null;
+  const r = document.createRange();
+  r.setStart(p.offsetNode, p.offset);
+  r.collapse(true);
+  return r;
+};
 
 /* TODO(author) markers are highlighted with the CSS Custom Highlight API so the
    stored HTML stays untouched — nothing is wrapped, nothing leaks into exports. */
@@ -245,6 +258,7 @@ export default function Editor({ review: reviewProp = false }) {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
+  const [queue, setQueue] = useState([]); // chat messages typed while the assistant was busy — sent in order
   const [busyKind, setBusyKind] = useState('chat'); // 'chat' | 'illustrate'
   const [aiStart, setAiStart] = useState(null);
   const [dropOver, setDropOver] = useState(false);
@@ -653,6 +667,18 @@ export default function Editor({ review: reviewProp = false }) {
       t('Insert figure'),
     ],
     [
+      t('📎 File'),
+      () => {
+        if (!editable) return;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.onchange = () => insertFiles(input.files);
+        input.click();
+      },
+      t('Attach a file the reader downloads (ready-to-use configuration, firmware…) — or paste / drop it into the text'),
+    ],
+    [
       t('⚠ Warning'),
       () =>
         insertHtml(
@@ -849,15 +875,61 @@ export default function Editor({ review: reviewProp = false }) {
     }
   }
 
+  /**
+   * Non-image files pasted or dropped into the body (a ready-to-use configuration,
+   * firmware, a spreadsheet) become attachments: stored as they are in the module's
+   * assets and linked at the caret as a download — like attaching a file in Confluence.
+   */
+  async function insertAttachmentFiles(fileList) {
+    const files = [...fileList].filter((f) => !isImageFile(f));
+    if (!files.length) return;
+    if (!editable) return toast(t('Read-only doc — files can only be attached to a draft'), 'err');
+    if (pending) return toast(t('Accept or discard the pending AI edit first'), 'err');
+    try {
+      setSaving(true);
+      const payload = await Promise.all(files.map(readFileAsBase64));
+      const saved = await api.uploadAssets(slug, version, payload, { attachments: true });
+      for (const s of saved) insertAtCaret(attachmentHtml(s.url, s.name));
+      toast(t('{what} attached — the reader downloads it from the manual', { what: saved.length > 1 ? plural(saved.length, 'file') : saved[0].name }));
+    } catch (e) {
+      toast(t('Attachment failed: {error}', { error: e.message }), 'err');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Files pasted / dropped into the body: pictures become figures, everything else an attachment. */
+  async function insertFiles(fileList) {
+    const files = [...fileList];
+    await insertImageFiles(files);
+    await insertAttachmentFiles(files);
+  }
+
+  const onEditorDrop = (e) => {
+    if (!e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    const r = rangeAtPoint(e.clientX, e.clientY);
+    if (r && editorRef.current?.contains(r.commonAncestorContainer)) selRef.current = r;
+    insertFiles(e.dataTransfer.files);
+  };
+
+  // Links do not navigate inside a contentEditable — open the attachment (a download) explicitly.
+  const onEditorClick = (e) => {
+    const a = e.target.closest?.('a.attachment');
+    if (!a) return;
+    e.preventDefault();
+    window.open(a.getAttribute('href'), '_blank');
+  };
+
   const onEditorPaste = (e) => {
     const cd = e.clipboardData;
     if (!cd) return;
-    const files = [...(cd.files || [])].filter(isImageFile);
+    const files = [...(cd.files || [])];
     const htmlData = cd.getData('text/html');
     if (files.length) {
       e.preventDefault();
       rememberSelection();
-      insertImageFiles(files);
+      insertFiles(files);
     } else if (/<img[^>]+src="data:image\//i.test(htmlData)) {
       e.preventDefault();
       rememberSelection();
@@ -905,15 +977,31 @@ export default function Editor({ review: reviewProp = false }) {
     sendChat(instruction, c.id);
   }
 
-  async function sendChat(overrideText, commentId = null) {
+  /** Send now — or, while the assistant works or an edit awaits accept/discard, queue it; the queue drains in order. */
+  function sendChat(overrideText, commentId = null) {
     const text = typeof overrideText === 'string' ? overrideText.trim() : chatInput.trim();
-    if ((!text && attachments.length === 0) || aiBusy || pending) return;
-    const sent = attachments;
+    if (!text && attachments.length === 0) return;
+    const item = { text, attachments, commentId };
+    setChatInput('');
+    setAttachments([]);
+    if (aiBusy || pending) {
+      setQueue((q) => [...q, item]);
+      return;
+    }
+    runChat(item);
+  }
+
+  useEffect(() => {
+    if (aiBusy || pending || !queue.length) return;
+    const [next, ...rest] = queue;
+    setQueue(rest);
+    runChat(next);
+  }, [aiBusy, pending, queue]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function runChat({ text, attachments: sent, commentId }) {
     const label = sent.length ? `${text}${text ? '\n' : ''}📎 ${sent.map((a) => a.name).join(', ')}` : text;
     const next = [...messages, { role: 'user', content: label }];
     setMessages(next);
-    setChatInput('');
-    setAttachments([]);
     setAiBusy(true);
     setBusyKind('chat');
     setAiStart(Date.now());
@@ -927,6 +1015,11 @@ export default function Editor({ review: reviewProp = false }) {
         attachments: sent,
       });
       setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
+      if (res.generated) {
+        // The model changed module data (software relation) — sections 1–3 were re-rendered server-side.
+        setData((d) => (d ? { ...d, generated: res.generated, module: res.module || d.module } : d));
+        if (res.doc) setDocMeta(res.doc);
+      }
       if (res.html) {
         const instruction = text || t('use {files}', { files: sent.map((a) => a.name).join(', ') });
         saveSnapshot(slug, snapId, { original: htmlRef.current, instruction, commentId });
@@ -1244,6 +1337,11 @@ export default function Editor({ review: reviewProp = false }) {
                   suppressContentEditableWarning
                   onInput={onInput}
                   onPaste={onEditorPaste}
+                  onDragOver={(e) => {
+                    if (editable && e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+                  }}
+                  onDrop={onEditorDrop}
+                  onClick={onEditorClick}
                   onKeyUp={rememberSelection}
                   onMouseUp={rememberSelection}
                   onBlur={rememberSelection}
@@ -1493,11 +1591,22 @@ export default function Editor({ review: reviewProp = false }) {
                   ))}
                 </div>
               )}
+              {queue.length > 0 && (
+                <div className="attach-chips queue-chips">
+                  {queue.map((q, i) => (
+                    <span key={i} className="attach-chip queued" title={q.text}>
+                      <span className="muted">{i + 1}.</span>{' '}
+                      {(q.text || t('attachments only')).slice(0, 60)}
+                      {q.attachments.length ? ` 📎${q.attachments.length}` : ''}
+                      <button title={t('Remove from queue')} onClick={() => setQueue((qq) => qq.filter((_, j) => j !== i))}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="chat-input">
                 <button
                   className="btn btn-sm attach-btn"
                   title={t("Attach images or text files — images are stored in the module's assets")}
-                  disabled={aiBusy || !!pending}
                   onClick={() => fileRef.current?.click()}
                 >
                   📎
@@ -1517,16 +1626,26 @@ export default function Editor({ review: reviewProp = false }) {
                   value={chatInput}
                   placeholder={
                     pending
-                      ? t('Accept or discard the pending edit first')
-                      : t('e.g. add a grounding check to 4.1 — paste a URL to source a website, attach photos to embed them')
+                      ? t('Accept or discard the pending edit — the next instruction waits in the queue meanwhile')
+                      : aiBusy
+                        ? t('Type the next instruction — it is sent as soon as this one finishes')
+                        : t('e.g. add a grounding check to 4.1 — paste a URL to source a website, paste or attach pictures to use them')
                   }
-                  disabled={aiBusy || !!pending}
                   onChange={(e) => setChatInput(e.target.value)}
                   onPaste={(e) => {
+                    // A pasted picture becomes an attachment of the next message (the assistant
+                    // then describes / places / redraws it as asked) — not a line-art job by itself.
                     const imgs = [...(e.clipboardData?.files || [])].filter(isImageFile);
                     if (imgs.length) {
                       e.preventDefault();
-                      illustrateFiles(imgs);
+                      const stamp = Date.now();
+                      addFiles(
+                        imgs.map((f, i) => {
+                          const ext = (f.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+                          const generic = !f.name || /^image\.\w+$/i.test(f.name);
+                          return generic ? new File([f], `pasted-${stamp}${i ? `-${i + 1}` : ''}.${ext}`, { type: f.type }) : f;
+                        })
+                      );
                     }
                   }}
                   onKeyDown={(e) => {
@@ -1538,10 +1657,11 @@ export default function Editor({ review: reviewProp = false }) {
                 />
                 <button
                   className="btn btn-primary btn-sm"
-                  disabled={aiBusy || !!pending || (!chatInput.trim() && !attachments.length)}
-                  onClick={sendChat}
+                  disabled={!chatInput.trim() && !attachments.length}
+                  title={aiBusy || pending ? t('Queued — sent when the assistant is free') : ''}
+                  onClick={() => sendChat()}
                 >
-                  {t('Send')}
+                  {aiBusy || pending ? t('Queue') : t('Send')}
                 </button>
               </div>
             </div>
