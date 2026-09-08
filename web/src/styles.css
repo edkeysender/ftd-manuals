@@ -439,9 +439,11 @@ label.inline { font-weight: 400; color: var(--muted); }
 .btn-rename { font-size: 15px; opacity: 0.45; vertical-align: middle; }
 .btn-rename:hover { opacity: 1; }
 .hw-cell { display: flex; flex-wrap: wrap; gap: 4px; }
-/* Parts column: show the first two rows of chips, the rest on hover (title) and in the module. */
-.hw-cell-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.hw-cell-clamp .chip { margin: 0 4px 4px 0; }
+/* Parts column: show the first two rows of chips; the rest stay in the cell's tooltip
+   and on the module's Parts tab. The chip line-height is pinned so the cut is exact:
+   chip = 16 + 2 + 2 = 20px, two rows plus the 4px gap = 44px. */
+.hw-cell-clamp { max-height: 44px; overflow: hidden; align-content: flex-start; }
+.hw-cell-clamp .chip { line-height: 16px; }
 .chip-new { background: var(--green-soft); color: var(--green-ink); margin-left: 6px; }
 .chip-warn { background: var(--red-soft); color: var(--red-ink); margin-left: 6px; }
 .chip-hw { background: var(--accent-soft); color: var(--accent); }
