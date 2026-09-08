@@ -4,6 +4,7 @@ export const PL = {
   // ----- plural forms -----
   '#draft': 'wersja robocza|wersje robocze|wersji roboczych',
   '#module': 'moduł|moduły|modułów',
+  '#part': 'część|części|części',
   '#chapter': 'rozdział|rozdziały|rozdziałów',
   '#file': 'plik|pliki|plików',
   '#release': 'wydanie|wydania|wydań',
@@ -888,4 +889,9 @@ export const PL = {
   "Importing…": "Importowanie…",
   "Import": "Importuj",
   "{n} manuals imported": "Zaimportowano instrukcje: {n}",
+  // module rename
+  "Rename module": "Zmień nazwę modułu",
+  "Module renamed to \"{name}\"": "Zmieniono nazwę modułu na „{name}”",
+  "Save": "Zapisz",
+  "Cancel": "Anuluj",
 };
