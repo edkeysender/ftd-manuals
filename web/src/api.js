@@ -82,6 +82,7 @@ export const api = {
   aiChat: (body) => request('/api/ai/chat', { method: 'POST', body }),
   manuals: () => request('/api/manuals'),
   manual: (slug, lang = 'en') => request(`/api/manuals/${slug}${lang && lang !== 'en' ? `?lang=${lang}` : ''}`),
+  transcribe: (body) => request('/api/transcribe', { method: 'POST', body }),
   createManual: (body) => request('/api/manuals', { method: 'POST', body }),
   importManuals: (config, replace) => request('/api/manuals/import', { method: 'POST', body: { config, replace } }),
   updateManual: (slug, body) => request(`/api/manuals/${slug}`, { method: 'PUT', body }),

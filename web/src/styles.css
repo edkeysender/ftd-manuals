@@ -298,6 +298,10 @@ label.inline { font-weight: 400; color: var(--muted); }
 .chat-input { display: flex; gap: 8px; padding: 10px 12px; align-items: flex-end; flex: 0 0 auto; }
 .chat-input textarea { flex: 1; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 40px; max-height: 130px; resize: vertical; min-width: 0; }
 .attach-btn { flex: 0 0 auto; }
+.mic-btn { flex: 0 0 auto; }
+.mic-btn.recording { background: var(--red-soft); color: var(--red-ink); border-color: var(--red); animation: mic-pulse 1.2s ease-in-out infinite; }
+@keyframes mic-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .mic-btn.recording { animation: none; } }
 .attach-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
 .attach-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--code-bg); border-radius: 12px; padding: 3px 10px; font-size: 12.5px; }
 .attach-chip button { border: none; background: none; color: var(--muted); padding: 0; }

@@ -775,6 +775,13 @@ app.post('/api/manuals/:slug/cover', wrap(async (req, res) => {
 
 app.get('/api/settings/logo', wrap(async (req, res) => sendImage(res, await store.getBrandLogo())));
 
+// Speech to text for the editor chat box (a short clip recorded in the browser).
+app.post('/api/transcribe', wrap(async (req, res) => {
+  const buffer = Buffer.from(req.body.dataBase64 || '', 'base64');
+  if (!buffer.length) throw new Error('No audio data');
+  res.json({ text: await ai.transcribe(buffer, req.body.name || 'speech.webm', req.body.lang || '') });
+}));
+
 app.post('/api/settings/logo', wrap(async (req, res) => {
   const buffer = Buffer.from(req.body.dataBase64 || '', 'base64');
   if (!buffer.length) throw new Error('No image data');
