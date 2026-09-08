@@ -124,11 +124,14 @@ export default function ModulesList() {
                 </td>
                 <td className={m.hardware?.length ? '' : 'muted'} title={(m.hardware || []).map((h) => `${h.name}: ${h.type === 'ftd' ? `FTD.aero ${h.version || 'v1'}` : `COTS ${[h.manufacturer, h.model].filter(Boolean).join(' ')}`}`).join('\n')}>
                   {m.hardware?.length > 1 ? (
-                    <span className="hw-cell">
-                      {m.hardware.map((h) => (
-                        <span key={h.id || h.name} className="chip">{h.name}</span>
-                      ))}
-                    </span>
+                    <>
+                      <span className="hw-cell hw-cell-clamp">
+                        {m.hardware.map((h) => (
+                          <span key={h.id || h.name} className="chip">{h.name}</span>
+                        ))}
+                      </span>
+                      <span className="muted small">{plural(m.hardware.length, 'part')}</span>
+                    </>
                   ) : (
                     m.hardwareLabel
                   )}

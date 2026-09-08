@@ -4,6 +4,7 @@ export const PL = {
   // ----- plural forms -----
   '#draft': 'wersja robocza|wersje robocze|wersji roboczych',
   '#module': 'moduł|moduły|modułów',
+  '#part': 'część|części|części',
   '#chapter': 'rozdział|rozdziały|rozdziałów',
   '#file': 'plik|pliki|plików',
   '#release': 'wydanie|wydania|wydań',
@@ -880,4 +881,22 @@ export const PL = {
   "Stop and insert the text": "Zatrzymaj i wstaw tekst",
   "Nothing was recognised — try again closer to the microphone": "Nic nie rozpoznano — spróbuj bliżej mikrofonu",
   "Microphone access was refused — allow it for this site in the browser settings": "Odmówiono dostępu do mikrofonu — zezwól dla tej strony w ustawieniach przeglądarki",
+  // manual import from a simulator configuration file
+  "Import config": "Importuj konfigurację",
+  "Import manual from config": "Import instrukcji z konfiguracji",
+  "Configuration file (.json)": "Plik konfiguracyjny (.json)",
+  "Or paste the configuration": "Albo wklej konfigurację",
+  "Not valid JSON: {msg}": "Niepoprawny JSON: {msg}",
+  "The file has no \"simulator\" or \"ios\" section.": "Plik nie ma sekcji \"simulator\" ani \"ios\".",
+  "What will be imported": "Co zostanie zaimportowane",
+  "Replace the chapters of manuals that already exist": "Zastąp rozdziały instrukcji, które już istnieją",
+  "Each section becomes one manual: \"simulator\" in group SIM, \"ios\" in group IOS. Modules are named by slug or by name and must already exist.": "Każda sekcja tworzy jedną instrukcję: \"simulator\" w grupie SIM, \"ios\" w grupie IOS. Moduły podaje się po slugu lub nazwie i muszą już istnieć.",
+  "Importing…": "Importowanie…",
+  "Import": "Importuj",
+  "{n} manuals imported": "Zaimportowano instrukcje: {n}",
+  // module rename
+  "Rename module": "Zmień nazwę modułu",
+  "Module renamed to \"{name}\"": "Zmieniono nazwę modułu na „{name}”",
+  "Save": "Zapisz",
+  "Cancel": "Anuluj",
 };

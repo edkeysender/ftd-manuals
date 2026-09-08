@@ -19,6 +19,7 @@ export default function ModuleDetail() {
   const [tab, setTab] = useState(['docs', 'hardware', 'assets', 'history', 'software'].includes(params.get('tab')) ? params.get('tab') : 'docs');
   const toast = useToast();
   const navigate = useNavigate();
+  const [renaming, setRenaming] = useState(null); // the new name while the title is being edited
 
   const load = useCallback(
     () =>
@@ -37,6 +38,15 @@ export default function ModuleDetail() {
   const { module, docs, history } = data;
   const hasSoftware = (module.softwares || []).length > 0;
 
+  // The name is metadata: it is rewritten on main and on every open draft branch, and the
+  // module keeps its slug, so links, folders and doc keys are unaffected.
+  async function rename() {
+    const name = renaming.trim();
+    if (!name || name === module.name) return setRenaming(null);
+    await act(() => api.updateModule(slug, { name }), t('Module renamed to "{name}"', { name }));
+    setRenaming(null);
+  }
+
   async function act(fn, okMsg) {
     try {
       await fn();
@@ -54,21 +64,42 @@ export default function ModuleDetail() {
       </div>
       <div className="page-head">
         <div>
-          <h1>
-            {module.name}{' '}
-            {data.needsDoc && (
-              <span className="orange-dot" title={t('Manual-affecting software release with no doc linked yet')} />
-            )}
-          </h1>
+          {renaming === null ? (
+            <h1>
+              {module.name}{' '}
+              <button
+                className="btn-icon btn-rename"
+                title={t('Rename module')}
+                onClick={() => setRenaming(module.name)}
+              >
+                ✎
+              </button>{' '}
+              {data.needsDoc && (
+                <span className="orange-dot" title={t('Manual-affecting software release with no doc linked yet')} />
+              )}
+            </h1>
+          ) : (
+            <h1 className="rename-row">
+              <input
+                autoFocus
+                className="rename-input"
+                value={renaming}
+                onChange={(e) => setRenaming(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') rename();
+                  if (e.key === 'Escape') setRenaming(null);
+                }}
+              />
+              <button className="btn btn-primary btn-sm" disabled={!renaming.trim()} onClick={rename}>
+                {t('Save')}
+              </button>
+              <button className="btn btn-sm" onClick={() => setRenaming(null)}>{t('Cancel')}</button>
+            </h1>
+          )}
           <div className="meta-chips">
             {module.code && <code>{module.code}</code>}
             <span className="chip">{t(catLabel(module.category))}</span>
             <span className="chip">{t(module.group)}</span>
-            {(module.hardwareItems || []).map((h) => (
-              <span key={h.id || h.name} className="chip chip-hw" title={hwDetail(h)}>
-                {h.name}
-              </span>
-            ))}
             <StatusBadge status={data.status} />
           </div>
           <div className="meta-chips" style={{ marginTop: 8 }}>

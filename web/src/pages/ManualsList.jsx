@@ -8,6 +8,7 @@ import { t, plural } from '../i18n.jsx';
 export default function ManualsList() {
   const [rows, setRows] = useState(null);
   const [open, setOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
 
@@ -20,6 +21,9 @@ export default function ManualsList() {
     <div className="page">
       <div className="page-head">
         <h1>{t('Manuals')}</h1>
+        <button className="btn" onClick={() => setImporting(true)}>
+          {t('Import config')}
+        </button>
         <button className="btn btn-primary" onClick={() => setOpen(true)}>
           {t('+ Create manual')}
         </button>
@@ -80,6 +84,17 @@ export default function ManualsList() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {importing && (
+        <ImportConfig
+          onClose={() => setImporting(false)}
+          onImported={(r) => {
+            setImporting(false);
+            toast(t('{n} manuals imported', { n: r.manuals.length }));
+            load();
+          }}
+        />
       )}
 
       {open && (
@@ -167,6 +182,111 @@ function CreateManual({ onClose, onCreated }) {
           <span className="hint">{t('Released {type} versions are used; modules without one are included from their latest draft and flagged.', { type: t(manualType(manual).label).toLowerCase() })}</span>
           <button className="btn btn-primary" disabled={!name.trim() || busy} onClick={create}>
             {busy ? t('Creating…') : t('Create manual')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Import a simulator configuration file. The file describes what a customer's simulator is
+ * built from, split into a "simulator" and an "ios" section; each section becomes one manual
+ * (group SIM and IOS). Modules are named by slug or by name.
+ */
+function ImportConfig({ onClose, onImported }) {
+  const toast = useToast();
+  const [text, setText] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [replace, setReplace] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  let parsed = null;
+  let parseError = '';
+  if (text.trim()) {
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      parseError = e.message;
+    }
+  }
+  const sections = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? ['simulator', 'ios'].filter((k) => parsed[k])
+    : [];
+  const countOf = (k) => {
+    const body = parsed[k];
+    const mods = Array.isArray(body) ? body : body && body.modules;
+    return Array.isArray(mods) ? mods.length : 0;
+  };
+
+  async function pick(file) {
+    if (!file) return;
+    setFileName(file.name);
+    setText(await file.text());
+  }
+
+  async function run() {
+    setBusy(true);
+    try {
+      onImported(await api.importManuals(parsed, replace));
+    } catch (e) {
+      toast(e.message, 'err');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal modal-wide">
+        <div className="modal-head">
+          <h2>{t('Import manual from config')}</h2>
+          <span className="steps" />
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-grid">
+            <div className="field">
+              <span className="field-label">{t('Configuration file (.json)')}</span>
+              <input type="file" accept="application/json,.json" onChange={(e) => pick(e.target.files[0])} />
+              {fileName && <span className="hint">{fileName}</span>}
+            </div>
+            <div className="field">
+              <span className="field-label">{t('Or paste the configuration')}</span>
+              <textarea
+                rows={10}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={"{\\n  \"name\": \"Acme B737\",\\n  \"manual\": \"customer\",\\n  \"simulator\": {\\n    \"code\": \"B737-SIM\",\\n    \"modules\": [\"starting-panel\", \"jump-seats\"]\\n  },\\n  \"ios\": {\\n    \"code\": \"B737-IOS\",\\n    \"modules\": [\"ios-station\"]\\n  }\\n}"}
+                spellCheck={false}
+              />
+            </div>
+            {parseError && <p className="form-err">{t('Not valid JSON: {msg}', { msg: parseError })}</p>}
+            {parsed && !sections.length && <p className="form-err">{t('The file has no "simulator" or "ios" section.')}</p>}
+            {sections.length > 0 && (
+              <div className="field">
+                <span className="field-label">{t('What will be imported')}</span>
+                <ul className="plain-list">
+                  {sections.map((k) => (
+                    <li key={k}>
+                      <span className="chip">{k === 'ios' ? 'IOS' : 'SIM'}</span>{' '}
+                      {plural(countOf(k), 'module')}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <label className="check">
+              <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
+              {t('Replace the chapters of manuals that already exist')}
+            </label>
+          </div>
+        </div>
+        <div className="modal-foot">
+          <span className="hint">
+            {t('Each section becomes one manual: "simulator" in group SIM, "ios" in group IOS. Modules are named by slug or by name and must already exist.')}
+          </span>
+          <button className="btn btn-primary" disabled={!sections.length || busy} onClick={run}>
+            {busy ? t('Importing…') : t('Import')}
           </button>
         </div>
       </div>
