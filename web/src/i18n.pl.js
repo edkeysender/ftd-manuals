@@ -4,6 +4,7 @@ export const PL = {
   // ----- plural forms -----
   '#draft': 'wersja robocza|wersje robocze|wersji roboczych',
   '#module': 'moduł|moduły|modułów',
+  '#part': 'część|części|części',
   '#chapter': 'rozdział|rozdziały|rozdziałów',
   '#file': 'plik|pliki|plików',
   '#release': 'wydanie|wydania|wydań',
@@ -874,4 +875,10 @@ export const PL = {
   'Merging…': 'Scalanie…',
   'Merge "{name}" into "{into}"?\n\nThe links of {modules} and the covered ranges of their docs are renamed. A from-version that is not a release of {into} is cleared.': 'Scalić „{name}” z „{into}”?\n\nPowiązania modułów {modules} i zakresy pokrycia ich dokumentów zostaną przemianowane. Wersja „od”, która nie jest wydaniem {into}, zostanie wyczyszczona.',
   '{name} merged into {into} — {modules} relinked': '{name} scalono z {into} — przepięto {modules}',
+
+  // module rename
+  "Rename module": "Zmień nazwę modułu",
+  "Module renamed to \"{name}\"": "Zmieniono nazwę modułu na „{name}”",
+  "Save": "Zapisz",
+  "Cancel": "Anuluj",
 };
