@@ -186,6 +186,8 @@ code { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 0.92em; bac
 .form-grid input, .form-grid select { border: 1px solid var(--line); border-radius: 7px; padding: 8px 11px; font-weight: 400; }
 .field-label { font-weight: 600; }
 .req { color: var(--red); }
+.form-err { color: var(--red); margin: 0; }
+.plain-list { margin: 0; padding: 0; list-style: none; line-height: 1.9; }
 label.inline { font-weight: 400; color: var(--muted); }
 .choice-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .choice { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 8px 14px; }

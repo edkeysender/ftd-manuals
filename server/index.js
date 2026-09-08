@@ -735,6 +735,12 @@ app.post('/api/manuals', wrap(async (req, res) => {
   res.json(await store.createManual(req.body));
 }));
 
+// Import a simulator configuration file: one manual per "simulator" / "ios" section.
+app.post('/api/manuals/import', wrap(async (req, res) => {
+  const { replace, config, ...rest } = req.body || {};
+  res.json(await store.importManuals(config || rest, { replace: !!replace }));
+}));
+
 async function manualRenderOpts(slug, manual) {
   const logo = await store.getBrandLogo();
   const cover = await store.getManualCover(slug);

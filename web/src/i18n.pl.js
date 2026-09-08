@@ -876,6 +876,19 @@ export const PL = {
   'Merge "{name}" into "{into}"?\n\nThe links of {modules} and the covered ranges of their docs are renamed. A from-version that is not a release of {into} is cleared.': 'Scalić „{name}” z „{into}”?\n\nPowiązania modułów {modules} i zakresy pokrycia ich dokumentów zostaną przemianowane. Wersja „od”, która nie jest wydaniem {into}, zostanie wyczyszczona.',
   '{name} merged into {into} — {modules} relinked': '{name} scalono z {into} — przepięto {modules}',
 
+  // manual import from a simulator configuration file
+  "Import config": "Importuj konfigurację",
+  "Import manual from config": "Import instrukcji z konfiguracji",
+  "Configuration file (.json)": "Plik konfiguracyjny (.json)",
+  "Or paste the configuration": "Albo wklej konfigurację",
+  "Not valid JSON: {msg}": "Niepoprawny JSON: {msg}",
+  "The file has no \"simulator\" or \"ios\" section.": "Plik nie ma sekcji \"simulator\" ani \"ios\".",
+  "What will be imported": "Co zostanie zaimportowane",
+  "Replace the chapters of manuals that already exist": "Zastąp rozdziały instrukcji, które już istnieją",
+  "Each section becomes one manual: \"simulator\" in group SIM, \"ios\" in group IOS. Modules are named by slug or by name and must already exist.": "Każda sekcja tworzy jedną instrukcję: \"simulator\" w grupie SIM, \"ios\" w grupie IOS. Moduły podaje się po slugu lub nazwie i muszą już istnieć.",
+  "Importing…": "Importowanie…",
+  "Import": "Importuj",
+  "{n} manuals imported": "Zaimportowano instrukcje: {n}",
   // module rename
   "Rename module": "Zmień nazwę modułu",
   "Module renamed to \"{name}\"": "Zmieniono nazwę modułu na „{name}”",

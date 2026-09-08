@@ -1867,6 +1867,114 @@ export async function deleteModule(slug) {
   return { slug, name: entry.module.name, docs: entry.docs.length, branchesDeleted: branches, manualsUpdated: inManuals.map((m) => m.slug) };
 }
 
+/* ------------------------------------------------------------------ */
+/* Manual import from a simulator configuration file                    */
+/* ------------------------------------------------------------------ */
+
+/** The sections of a configuration file and the manual group each one produces. */
+export const CONFIG_SECTIONS = [
+  { key: 'simulator', group: 'SIM', defaultName: 'Simulator Manual' },
+  { key: 'ios', group: 'IOS', defaultName: 'IOS Manual' },
+];
+
+/**
+ * Resolve one module reference from a configuration file. A reference is a module slug,
+ * a module name, or an object carrying either — whatever the configuring system happens
+ * to export. Returns the slug, or null when nothing matches.
+ */
+function resolveModuleRef(ref, modules) {
+  const raw = typeof ref === 'string' ? ref : ref && (ref.slug || ref.module || ref.name);
+  const key = String(raw ?? '').trim();
+  if (!key) return null;
+  const lower = key.toLowerCase();
+  const bySlug = modules.find((m) => m.slug.toLowerCase() === lower);
+  if (bySlug) return bySlug.slug;
+  const byName = modules.find((m) => m.name.toLowerCase() === lower);
+  if (byName) return byName.slug;
+  const slugged = slugify(key);
+  const bySlugged = modules.find((m) => m.slug === slugged);
+  return bySlugged ? bySlugged.slug : null;
+}
+
+/**
+ * Plan the manuals a configuration file asks for, without writing anything. Returns one
+ * entry per section present in the config, each with its resolved module slugs, the
+ * modules it could not resolve, and whether a manual with that slug already exists.
+ */
+export async function planManualImport(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error('The configuration must be a JSON object');
+  }
+  const present = CONFIG_SECTIONS.filter((s) => config[s.key] !== undefined && config[s.key] !== null);
+  if (!present.length) {
+    throw new Error(`The configuration has no "${CONFIG_SECTIONS.map((s) => s.key).join('" or "')}" section`);
+  }
+  const modules = await listModules();
+  const defaultType = manualTypeOf(config.manual).id;
+  const prefix = String(config.name || config.simulatorName || '').trim();
+
+  return present.map((section) => {
+    const raw = config[section.key];
+    const body = Array.isArray(raw) ? { modules: raw } : raw;
+    if (typeof body !== 'object') throw new Error(`Section "${section.key}" must be an object or an array of modules`);
+    const refs = Array.isArray(body.modules) ? body.modules : [];
+    const resolved = [];
+    const unknown = [];
+    for (const ref of refs) {
+      const slug = resolveModuleRef(ref, modules);
+      if (!slug) unknown.push(typeof ref === 'string' ? ref : JSON.stringify(ref));
+      else if (!resolved.includes(slug)) resolved.push(slug);
+    }
+    const name =
+      String(body.name || '').trim() || (prefix ? `${prefix} — ${section.defaultName}` : section.defaultName);
+    return {
+      section: section.key,
+      name,
+      slug: slugify(name),
+      code: String(body.code || '').trim().toUpperCase() || null,
+      group: section.group,
+      manual: manualTypeOf(body.manual === undefined ? defaultType : body.manual).id,
+      modules: resolved,
+      unknownModules: unknown,
+    };
+  });
+}
+
+/**
+ * Create (or, with replace, update) one manual per section of a simulator configuration
+ * file. Everything is validated first: a config naming a module that does not exist, or
+ * an existing manual when replace is off, is rejected before any manual is written.
+ */
+export async function importManuals(config, { replace = false } = {}) {
+  const plan = await planManualImport(config);
+
+  const badRefs = plan.filter((p) => p.unknownModules.length);
+  if (badRefs.length) {
+    const detail = badRefs.map((p) => `${p.section}: ${p.unknownModules.join(', ')}`).join('; ');
+    throw new Error(`The configuration names modules that do not exist — ${detail}. Create them first, or remove them from the file.`);
+  }
+  const empty = plan.filter((p) => !p.modules.length);
+  if (empty.length === plan.length) throw new Error('The configuration lists no modules');
+  if (!plan.every((p) => p.slug)) throw new Error('Every section needs a manual name');
+
+  const existing = await listManuals();
+  const clashes = plan.filter((p) => existing.some((m) => m.slug === p.slug));
+  if (clashes.length && !replace) {
+    throw new Error(
+      `These manuals already exist: ${clashes.map((p) => p.slug).join(', ')}. Import again with "replace" to overwrite their chapters.`
+    );
+  }
+
+  const results = [];
+  for (const p of plan) {
+    const spec = { name: p.name, code: p.code, group: p.group, manual: p.manual, modules: p.modules };
+    const wasThere = existing.some((m) => m.slug === p.slug);
+    const manual = wasThere ? await updateManual(p.slug, spec) : await createManual(spec);
+    results.push({ ...manual, section: p.section, action: wasThere ? 'updated' : 'created' });
+  }
+  return { manuals: results };
+}
+
 export async function deleteManual(slug) {
   if (!(await getManual(slug))) throw new Error(`Manual "${slug}" not found`);
   await mutate(async () => {
