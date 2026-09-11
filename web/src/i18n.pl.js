@@ -899,4 +899,15 @@ export const PL = {
   "Module renamed to \"{name}\"": "Zmieniono nazwę modułu na „{name}”",
   "Save": "Zapisz",
   "Cancel": "Anuluj",
+
+  // relations schema
+  "Schema": "Schemat",
+  "Relations diagram": "Schemat powiązań",
+  "FTD.aero parts": "Części FTD.aero",
+  "Bought-in parts": "Części kupowane",
+  "Filter by name…": "Filtruj po nazwie…",
+  "from {v}": "od {v}",
+  "{n} linked": "Powiązanych: {n}",
+  "{n} of {total} linked": "Powiązanych: {n} z {total}",
+  "This module has no software or parts linked yet.": "Ten moduł nie ma jeszcze powiązanego oprogramowania ani części.",
 };
