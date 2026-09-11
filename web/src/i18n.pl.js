@@ -910,4 +910,11 @@ export const PL = {
   "{n} linked": "Powiązanych: {n}",
   "{n} of {total} linked": "Powiązanych: {n} z {total}",
   "This module has no software or parts linked yet.": "Ten moduł nie ma jeszcze powiązanego oprogramowania ani części.",
+
+  // schema viewport
+  "Zoom in": "Powiększ",
+  "Zoom out": "Pomniejsz",
+  "Reset": "Wyzeruj",
+  "Fit the diagram back in view": "Dopasuj schemat do widoku",
+  "Relations diagram — drag to move, scroll to zoom": "Schemat powiązań — przeciągnij, aby przesunąć, przewiń, aby przybliżyć",
 };

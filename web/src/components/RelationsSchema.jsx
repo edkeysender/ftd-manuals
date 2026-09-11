@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { t, plural } from '../i18n.jsx';
 
@@ -12,6 +12,20 @@ const RING_0 = 150; // clear of the centre node
 const RING_STEP = NODE_W + GAP;
 
 const cut = (s, n = 20) => (String(s).length > n ? String(s).slice(0, n - 1) + '…' : String(s));
+
+const MIN_Z = 0.4;
+const MAX_Z = 4;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/** Where a pointer event sits in diagram coordinates, for zooming about the cursor. */
+function pointIn(el, e, view, half) {
+  const box = el.getBoundingClientRect();
+  const span = (2 * half) / view.z;
+  return {
+    x: view.x + ((e.clientX - box.left) / box.width - 0.5) * span,
+    y: view.y + ((e.clientY - box.top) / box.height - 0.5) * span,
+  };
+}
 
 /**
  * Lay the satellites out on concentric rings: each ring takes as many nodes as fit around
@@ -86,6 +100,68 @@ export default function RelationsSchema({ module, softwareFeed = {} }) {
   const half = reach + NODE_W / 2 + 12;
   const toggle = (k) => setShow((s) => ({ ...s, [k]: !s[k] }));
 
+  /* Viewport: zoom is a scale on the viewBox, pan an offset in diagram units. Both are held
+     here rather than on the SVG element so the filters can reset them when the diagram
+     changes size under the user. */
+  const [view, setView] = useState({ z: 1, x: 0, y: 0 });
+  const svgRef = useRef(null);
+  const drag = useRef(null);
+  const moved = useRef(false); // a drag that moved must not click the node it ended on
+  const [dragging, setDragging] = useState(false);
+  const reset = useCallback(() => setView({ z: 1, x: 0, y: 0 }), []);
+  useEffect(reset, [show.software, show.ftd, show.cots, needle, reset]);
+
+  const zoomBy = (factor, at) =>
+    setView((v) => {
+      const z = clamp(v.z * factor, MIN_Z, MAX_Z);
+      if (z === v.z) return v;
+      if (!at) return { ...v, z };
+      // Keep the point under the cursor still: the view centre moves toward it by the
+      // fraction of the span that the zoom removes.
+      const k = 1 - v.z / z;
+      return { z, x: v.x + (at.x - v.x) * k, y: v.y + (at.y - v.y) * k };
+    });
+
+  /* A wheel over the canvas zooms; the listener is attached by hand because React's onWheel
+     is passive and so cannot preventDefault the page scroll. */
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12, pointIn(el, e, view, half));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [view, half]);
+
+  function onPointerDown(e) {
+    if (e.button !== 0) return;
+    drag.current = { x: e.clientX, y: e.clientY, view };
+    moved.current = false;
+    setDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function onPointerMove(e) {
+    const d = drag.current;
+    if (!d) return;
+    if (Math.abs(e.clientX - d.x) > 3 || Math.abs(e.clientY - d.y) > 3) moved.current = true;
+    const box = svgRef.current.getBoundingClientRect();
+    // Screen pixels → diagram units: the viewBox spans 2*half/z across the element's width.
+    const unitsPerPx = (2 * half) / d.view.z / box.width;
+    setView({ ...d.view, x: d.view.x - (e.clientX - d.x) * unitsPerPx, y: d.view.y - (e.clientY - d.y) * unitsPerPx });
+  }
+  function endDrag(e) {
+    if (drag.current && e.pointerId !== undefined && e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    drag.current = null;
+    setDragging(false);
+  }
+
+  const span = (2 * half) / view.z;
+  const viewBox = `${view.x - span / 2} ${view.y - span / 2} ${span} ${span}`;
+
   const FILTERS = [
     ['software', t('Software')],
     ['ftd', t('FTD.aero parts')],
@@ -125,7 +201,23 @@ export default function RelationsSchema({ module, softwareFeed = {} }) {
         </div>
       ) : (
         <div className="schema-canvas">
-          <svg viewBox={`${-half} ${-half} ${half * 2} ${half * 2}`} role="img" aria-label={t('Relations diagram')}>
+          <div className="schema-zoom">
+            <button className="btn btn-sm" title={t('Zoom out')} onClick={() => zoomBy(1 / 1.25)} disabled={view.z <= MIN_Z}>−</button>
+            <span className="muted small">{Math.round(view.z * 100)}%</span>
+            <button className="btn btn-sm" title={t('Zoom in')} onClick={() => zoomBy(1.25)} disabled={view.z >= MAX_Z}>+</button>
+            <button className="btn btn-sm" title={t('Fit the diagram back in view')} onClick={reset}>{t('Reset')}</button>
+          </div>
+          <svg
+            ref={svgRef}
+            className={dragging ? 'dragging' : ''}
+            viewBox={viewBox}
+            role="img"
+            aria-label={t('Relations diagram — drag to move, scroll to zoom')}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          >
             <g className="schema-edges">
               {placed.map((n) => (
                 <line key={n.key} x1="0" y1="0" x2={n.x} y2={n.y} />
@@ -137,7 +229,7 @@ export default function RelationsSchema({ module, softwareFeed = {} }) {
                 key={n.key}
                 className={`schema-node node-${n.kind}`}
                 transform={`translate(${n.x - NODE_W / 2} ${n.y - NODE_H / 2})`}
-                onClick={() => navigate(n.to)}
+                onClick={() => !moved.current && navigate(n.to)}
                 role="link"
                 tabIndex={0}
                 onKeyDown={(e) => e.key === 'Enter' && navigate(n.to)}
