@@ -158,6 +158,14 @@ export async function preview(buffer, { max = 768, quality = 78 } = {}) {
 }
 
 /** Same-format (PNG keeps transparency) resize to `width` px for the asset route; null when not resizable. */
+/** Square PNG of an SVG (the favicon: clients that will not take an SVG icon). */
+export async function rasterize(svg, size = 256) {
+  return sharp(Buffer.isBuffer(svg) ? svg : Buffer.from(svg), { density: size * 2 })
+    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+}
+
 export async function resizeSameFormat(buffer, width) {
   const info = sniff(buffer);
   if (!info || !['png', 'jpeg', 'webp', 'gif'].includes(info.type)) return null;
