@@ -910,4 +910,7 @@ export const PL = {
   "{n} linked": "Powiązanych: {n}",
   "{n} of {total} linked": "Powiązanych: {n} z {total}",
   "This module has no software or parts linked yet.": "Ten moduł nie ma jeszcze powiązanego oprogramowania ani części.",
+
+  // hardware picker
+  "Start typing to search the catalog ({n}).": "Zacznij pisać, aby przeszukać katalog ({n}).",
 };

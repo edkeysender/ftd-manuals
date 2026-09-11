@@ -145,12 +145,19 @@ export default function HardwarePicker({ catalog, value, onChange, disabled = fa
               submitLabel={t('Add to this module')}
             />
           )}
-          {!creating && (
+          {/* The catalog is only proposed once there is something to match: the full list is
+              long enough that showing it unasked buries the parts already assigned above. */}
+          {!creating && !q.trim() && (
+            <span className="muted small">
+              {(catalog || []).length === 0
+                ? t('Catalog is empty — create the first unit with + New hardware.')
+                : t('Start typing to search the catalog ({n}).', { n: (catalog || []).length })}
+            </span>
+          )}
+          {!creating && !!q.trim() && (
             <div className="hw-catalog">
               {available.length === 0 ? (
-                <span className="muted small">
-                  {(catalog || []).length === 0 ? t('Catalog is empty — create the first unit with + New hardware.') : q ? t('No match.') : t('All catalog items assigned.')}
-                </span>
+                <span className="muted small">{t('No match.')}</span>
               ) : (
                 available.slice(0, 12).map((i) => (
                   <button key={i.id} type="button" className="hw-option" onClick={() => onChange([...value, { id: i.id }])}>
