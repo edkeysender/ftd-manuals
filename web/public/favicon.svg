@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 -1 96 96" role="img" aria-label="FTD.aero">
+  <!-- The emblem of the FTD.aero logo (server/docgen.js LOGO_SVG), cropped square: the
+       wordmark is illegible at favicon sizes, the mark alone stays recognisable. -->
+  <g fill="none" stroke="#0d6db4" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="56" cy="40" rx="40" ry="19" transform="rotate(-24 56 40)"/>
+    <path d="M32 62 l-6 16 M56 66 v14 M80 60 l7 16"/>
+  </g>
+  <circle cx="24" cy="30" r="7" fill="#0d6db4"/>
+</svg>

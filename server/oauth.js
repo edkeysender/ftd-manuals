@@ -68,6 +68,9 @@ export function asMetadata(req) {
     code_challenge_methods_supported: ['S256'],
     token_endpoint_auth_methods_supported: ['none'],
     scopes_supported: ['mcp'],
+    // Shown by clients that render the server's brand on their connect / consent screen.
+    logo_uri: `${base}/favicon.png`,
+    service_documentation: base,
   };
 }
 

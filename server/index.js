@@ -943,6 +943,23 @@ app.get('/api/mcp-info', (req, res) => {
   });
 });
 
+/* ---------- favicon ----------
+ * The FTD mark, served from the origin root and outside /api so it needs no session:
+ * this is the icon an MCP client shows for this server on its connect screen, and the
+ * browser tab icon. .ico and .png are rasterised from the same SVG (built once).
+ */
+const faviconSvg = ['web/dist/favicon.svg', 'web/public/favicon.svg']
+  .map((f) => path.resolve(f))
+  .find((f) => fs.existsSync(f));
+let faviconPng = null;
+app.get(['/favicon.ico', '/favicon.png'], wrap(async (req, res) => {
+  if (!faviconSvg) return res.status(404).json({ error: 'No favicon' });
+  if (!faviconPng) faviconPng = await images.rasterize(fs.readFileSync(faviconSvg));
+  res.set('Content-Type', 'image/png');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.send(faviconPng);
+}));
+
 /* ---------- static frontend (production build) ---------- */
 const dist = path.resolve('web', 'dist');
 if (fs.existsSync(dist)) {
