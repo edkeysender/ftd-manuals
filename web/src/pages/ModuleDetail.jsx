@@ -4,6 +4,7 @@ import { api, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64 } 
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
+import RelationsSchema from '../components/RelationsSchema.jsx';
 import { ManualPills } from './ModulesList.jsx';
 import { t, plural } from '../i18n.jsx';
 
@@ -16,7 +17,7 @@ export default function ModuleDetail() {
   const { slug } = useParams();
   const [data, setData] = useState(null);
   const [params] = useSearchParams(); // ?tab=assets — the drop link MCP agents hand to users
-  const [tab, setTab] = useState(['docs', 'hardware', 'assets', 'history', 'software'].includes(params.get('tab')) ? params.get('tab') : 'docs');
+  const [tab, setTab] = useState(['docs', 'hardware', 'schema', 'assets', 'history', 'software'].includes(params.get('tab')) ? params.get('tab') : 'docs');
   const toast = useToast();
   const navigate = useNavigate();
   const [renaming, setRenaming] = useState(null); // the new name while the title is being edited
@@ -140,6 +141,9 @@ export default function ModuleDetail() {
         <button className={tab === 'hardware' ? 'active' : ''} onClick={() => setTab('hardware')}>
           {t('Parts')}{module.hardwareItems?.length ? ` (${module.hardwareItems.length})` : ''}
         </button>
+        <button className={tab === 'schema' ? 'active' : ''} onClick={() => setTab('schema')}>
+          {t('Schema')}
+        </button>
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
           {t('Assets')}
           {data.staleAssets > 0 && (
@@ -183,6 +187,8 @@ export default function ModuleDetail() {
           </tbody>
         </table>
       )}
+
+      {tab === 'schema' && <RelationsSchema module={module} softwareFeed={data.softwareFeed} />}
 
       {tab === 'assets' && <AssetsTab slug={slug} docs={docs} module={module} onChanged={load} />}
 

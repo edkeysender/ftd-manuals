@@ -444,6 +444,30 @@ label.inline { font-weight: 400; color: var(--muted); }
 .rename-input { font: inherit; padding: 2px 8px; min-width: 320px; max-width: 100%; }
 .btn-rename { font-size: 15px; opacity: 0.45; vertical-align: middle; }
 .btn-rename:hover { opacity: 1; }
+/* Relations schema: the module in the middle, its software and parts around it. */
+.schema-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+.schema-bar .hint { margin-left: auto; }
+.chip-filter { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; opacity: 0.55; }
+.chip-filter.on { opacity: 1; border-color: var(--accent-border); background: var(--accent-soft); }
+.chip-filter:disabled { cursor: default; opacity: 0.3; }
+.chip-filter .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.dot-software { background: var(--green); }
+.dot-ftd { background: var(--accent); }
+.dot-cots { background: var(--orange); }
+.schema-search { flex: 0 1 220px; }
+.schema-canvas { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; overflow: auto; }
+.schema-canvas svg { width: 100%; max-height: 70vh; display: block; }
+.schema-edges line { stroke: var(--line); stroke-width: 1.5; }
+.schema-node rect { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; }
+.schema-node text { fill: var(--ink); font-size: 12.5px; text-anchor: middle; dominant-baseline: middle; }
+.schema-node text.sub { fill: var(--muted); font-size: 10.5px; }
+.schema-node[role='link'] { cursor: pointer; }
+.schema-node[role='link']:hover rect { stroke-width: 2.5; }
+.node-module rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+.node-module text { font-weight: 700; font-size: 14px; }
+.node-software rect { stroke: var(--green); }
+.node-ftd rect { stroke: var(--accent); }
+.node-cots rect { stroke: var(--orange); }
 .hw-cell { display: flex; flex-wrap: wrap; gap: 4px; }
 /* Parts column: show the first two rows of chips; the rest stay in the cell's tooltip
    and on the module's Parts tab. The chip line-height is pinned so the cut is exact:
