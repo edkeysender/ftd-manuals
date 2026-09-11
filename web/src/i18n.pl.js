@@ -913,4 +913,10 @@ export const PL = {
 
   // hardware picker
   "Start typing to search the catalog ({n}).": "Zacznij pisać, aby przeszukać katalog ({n}).",
+  // schema viewport
+  "Zoom in": "Powiększ",
+  "Zoom out": "Pomniejsz",
+  "Reset": "Wyzeruj",
+  "Fit the diagram back in view": "Dopasuj schemat do widoku",
+  "Relations diagram — drag to move, scroll to zoom": "Schemat powiązań — przeciągnij, aby przesunąć, przewiń, aby przybliżyć",
 };

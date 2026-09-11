@@ -455,8 +455,10 @@ label.inline { font-weight: 400; color: var(--muted); }
 .dot-ftd { background: var(--accent); }
 .dot-cots { background: var(--orange); }
 .schema-search { flex: 0 1 220px; }
-.schema-canvas { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; overflow: auto; }
-.schema-canvas svg { width: 100%; max-height: 70vh; display: block; }
+.schema-canvas { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; overflow: hidden; }
+.schema-canvas svg { width: 100%; height: 70vh; display: block; cursor: grab; touch-action: none; }
+.schema-canvas svg.dragging { cursor: grabbing; }
+.schema-zoom { position: absolute; right: 14px; top: 14px; z-index: 1; display: flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 4px 6px; }
 .schema-edges line { stroke: var(--line); stroke-width: 1.5; }
 .schema-node rect { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.5; }
 .schema-node text { fill: var(--ink); font-size: 12.5px; text-anchor: middle; dominant-baseline: middle; }

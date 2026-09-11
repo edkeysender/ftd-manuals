@@ -8,6 +8,7 @@ import Settings from './pages/Settings.jsx';
 import ManualsList from './pages/ManualsList.jsx';
 import ManualView from './pages/ManualView.jsx';
 import SoftwareList from './pages/SoftwareList.jsx';
+import SoftwareDetail from './pages/SoftwareDetail.jsx';
 import PartsList from './pages/PartsList.jsx';
 import Login from './pages/Login.jsx';
 import { t, plural, useLocale, LanguageSwitch } from './i18n.jsx';
@@ -127,6 +128,7 @@ export default function App() {
               <Route path="/modules/:slug/docs/:version/review" element={<Editor review />} />
               <Route path="/parts" element={<PartsList />} />
               <Route path="/software" element={<SoftwareList />} />
+              <Route path="/software/:name" element={<SoftwareDetail />} />
               <Route path="/manuals" element={<ManualsList />} />
               <Route path="/manuals/:slug" element={<ManualView />} />
               <Route path="/settings" element={<Settings />} />

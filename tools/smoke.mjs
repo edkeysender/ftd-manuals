@@ -335,6 +335,14 @@ try {
   let noKey = null;
   try { await req('POST', '/api/transcribe', { dataBase64: Buffer.from('not really audio').toString('base64'), name: 'speech.webm' }); } catch (e) { noKey = e.message; }
   ok(/OPENAI_API_KEY/.test(noKey || ''), 'transcribe endpoint reports the missing API key');
+
+  // favicon: the FTD mark an MCP client shows for this server — no session required
+  const favIco = await fetch(BASE + '/favicon.ico');
+  const favBytes = Buffer.from(await favIco.arrayBuffer());
+  ok(favIco.ok && favIco.headers.get('content-type') === 'image/png' && favBytes.subarray(1, 4).toString() === 'PNG',
+    'favicon.ico is served as a PNG without signing in');
+  const favMeta = await (await fetch(BASE + '/.well-known/oauth-authorization-server')).json();
+  ok(/\/favicon\.png$/.test(favMeta.logo_uri || ''), 'OAuth metadata points clients at the mark');
   const illMissing = await fetch(BASE + '/api/modules/starting-panel/docs/A1.0/illustrate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
