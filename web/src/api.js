@@ -79,6 +79,9 @@ export const api = {
   mergeSoftware: (name, into) => request(`/api/software/${encodeURIComponent(name)}/merge`, { method: 'POST', body: { into } }),
   linkSoftware: (slug, body) => request(`/api/modules/${slug}/software`, { method: 'POST', body }),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
+  /** Admin only. Refused while a module link or a doc version starts at that release. */
+  deleteRelease: (name, version) =>
+    request(`/api/software/${encodeURIComponent(name)}/releases/${encodeURIComponent(version)}`, { method: 'DELETE' }),
   coverRelease: (slug, version, name, swVersion) =>
     request(`/api/modules/${slug}/docs/${version}/cover`, { method: 'POST', body: { name, version: swVersion } }),
   aiChat: (body) => request('/api/ai/chat', { method: 'POST', body }),

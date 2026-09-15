@@ -426,6 +426,11 @@ app.delete('/api/software/:name', wrap(async (req, res) => {
   res.json(await store.deleteSoftware(req.params.name));
 }));
 
+/** Drop one release from the feed — refused while a module link or a doc version starts at it. */
+app.delete('/api/software/:name/releases/:version', wrap(async (req, res) => {
+  res.json(await store.deleteSoftwareRelease(req.params.name, req.params.version));
+}));
+
 /** Link / unlink a software on a module: {name, fromVersion?} | {name, unlink: true} */
 app.post('/api/modules/:slug/software', wrap(async (req, res) => {
   const { name, fromVersion, unlink } = req.body || {};

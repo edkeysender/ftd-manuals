@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, MANUAL_TYPES, GROUPS, manualType, timeAgo } from '../api.js';
-import { useToast } from '../App.jsx';
+import { useToast, useAuth } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 import SoftwareTimeline from '../components/SoftwareTimeline.jsx';
 
@@ -53,6 +53,7 @@ export default function SoftwareDetail() {
 function SoftwareBlock({ sw, all = [], reload }) {
   const toast = useToast();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [busy, setBusy] = useState(null); // "<slug>:<manual>"
   const [form, setForm] = useState({ version: '', manualAffecting: false, note: '' });
 
@@ -68,6 +69,25 @@ function SoftwareBlock({ sw, all = [], reload }) {
     } finally {
       setBusy(null);
     }
+  }
+
+  /** Unlink the module from this software. Refused for a module whose only software this is while a
+   *  software manual draft is open on it — that draft would have nothing to document. */
+  function detach(mod) {
+    if (
+      !confirm(
+        t('Detach {module} from {software}? Manuals already written keep their content and their covered releases.', {
+          module: mod.name,
+          software: sw.name,
+        })
+      )
+    )
+      return;
+    act(
+      `${mod.slug}:unlink`,
+      () => api.linkSoftware(mod.slug, { name: sw.name, unlink: true }),
+      t('{module} detached from {software}', { module: mod.name, software: sw.name })
+    );
   }
 
   async function createManual(mod, mt) {
@@ -151,6 +171,14 @@ function SoftwareBlock({ sw, all = [], reload }) {
                     <span className="module-sub">
                       {mod.code && <code>{mod.code}</code>} <span className="chip">{mod.group}</span>
                       {mod.type === 'own-software' && <span className="chip" title={t('The software documented on its own — no hardware module')}>{t('own manual')}</span>}
+                      <button
+                        className="btn btn-sm btn-danger row-detach"
+                        disabled={busy === `${mod.slug}:unlink`}
+                        title={t('Stop relating {module} to {software} — its manuals keep what they documented', { module: mod.name, software: sw.name })}
+                        onClick={() => detach(mod)}
+                      >
+                        {t('Detach')}
+                      </button>
                     </span>
                   </div>
                 </td>
@@ -239,6 +267,15 @@ function SoftwareBlock({ sw, all = [], reload }) {
                 () => api.nextDocVersion(row.slug, { manual: row.manual, bump: 'major', fromRelease: { name: sw.name, version: release } }),
                 t('New {type} version started from {software} {version}', { type: t(manualType(row.manual).label).toLowerCase(), software: sw.name, version: release })
               ).then((r) => r && navigate(`/modules/${row.slug}/docs/${r.key}/edit`))
+            }
+            onDeleteRelease={
+              isAdmin
+                ? (rel) => {
+                    if (!confirm(t('Delete release {version} of {software}? It disappears from every coverage view.', { version: rel.version, software: sw.name })))
+                      return;
+                    act('release', () => api.deleteRelease(sw.name, rel.version), t('{software} {version} deleted', { software: sw.name, version: rel.version }));
+                  }
+                : undefined
             }
           />
         )}

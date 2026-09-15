@@ -577,6 +577,16 @@ export const PL = {
   'opens {doc}': 'otwiera {doc}',
   'covered by {manuals}': 'objęte przez {manuals}',
   'not covered': 'nieobjęte',
+  'Delete release {version} from the feed': 'Usuń wydanie {version} z listy',
+  'Delete release {version} of {software}? It disappears from every coverage view.':
+    'Usunąć wydanie {version} oprogramowania {software}? Zniknie ze wszystkich widoków pokrycia.',
+  '{software} {version} deleted': 'Usunięto {software} {version}',
+  Detach: 'Odłącz',
+  'Stop relating {module} to {software} — its manuals keep what they documented':
+    'Zakończ powiązanie {module} z {software} — instrukcje zachowują to, co opisały',
+  'Detach {module} from {software}? Manuals already written keep their content and their covered releases.':
+    'Odłączyć {module} od {software}? Napisane instrukcje zachowują treść i objęte wydania.',
+  '{module} detached from {software}': 'Odłączono {module} od {software}',
   'not registered': 'niezarejestrowane',
   'No releases registered.': 'Brak zarejestrowanych wydań.',
   'Register software release': 'Zarejestruj wydanie oprogramowania',

@@ -139,6 +139,9 @@ code { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 0.92em; bac
 .module-cell { display: flex; flex-direction: column; gap: 3px; }
 .module-name { font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .module-sub { color: var(--muted); font-size: 12.5px; }
+.module-sub { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.row-detach { padding: 1px 8px; font-size: 11.5px; opacity: 0; transition: opacity .12s; }
+tr:hover .row-detach, .row-detach:focus-visible { opacity: 1; }
 .orange-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--orange); display: inline-block; box-shadow: 0 0 0 3px #f9731622; }
 
 .chip { background: var(--code-bg); border-radius: 5px; padding: 2px 8px; font-size: 12.5px; }
@@ -196,11 +199,13 @@ code { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 0.92em; bac
 
 .sw-rel-title { font-size: 11px; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; margin: 18px 0 8px; }
 .sw-rel-list { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
-.sw-rel { display: grid; grid-template-columns: minmax(200px, 1fr) max-content max-content minmax(150px, max-content); gap: 16px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); border-left: 3px solid transparent; }
+.sw-rel { display: grid; grid-template-columns: minmax(180px, 1fr) max-content max-content minmax(150px, max-content) max-content; gap: 16px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); border-left: 3px solid transparent; }
 .sw-rel:first-child { border-top: none; }
 .sw-rel.affecting { border-left-color: var(--orange); }
 .sw-rel-date { font-size: 12.5px; white-space: nowrap; }
 .sw-rel-what { font-size: 12.5px; text-align: right; }
+.sw-rel-del { padding: 2px 9px; line-height: 1.2; opacity: 0; transition: opacity .12s; }
+.sw-rel:hover .sw-rel-del, .sw-rel-del:focus-visible { opacity: 1; }
 
 @media (max-width: 760px) {
   .sw-rel { grid-template-columns: 1fr max-content; }

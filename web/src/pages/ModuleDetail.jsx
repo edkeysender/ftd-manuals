@@ -1191,6 +1191,7 @@ function AssetsTab({ slug, docs, module, onChanged }) {
 function SoftwareTab({ data, slug, reload }) {
   const toast = useToast();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const { module, softwareFeed, coverage = [] } = data;
   const [form, setForm] = useState({ name: module.softwares[0]?.name || '', version: '', manualAffecting: false, note: '' });
   const [busy, setBusy] = useState(false);
@@ -1223,6 +1224,12 @@ function SoftwareTab({ data, slug, reload }) {
       (r) => t('{doc} started from {software} {version}', { doc: `${t(manualType(row.manual).short)} ${r.version}`, software: swName, version: release })
     ).then((r) => r && navigate(`/modules/${slug}/docs/${r.key}/edit`));
 
+  /** Registered by mistake, or a build that never shipped. Refused while a manual starts at it. */
+  const deleteRelease = (rel, swName) => {
+    if (!confirm(t('Delete release {version} of {software}? It disappears from every coverage view.', { version: rel.version, software: swName }))) return;
+    run(() => api.deleteRelease(swName, rel.version), () => t('{software} {version} deleted', { software: swName, version: rel.version }));
+  };
+
   async function register() {
     await run(
       () => api.registerRelease(form),
@@ -1241,6 +1248,7 @@ function SoftwareTab({ data, slug, reload }) {
           busy={busy}
           onConfirm={(row, release) => confirm(row, release, sw.name)}
           onNewVersion={(row, release) => newVersion(row, release, sw.name)}
+          onDeleteRelease={isAdmin ? (rel) => deleteRelease(rel, sw.name) : undefined}
         />
       ))}
 

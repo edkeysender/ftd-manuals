@@ -1886,6 +1886,47 @@ export async function registerSoftwareRelease({ name, version, manualAffecting, 
   return feed;
 }
 
+/**
+ * Delete one release from the feed (a version registered by mistake, or a build that never
+ * shipped). A release a manual is anchored to is refused rather than silently rewriting the
+ * manuals: a module link starting at it would stop naming a registered release, and a doc
+ * version starting at it would lose the point its coverage runs from. Released manuals keep
+ * their history either way — `reviewedTo` is only a comparison point, so it survives.
+ */
+export async function deleteSoftwareRelease(name, version) {
+  name = cleanSwName(name);
+  version = String(version || '').trim();
+  if (!name || !version) throw new Error('Software name and version are required');
+  const feed = await getSoftwareFeed();
+  const releases = feed[name];
+  if (!releases) throw notRegistered(name);
+  if (!releases.some((r) => r.version === version)) {
+    throw new Error(`${name} ${version} is not a registered release${releases.length ? ` — one of ${releases.map((r) => r.version).join(', ')}` : ''}`);
+  }
+  const { modules } = await collectAll();
+  const links = modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name && s.fromVersion === version));
+  if (links.length) {
+    throw new Error(
+      `${name} ${version} is where ${links.map((m) => m.module.name).join(', ')} ${links.length > 1 ? 'link' : 'links'} to the software — point the link at another release first`
+    );
+  }
+  const anchored = modules.flatMap(({ module, docs }) =>
+    docs
+      .filter((d) => (d.covers || []).some((c) => c.name === name && c.from === version))
+      .map((d) => `${module.name} ${MANUAL_TYPES[d.manual].short} ${d.version}`)
+  );
+  if (anchored.length) {
+    throw new Error(`${name} ${version} is where ${anchored.join(', ')} ${anchored.length > 1 ? 'start' : 'starts'} — delete or re-version those manuals first`);
+  }
+  feed[name] = releases.filter((r) => r.version !== version);
+  await mutate(async () => {
+    await repo.checkout('main');
+    await repo.writeFile('softwares.json', JSON.stringify(feed, null, 2) + '\n');
+    await repo.commitAll(`softwares: delete ${name} ${version}`);
+  });
+  return feed;
+}
+
 /** Make a doc version the manual for a software release: widen a Released doc's covered
  *  range (non-manual-affecting releases), or assign the release to an open draft /
  *  in-review doc (a manual-affecting release that got its own doc version). */
