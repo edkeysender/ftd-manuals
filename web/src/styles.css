@@ -155,8 +155,21 @@ code { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 0.92em; bac
 .tabs button { border: none; background: none; padding: 9px 14px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .tabs button.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
 
-.sw-block { margin-bottom: 20px; }
-.sw-block h3 { margin: 8px 0; }
+.sw-block { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; background: var(--panel); }
+.sw-block.open { border-color: var(--accent-border); }
+.sw-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: none; background: none; text-align: left; color: var(--ink); font-size: 14px; }
+.sw-head:hover { background: var(--soft); border-radius: 10px; }
+.sw-block.open .sw-head { border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; }
+.sw-caret { color: var(--muted); width: 12px; }
+.sw-name { font-weight: 600; }
+.sw-head-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; font-size: 12.5px; }
+.sw-latest { color: var(--ink); }
+.sw-body { padding: 4px 14px 14px; }
+.sw-body .table { margin-top: 8px; }
+button.manual-pill.mp-add { cursor: pointer; }
+button.manual-pill.mp-add:hover { border-color: var(--accent); color: var(--accent); }
+.manual-pill .mp-plus { color: var(--muted); font-weight: 600; }
+button.manual-pill.mp-add:hover .mp-plus { color: var(--accent); }
 .sw-register { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
 .sw-register h3 { margin: 0 0 10px; }
 .pair { display: flex; gap: 8px; align-items: center; }
