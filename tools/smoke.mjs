@@ -884,6 +884,18 @@ try {
   ok(!(unlinkOk instanceof Error) && unlinkOk.softwares.length === 2, 'link_software unlink removes the link');
   const unlinkMissing = await call(127, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });
   ok(unlinkMissing instanceof Error && /not linked/.test(unlinkMissing.message), 'unlinking a software that is not linked is an error');
+  // a software manual has to relate to a software: detaching the last one is refused while it exists
+  const ownSw = await req('POST', '/api/software', { name: 'Panel Tool', version: 'v1.0', ownManual: true });
+  ok(!!ownSw.ownModule, 'own-software module created for the detach check');
+  const detachLast = await req('POST', `/api/modules/${ownSw.ownModule.slug}/software`, { name: 'Panel Tool', unlink: true }).catch((e) => e);
+  ok(detachLast instanceof Error && /its only software/.test(detachLast.message) && /software-customer:A1.0/.test(detachLast.message),
+    'a module cannot be detached from the software its manuals document');
+  await req('POST', `/api/modules/${ownSw.ownModule.slug}/software`, { name: 'STP Core' });
+  const detachOne = await req('POST', `/api/modules/${ownSw.ownModule.slug}/software`, { name: 'Panel Tool', unlink: true });
+  ok(detachOne.softwares.length === 1 && detachOne.softwares[0].name === 'STP Core', 'detaching works once another software documents the manuals');
+  // deleting the software itself still clears the links it is the last of
+  await req('DELETE', '/api/software/Panel%20Tool');
+  await req('DELETE', `/api/modules/${ownSw.ownModule.slug}`);
   // languages: English is the source; Polish is a translation stored next to it
   const enDoc = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0');
   ok(enDoc.lang === 'en' && enDoc.languages.en.source === true && enDoc.languages.pl.exists === false, 'doc reports its languages (pl missing)');
