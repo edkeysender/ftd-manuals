@@ -1763,14 +1763,28 @@ export async function createSoftware({ name, version, manualAffecting, note, mod
   return { name, releases, modules: links, ownModule };
 }
 
-async function assertNoModule(name) {
+/**
+ * What stands where a software's own-manual module would go. A module of that name written as an
+ * own manual, not currently documenting another software, is the same thing under a lost link —
+ * `adopt` says so, and the own-manual paths link it back instead of refusing (that is how a module
+ * whose software was deleted, or detached, finds its way home). Anything else is someone's module.
+ */
+async function ownModuleInTheWay(name) {
   const slug = slugify(name);
   if (!slug) throw new Error('Software name is required');
-  const existing = await readJson('main', moduleFile(slug));
-  const branches = await repo.branches();
-  if (existing || branches.some((b) => b.startsWith(`draft/${slug}-`))) {
-    throw new Error(`A module "${slug}" already exists — link the software to it instead`);
-  }
+  // Whole-repo view: a module never released lives only on its draft branches.
+  const entry = (await collectAll()).modules.find((m) => m.module.slug === slug);
+  if (!entry) return null;
+  const softwares = entry.module.softwares || [];
+  const adopt = entry.module.type === 'own-software' && (!softwares.length || softwares.some((s) => s.name === name));
+  return { slug, existing: entry.module, adopt };
+}
+
+/** Refuse when a module of that name is in the way and is not this software’s own manual. */
+async function assertNoModule(name) {
+  const hit = await ownModuleInTheWay(name);
+  if (!hit || hit.adopt) return hit;
+  throw new Error(`A module "${hit.slug}" already exists (${hit.existing.name}) — link the software to it on the Software page instead`);
 }
 
 /**
@@ -1785,9 +1799,22 @@ export async function createOwnSoftwareModule(name, { group = 'SIM', fromVersion
   if (!['SIM', 'IOS', 'RACK'].includes(group)) throw new Error('Manual group must be SIM or IOS');
   const feed = await getSoftwareFeed();
   if (!feed[name]) throw notRegistered(name);
-  await assertNoModule(name);
-  // The manual covers the software from the given version, else from its latest registered release.
+  const inTheWay = await assertNoModule(name);
   if (!fromVersion) fromVersion = feed[name].at(-1)?.version || '';
+  if (inTheWay?.adopt) {
+    // Its manuals are already written — the software just lost its link to them.
+    const linked = await linkSoftware(inTheWay.slug, name, fromVersion);
+    const entry = await moduleOf(inTheWay.slug);
+    const docs = entry.docs.filter((d) => MANUAL_TYPES[d.manual].kind === 'software');
+    return {
+      slug: inTheWay.slug,
+      adopted: true,
+      softwares: linked.softwares,
+      docs: docs.map((d) => ({ manual: d.manual, key: d.key, version: d.version, status: d.status })),
+      key: docs[0]?.key || null,
+    };
+  }
+  // The manual covers the software from the given version (defaulted above to its newest release).
   const softwares = [{ name, fromVersion: String(fromVersion || '').trim() }];
   const input = { name, code: null, category: 'software', group, type: 'own-software', hardware: [], softwares };
   const specs = MODULE_TYPES['own-software'].manuals.map((manual) => ({
