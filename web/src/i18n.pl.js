@@ -557,6 +557,9 @@ export const PL = {
   'closed by {version}': 'zamknięta przez {version}',
   'needs review': 'do przejrzenia',
   'Open {doc}': 'Otwórz {doc}',
+  Coverage: 'Pokrycie',
+  'Software "{name}" not found.': 'Nie znaleziono oprogramowania „{name}”.',
+  'New {type} version started from {software} {version}': 'Rozpoczęto nową wersję ({type}) od {software} {version}',
   'No manuals yet.': 'Brak instrukcji.',
   '{release} is manual-affecting and {doc} has not been reviewed against it.':
     '{release} wymaga instrukcji, a {doc} nie została względem niego przejrzana.',
@@ -567,6 +570,7 @@ export const PL = {
   'Start the next version of this manual, documenting {release} onwards':
     'Rozpocznij kolejną wersję tej instrukcji, opisującą {release} i nowsze',
   'Release the open version first': 'Najpierw wydaj otwartą wersję',
+  'Publish or discard the hotfix first': 'Najpierw opublikuj lub odrzuć poprawkę',
   '{doc} started from {software} {version}': 'Rozpoczęto {doc} od {software} {version}',
   'link start': 'początek powiązania',
   'closes {doc}': 'zamyka {doc}',

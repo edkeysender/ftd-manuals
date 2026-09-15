@@ -6,15 +6,21 @@ import { t, plural } from '../i18n.jsx';
 /** "2026-09-14" → "09-14": the release columns are narrow and the year is the same for all of them. */
 const shortDate = (d) => (d || '').slice(5, 10);
 const docLabel = (row) => `${t(manualType(row.manual).short)} ${row.version}`;
+/** With rows from several modules (the software page) a doc is only identified with its module. */
+const rowLabel = (row) => (row.moduleName ? `${row.moduleName} · ${docLabel(row)}` : docLabel(row));
+/** Unique per row: two modules can both have technician:A1.0 on the same timeline. */
+const rowKey = (row) => `${row.slug || ''}:${row.key}`;
 
 /**
  * One software's release history against the module's manuals — the picture the Software versions
  * tab is built around: releases left to right, one row per doc version, a bar from the release the
  * version starts at to the release it documents up to (or the open end, "→ latest").
  *
- * `sw` is one entry of the module's `coverage` (see softwareCoverage in server/store.js).
+ * `sw` is one entry of the module's `coverage` (see softwareCoverage in server/store.js). On the
+ * software page the same shape arrives with rows from several modules — each carries its own `slug`
+ * and `moduleName`, which the row label then names — and `head` is off because the page has its own.
  */
-export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, busy }) {
+export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, busy, head = true }) {
   const releases = sw.releases; // oldest first — the columns of the grid
   const cols = releases.length;
   const colOf = (version) => {
@@ -46,9 +52,13 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
   return (
     <div className="sw-tl">
       <div className="sw-tl-head">
-        <h3>
-          {sw.name} <span className="muted">{t('linked from {version}', { version: sw.fromVersion || '—' })}</span>
-        </h3>
+        {head ? (
+          <h3>
+            {sw.name} <span className="muted">{t('linked from {version}', { version: sw.fromVersion || '—' })}</span>
+          </h3>
+        ) : (
+          <h3>{t('Coverage')}</h3>
+        )}
         <div className="sw-tl-legend">
           <span><i className="lg lg-affecting" />{t('manual-affecting')}</span>
           <span><i className="lg lg-released" />{t('released')}</span>
@@ -56,7 +66,7 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
         </div>
       </div>
 
-      {!sw.registered && (
+      {head && !sw.registered && (
         <p className="hint warn">
           {t('"{name}" was never created on the Software page, so its manuals cannot relate to a software version.', { name: sw.name })}{' '}
           <Link to="/software">{t('Repair it on the Software page')}</Link>
@@ -80,9 +90,13 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
         {rows.map((row) => {
           const bar = barFor(row);
           return (
-            <React.Fragment key={`${row.key}-${row.from}`}>
+            <React.Fragment key={`${rowKey(row)}-${row.from}`}>
               <div className="sw-row-label">
-                <Link to={`/modules/${slug}/docs/${row.key}/edit`} title={t('Open {doc}', { doc: docLabel(row) })}>
+                <Link
+                  to={`/modules/${row.slug || slug}/docs/${row.key}/edit`}
+                  title={t('Open {doc}', { doc: rowLabel(row) })}
+                >
+                  {row.moduleName && <span className="sw-row-mod">{row.moduleName}</span>}
                   <strong>{t(manualType(row.manual).short)}</strong> {row.version}
                 </Link>
               </div>
@@ -113,11 +127,11 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
       </div>
 
       {pending.map((row) => (
-        <div className="sw-todo" key={`${row.key}-todo`}>
+        <div className="sw-todo" key={`${rowKey(row)}-todo`}>
           <span>
             {t('{release} is manual-affecting and {doc} has not been reviewed against it.', {
               release: row.needsReviewAgainst,
-              doc: docLabel(row),
+              doc: rowLabel(row),
             })}
           </span>
           <span className="btn-row">
@@ -131,11 +145,13 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
             </button>
             <button
               className="btn btn-sm btn-primary"
-              disabled={busy || row.status !== 'released'}
+              disabled={busy || row.status !== 'released' || row.hotfix}
               title={
-                row.status === 'released'
-                  ? t('Start the next version of this manual, documenting {release} onwards', { release: row.needsReviewAgainst })
-                  : t('Release the open version first')
+                row.hotfix
+                  ? t('Publish or discard the hotfix first')
+                  : row.status === 'released'
+                    ? t('Start the next version of this manual, documenting {release} onwards', { release: row.needsReviewAgainst })
+                    : t('Release the open version first')
               }
               onClick={() => onNewVersion(row, row.needsReviewAgainst)}
             >
@@ -171,10 +187,10 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
               <div className="sw-rel-what muted">
                 {rel.version === sw.fromVersion && <div>{t('link start')}</div>}
                 {closes.map((r) => (
-                  <div key={`c${r.key}`}>{t('closes {doc}', { doc: docLabel(r) })}</div>
+                  <div key={`c${rowKey(r)}`}>{t('closes {doc}', { doc: rowLabel(r) })}</div>
                 ))}
                 {opens.map((r) => (
-                  <div key={`o${r.key}`}>{t('opens {doc}', { doc: docLabel(r) })}</div>
+                  <div key={`o${rowKey(r)}`}>{t('opens {doc}', { doc: rowLabel(r) })}</div>
                 ))}
                 {!closes.length && !opens.length && (
                   <div>{covering.length ? t('covered by {manuals}', { manuals: plural(covering.length, 'manual') }) : t('not covered')}</div>

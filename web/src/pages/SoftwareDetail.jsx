@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, MANUAL_TYPES, GROUPS, manualType, timeAgo } from '../api.js';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
+import SoftwareTimeline from '../components/SoftwareTimeline.jsx';
 
 const SW_TYPES = MANUAL_TYPES.filter((mt) => mt.kind === 'software');
 const isOpenDoc = (d) => d.status === 'draft' || d.status === 'in-review';
@@ -220,41 +221,26 @@ function SoftwareBlock({ sw, all = [], reload }) {
       )}
 
       <div className="software-releases">
-        <h3>{t('Releases')}</h3>
-        {sw.releases.length > 0 && (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t('Release')}</th>
-                <th>{t('Date')}</th>
-                <th>{t('Manual-affecting')}</th>
-                <th>{t('Covered by')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sw.releases.map((rel) => (
-                <tr key={rel.version}>
-                  <td><strong>{rel.version}</strong> {rel.note && <span className="muted">— {rel.note}</span>}</td>
-                  <td className="muted">{timeAgo(rel.date)}</td>
-                  <td>{rel.manualAffecting ? <span className="badge badge-in-review">{t('Yes')}</span> : t('No')}</td>
-                  <td>
-                    {rel.coveredBy.length ? (
-                      <span className="manual-pills">
-                        {rel.coveredBy.map((c) => (
-                          <span key={`${c.slug}:${c.key}`} className={`manual-pill mp-${c.status}`} title={`${c.slug} · ${c.key} · ${c.status}`}>
-                            <span className="mp-type">{sw.modules.find((m) => m.slug === c.slug)?.code || c.slug}</span>
-                            <span className="mp-ver">{t(manualType(c.manual).short)} {c.version}</span>
-                          </span>
-                        ))}
-                      </span>
-                    ) : (
-                      <span className="muted">{t("not linked — assign on the module's Software versions tab")}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {sw.coverage && (sw.coverage.manuals.length > 0 || sw.coverage.releases.length > 0) && (
+          <SoftwareTimeline
+            sw={sw.coverage}
+            head={false}
+            busy={!!busy}
+            onConfirm={(row, release) =>
+              act(
+                `${row.slug}:${row.manual}`,
+                () => api.coverRelease(row.slug, row.key, sw.name, release),
+                t('{doc} now covers {software} {version}', { doc: `${t(manualType(row.manual).short)} ${row.version}`, software: sw.name, version: release })
+              )
+            }
+            onNewVersion={(row, release) =>
+              act(
+                `${row.slug}:${row.manual}`,
+                () => api.nextDocVersion(row.slug, { manual: row.manual, bump: 'major', fromRelease: { name: sw.name, version: release } }),
+                t('New {type} version started from {software} {version}', { type: t(manualType(row.manual).label).toLowerCase(), software: sw.name, version: release })
+              ).then((r) => r && navigate(`/modules/${row.slug}/docs/${r.key}/edit`))
+            }
+          />
         )}
         <div className="pair wrap" style={{ marginTop: 8 }}>
           <input placeholder={t('Version (v2.0.2)')} value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} />

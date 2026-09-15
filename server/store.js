@@ -736,11 +736,27 @@ export async function listSoftware() {
             .map((d) => ({ slug: module.slug, key: d.key, manual: d.manual, version: d.version, status: d.status }))
         ),
       }));
+      // The same timeline the module tab draws, with every linked module’s manuals on it: each row
+      // carries the module it belongs to so the page can label and link it.
+      const coverage = {
+        name,
+        registered: !!feed[name],
+        fromVersion: rows.map((r) => r.fromVersion).filter(Boolean).sort(compareSwVersions)[0] || '',
+        releases: [...(feed[name] || [])].sort((a, b) => compareSwVersions(a.version, b.version)),
+        manuals: linked.flatMap(({ module, docs }) =>
+          (softwareCoverage(module, docs, feed).find((c) => c.name === name)?.manuals || []).map((row) => ({
+            ...row,
+            slug: module.slug,
+            moduleName: module.name,
+          }))
+        ),
+      };
       return {
         name,
         registered: !!feed[name], // false: known from module links only (made before software had to be created here)
         modules: rows,
         releases,
+        coverage,
         manualCount: rows.reduce((n, r) => n + Object.keys(r.manuals).length, 0),
         uncoveredCount: rows.reduce((n, r) => n + r.uncovered.length, 0),
       };

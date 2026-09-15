@@ -823,6 +823,14 @@ try {
   ok(stp.releases.find((r) => r.version === 'v2.1.1').coveredBy.some((c) => c.key === 'customer:A1.1' && c.status === 'released'), 'list_software shows which doc covers a release');
   ok(techAssets.assets.find((a) => a.name === 'wiring.png').meta.addedManual === 'technician', 'stamp records which manual the asset was added from');
   ok((await req('GET', '/api/software')).find((s) => s.name === 'STP Core').manualCount === 1, 'GET /api/software serves the Software page');
+  // the Software page draws the same timeline, with every linked module's manuals on it
+  const swCov = (await req('GET', '/api/software')).find((s) => s.name === 'STP Core').coverage;
+  ok(swCov.releases.length > 0 && swCov.manuals.length > 0 && swCov.manuals.every((r) => r.slug && r.moduleName && r.key),
+    'software coverage rows name the module they belong to');
+  ok(swCov.releases.map((r) => r.version).join(',') === [...swCov.releases].map((r) => r.version).sort((a, b) => a.localeCompare(b)).join(','),
+    'software coverage releases come out oldest first');
+  ok(swCov.manuals.filter((r) => r.open).length === new Set(swCov.manuals.map((r) => `${r.slug}:${r.manual}`)).size,
+    'exactly one open version per module and manual type');
   const reg = await call(111, 'register_software_release', { name: 'STP Core', version: 'v2.2.1', manual_affecting: false, note: 'hotfix' });
   ok(!(reg instanceof Error) && reg['STP Core'].some((r) => r.version === 'v2.2.1'), 'MCP register_software_release');
   const covMcp = await call(112, 'cover_release', { slug: 'starting-panel', manual: 'software-customer', software: 'STP Core', release: 'v2.2.1' });
