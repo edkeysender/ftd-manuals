@@ -502,6 +502,8 @@ label.inline { font-weight: 400; color: var(--muted); }
 .manual-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 2px 8px; font-size: 12px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
 .manual-pill .mp-type { font-weight: 600; }
 .manual-pill .mp-ver { color: var(--muted); }
+.manual-pill .mp-status { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; opacity: .8; border-left: 1px solid var(--line); padding-left: 6px; }
+a.manual-pill { text-decoration: none; color: inherit; }
 .manual-pill.mp-draft { border-color: var(--accent-border); background: var(--accent-soft-2); }
 .manual-pill.mp-in-review { border-color: var(--amber-border); background: var(--amber-soft); }
 .manual-pill.mp-released { border-color: var(--green-border); background: var(--green-soft); }
