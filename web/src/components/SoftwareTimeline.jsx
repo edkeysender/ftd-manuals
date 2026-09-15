@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import { manualType, compareSwVersions } from '../api.js';
 import { t, plural } from '../i18n.jsx';
 
+/** Releases are stamped with a full timestamp; both views want the day. */
+const day = (d) => String(d || '').slice(0, 10);
 /** "2026-09-14" → "09-14": the release columns are narrow and the year is the same for all of them. */
-const shortDate = (d) => (d || '').slice(5, 10);
+const shortDate = (d) => day(d).slice(5);
 const docLabel = (row) => `${t(manualType(row.manual).short)} ${row.version}`;
 /** With rows from several modules (the software page) a doc is only identified with its module. */
 const rowLabel = (row) => (row.moduleName ? `${row.moduleName} · ${docLabel(row)}` : docLabel(row));
@@ -20,7 +22,7 @@ const rowKey = (row) => `${row.slug || ''}:${row.key}`;
  * software page the same shape arrives with rows from several modules — each carries its own `slug`
  * and `moduleName`, which the row label then names — and `head` is off because the page has its own.
  */
-export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, busy, head = true }) {
+export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, onDeleteRelease, busy, head = true }) {
   const releases = sw.releases; // oldest first — the columns of the grid
   const cols = releases.length;
   const colOf = (version) => {
@@ -180,7 +182,7 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
                 <strong>{rel.version}</strong>
                 {rel.note && <span className="muted"> — {rel.note}</span>}
               </div>
-              <div className="muted sw-rel-date">{rel.date}</div>
+              <div className="muted sw-rel-date">{day(rel.date)}</div>
               <div>
                 {rel.manualAffecting ? <span className="badge badge-missing">{t('Manual-affecting')}</span> : <span className="muted">{t('No')}</span>}
               </div>
@@ -196,6 +198,17 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
                   <div>{covering.length ? t('covered by {manuals}', { manuals: plural(covering.length, 'manual') }) : t('not covered')}</div>
                 )}
               </div>
+              {onDeleteRelease && (
+                <button
+                  className="btn btn-sm btn-danger sw-rel-del"
+                  disabled={busy}
+                  title={t('Delete release {version} from the feed', { version: rel.version })}
+                  aria-label={t('Delete release {version} from the feed', { version: rel.version })}
+                  onClick={() => onDeleteRelease(rel)}
+                >
+                  ×
+                </button>
+              )}
             </div>
           );
         })}

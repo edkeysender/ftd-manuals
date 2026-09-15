@@ -698,6 +698,20 @@ export const TOOLS = [
     annotations: { title: 'Release doc', ...RW, idempotentHint: true },
   },
   {
+    name: 'delete_software_release',
+    description:
+      'Remove one release from a software\'s feed — a version registered by mistake, or a build that never shipped. Refused while a module links to the software from it or a doc version starts its coverage at it; the error names them. Irreversible — confirm with the user first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Software name as listed by list_software' },
+        version: { type: 'string', description: 'The release to remove, e.g. v2.0.2' },
+      },
+      required: ['name', 'version'],
+    },
+    annotations: { title: 'Delete software release', ...RW, destructiveHint: true },
+  },
+  {
     name: 'start_hotfix',
     description:
       'Correct a RELEASED doc version in place: reopens its draft branch at the next revision (A1.0 r1 → r2), so the edit tools work on it as on a draft. The manual on main stays the released one until release_doc publishes the hotfix; discard_doc drops it. Use it for a correction to the document (a wrong pin number, a missing warning) — a new software release that changes the manual gets its own version via create_doc_version instead.',
@@ -1155,6 +1169,8 @@ async function callTool(name, args) {
       return await store.releaseDoc(args.slug, args.version);
     case 'start_hotfix':
       return await store.startHotfix(args.slug, args.version);
+    case 'delete_software_release':
+      return await store.deleteSoftwareRelease(args.name, args.version);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

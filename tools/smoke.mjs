@@ -831,6 +831,20 @@ try {
     'software coverage releases come out oldest first');
   ok(swCov.manuals.filter((r) => r.open).length === new Set(swCov.manuals.map((r) => `${r.slug}:${r.manual}`)).size,
     'exactly one open version per module and manual type');
+
+  // deleting a release: free to drop one nothing is anchored to, refused for the ones that are
+  await req('POST', '/api/softwares', { name: 'STP Core', version: 'v9.0.0', note: 'registered by mistake' });
+  ok((await req('GET', '/api/softwares'))['STP Core'].some((r) => r.version === 'v9.0.0'), 'a spare release to delete');
+  await req('DELETE', '/api/software/STP%20Core/releases/v9.0.0');
+  ok(!(await req('GET', '/api/softwares'))['STP Core'].some((r) => r.version === 'v9.0.0'), 'the release is gone from the feed');
+  const startsAt = await req('DELETE', '/api/software/STP%20Core/releases/v2.1.0').catch((e) => e);
+  ok(startsAt instanceof Error && /starts —/.test(startsAt.message) && /A1.1/.test(startsAt.message),
+    'a release a doc version starts at cannot be deleted');
+  const linkStart = await req('DELETE', '/api/software/STP%20Core/releases/v2.0.0').catch((e) => e);
+  ok(linkStart instanceof Error && /links? to the software/.test(linkStart.message),
+    'a release a module links from cannot be deleted');
+  const unknownRel = await req('DELETE', '/api/software/STP%20Core/releases/v0.0.1').catch((e) => e);
+  ok(unknownRel instanceof Error && /not a registered release/.test(unknownRel.message), 'deleting an unknown release is refused');
   const reg = await call(111, 'register_software_release', { name: 'STP Core', version: 'v2.2.1', manual_affecting: false, note: 'hotfix' });
   ok(!(reg instanceof Error) && reg['STP Core'].some((r) => r.version === 'v2.2.1'), 'MCP register_software_release');
   const covMcp = await call(112, 'cover_release', { slug: 'starting-panel', manual: 'software-customer', software: 'STP Core', release: 'v2.2.1' });
