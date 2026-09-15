@@ -76,9 +76,15 @@ The functional spec lives in this file's history and in the Modules spec provide
   `hardwareIds` — pick existing or create new (wizard step 3, module → Hardware tab, MCP `list_hardware` /
   `create_hardware` / `update_hardware`, `hardware: [{id}|{name,type,…}]` on create/update). One manual may
   cover several unit types (three camera models): each gets its own `<h3>` in Installation/Operation, a row
-  in section 3 and in the FAT header. Old modules with an inline `hardware` object still resolve on read. Software links: N rows of name + from-version; one doc version
-  may cover a range of software releases; a **manual-affecting** release stays unlinked until a new
-  doc version is released for it (orange dot on the modules list). **A manual relates to a software
+  in section 3 and in the FAT header. Old modules with an inline `hardware` object still resolve on read. Software links: N rows of name + from-version.
+  A manual type documents a software as a **chain of doc versions**: each starts at one release (`covers[].from`)
+  and documents everything after it until the next version of that type takes over, so the newest is always open
+  (`2.0.1 → latest`) — `softwareCoverage()` in `store.js` derives end, `closedBy` and the whole Software versions
+  timeline; nothing closes a range by hand. `covers[].reviewedTo` is how far an author has checked the version
+  (stamped on create, on release, and by `linkReleaseToDoc`): a **manual-affecting** release past it puts the
+  version in *needs review* (orange dot on the modules list, `uncoveredReleases`) until the author either confirms
+  it still applies or starts the next version from that release (`createNextDocVersion(..., {fromRelease})`).
+  **A manual relates to a software
   version**: a link must name a software created on the Software page (the feed `softwares.json`) and its
   from-version must be a registered release (`assertSoftwareLinks` in `store.js` — create, update, link, own
   manual; `registerSoftwareRelease` refuses unknown names; the modal's "software named after the module" goes
