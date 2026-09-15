@@ -154,6 +154,10 @@ export const MANUAL_TYPES = [
 ];
 export const manualType = (id) => MANUAL_TYPES.find((t) => t.id === id) || { id, label: id, short: id, kind: 'hardware', sections: [] };
 
+/** An assembled manual is built from a customer or a technician manual: it is the audience that picks the
+ *  document, and each module's software manual of that same audience comes along as its own chapter. */
+export const ASSEMBLY_TYPES = MANUAL_TYPES.filter((mt) => mt.kind === 'hardware');
+
 /** Compare software versions numerically, like compareSwVersions in server/docgen.js ('3.10' > '3.9'). */
 export function compareSwVersions(a, b) {
   const nums = (v) => String(v || '').split(/[^0-9]+/).filter(Boolean).map(Number);

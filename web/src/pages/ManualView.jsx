@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, GROUPS, MANUAL_TYPES, manualType, readFileAsBase64, LANGUAGES, language } from '../api.js';
+import { api, GROUPS, ASSEMBLY_TYPES, manualType, readFileAsBase64, LANGUAGES, language } from '../api.js';
 import ModulePicker from '../components/ModulePicker.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
@@ -180,7 +180,7 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
               <label>
                 {t('Type')}
                 <select value={type} onChange={(e) => setType(e.target.value)} title={t('Which manual of each module is compiled into this document')}>
-                  {MANUAL_TYPES.map((mt) => (
+                  {ASSEMBLY_TYPES.map((mt) => (
                     <option key={mt.id} value={mt.id}>{t(mt.label)}</option>
                   ))}
                 </select>

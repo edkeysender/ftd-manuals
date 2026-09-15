@@ -938,10 +938,17 @@ try {
   ok(techCompiled.chapters[0].doc.key === 'technician:A1.0' && !techCompiled.chapters[0].isDraft && techCompiled.html.includes('Set the static IP.') && techCompiled.html.includes('Technician manual'),
     'technician manual compiles the released technician docs');
   ok((await req('GET', '/api/manuals')).find((m) => m.slug === 'b737-technician-manual').unreleased === 0, 'readiness counts the manual type being assembled');
-  await req('PUT', '/api/manuals/b737-technician-manual', { manual: 'software-technician' });
+  // a module that has no manual of the assembled type is a missing chapter
+  await req('POST', '/api/modules', { name: 'Overhead Light', group: 'SIM', manuals: ['customer'], start: { mode: 'blank' } });
+  await req('PUT', '/api/manuals/b737-technician-manual', { modules: ['overhead-light'] });
   const swtCompiled = await req('GET', '/api/manuals/b737-technician-manual');
-  ok(swtCompiled.chapters[0].missing === true && /software technician manual/.test(swtCompiled.chapters[0].reason || ''), 'a module without that manual type is a missing chapter');
+  ok(swtCompiled.chapters[0].missing === true && /technician manual/.test(swtCompiled.chapters[0].reason || ''), 'a module without that manual type is a missing chapter');
+  // the document itself is a customer or technician manual; software manuals join it as chapters
+  const swAssembly = await req('PUT', '/api/manuals/b737-technician-manual', { manual: 'software-technician' }).catch((e) => e);
+  ok(swAssembly instanceof Error && /assembled from a customer or technician manual/.test(swAssembly.message),
+    'a manual cannot be assembled from a software manual');
   await req('DELETE', '/api/manuals/b737-technician-manual');
+  await req('DELETE', '/api/modules/overhead-light');
   // clean up the extra drafts so the customer-stream checks below keep their assumptions
   await req('POST', '/api/modules/starting-panel/docs/customer:A2.0/discard');
   await req('POST', '/api/modules/starting-panel/docs/software-customer:A1.0/discard');

@@ -1910,6 +1910,18 @@ export async function getManual(slug) {
   return (await listManuals()).find((m) => m.slug === slug) || null;
 }
 
+/** An assembled manual is built from a customer or a technician manual — the software manual of the
+ *  same audience joins as its own chapter, so it is never the type of the document itself. */
+function assemblyTypeOf(id) {
+  const t = manualTypeOf(id);
+  if (t.kind !== 'hardware') {
+    throw new Error(
+      `A manual is assembled from a customer or technician manual, not from ${t.label.toLowerCase()} — each module's software manual of the same audience is compiled as its own chapter`
+    );
+  }
+  return t;
+}
+
 export async function createManual({ name, code, group, modules, manual: type }) {
   const slug = slugify(name);
   if (!slug) throw new Error('Manual name is required');
@@ -1920,7 +1932,7 @@ export async function createManual({ name, code, group, modules, manual: type })
     name,
     code: code || null,
     group: group || null,
-    manual: manualTypeOf(type).id, // which manual type of each module is compiled
+    manual: assemblyTypeOf(type).id, // which manual type of each module is compiled
     modules: Array.isArray(modules) ? modules : [],
     createdAt: ts,
     updatedAt: ts,
@@ -1940,7 +1952,7 @@ export async function updateManual(slug, patch) {
   if (patch.name !== undefined) manual.name = patch.name;
   if (patch.code !== undefined) manual.code = patch.code || null;
   if (patch.group !== undefined) manual.group = patch.group || null;
-  if (patch.manual !== undefined) manual.manual = manualTypeOf(patch.manual).id;
+  if (patch.manual !== undefined) manual.manual = assemblyTypeOf(patch.manual).id;
   if (patch.modules !== undefined) manual.modules = patch.modules;
   manual.updatedAt = now();
   await mutate(async () => {
