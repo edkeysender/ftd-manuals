@@ -693,9 +693,16 @@ export const TOOLS = [
   {
     name: 'release_doc',
     description:
-      'Release an In-review doc version: merges the draft branch to main, freezes the revision counter and supersedes older released versions of the same manual type.',
+      'Release an In-review doc version: merges the draft branch to main, freezes the revision counter and supersedes older released versions of the same manual type. On a doc opened with start_hotfix it publishes the correction instead: same version, the revision it was edited to, nothing superseded.',
     inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
     annotations: { title: 'Release doc', ...RW, idempotentHint: true },
+  },
+  {
+    name: 'start_hotfix',
+    description:
+      'Correct a RELEASED doc version in place: reopens its draft branch at the next revision (A1.0 r1 → r2), so the edit tools work on it as on a draft. The manual on main stays the released one until release_doc publishes the hotfix; discard_doc drops it. Use it for a correction to the document (a wrong pin number, a missing warning) — a new software release that changes the manual gets its own version via create_doc_version instead.',
+    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
+    annotations: { title: 'Start hotfix', ...RW },
   },
 ];
 
@@ -1146,6 +1153,8 @@ async function callTool(name, args) {
       return await store.setDocStatus(args.slug, args.version, 'in-review');
     case 'release_doc':
       return await store.releaseDoc(args.slug, args.version);
+    case 'start_hotfix':
+      return await store.startHotfix(args.slug, args.version);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

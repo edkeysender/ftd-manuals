@@ -398,6 +398,22 @@ export const PL = {
   'Submit for review': 'Przekaż do przeglądu',
   '{doc} released — merged to main': '{doc} wydano — scalono do main',
   'Approve & release': 'Zatwierdź i wydaj',
+  Hotfix: 'Poprawka',
+  'Edit hotfix': 'Edytuj poprawkę',
+  'Publish hotfix': 'Opublikuj poprawkę',
+  'Discard hotfix': 'Odrzuć poprawkę',
+  'hotfix r{rev}': 'poprawka r{rev}',
+  'Correct this released version in place — same version, next revision':
+    'Popraw wydaną wersję na miejscu — ta sama wersja, kolejna rewizja',
+  'Hotfix of {doc} started': 'Rozpoczęto poprawkę {doc}',
+  'Hotfix of {doc} discarded': 'Odrzucono poprawkę {doc}',
+  '{doc} r{rev} published': 'Opublikowano {doc} r{rev}',
+  'Discard the hotfix of {version}? The released manual stays as it is.':
+    'Odrzucić poprawkę {version}? Wydana instrukcja pozostanie bez zmian.',
+  'A correction of this version is open on {branch}': 'Poprawka tej wersji jest otwarta na {branch}',
+  'Merge the correction into the released {version}': 'Scal poprawkę z wydaną wersją {version}',
+  'Merge the correction back into {version} — readers get it as soon as it is published':
+    'Scal poprawkę z wersją {version} — czytelnicy dostaną ją zaraz po opublikowaniu',
   '{doc} back to draft': '{doc} wrócił do wersji roboczej',
   'Back to draft': 'Wróć do wersji roboczej',
   'Discard {manual} draft {version}? The branch {branch} will be deleted.': 'Odrzucić wersję roboczą {version} ({manual})? Gałąź {branch} zostanie usunięta.',

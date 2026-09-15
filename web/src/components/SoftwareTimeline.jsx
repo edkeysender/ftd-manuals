@@ -98,11 +98,13 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, bu
                 </div>
               )}
               <div className={`sw-row-status st-${row.needsReviewAgainst ? 'unreviewed' : row.status}`}>
-                {row.needsReviewAgainst
-                  ? t('needs review')
-                  : row.status === 'draft' || row.status === 'in-review'
-                    ? `${t(row.status)} r${row.revision}`
-                    : t(row.status)}
+                {row.hotfix
+                  ? t('hotfix r{rev}', { rev: row.revision })
+                  : row.needsReviewAgainst
+                    ? t('needs review')
+                    : row.status === 'draft' || row.status === 'in-review'
+                      ? `${t(row.status)} r${row.revision}`
+                      : t(row.status)}
               </div>
             </React.Fragment>
           );

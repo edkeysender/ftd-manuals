@@ -721,6 +721,43 @@ try {
     'next doc version inherits the FAT checklist');
   ok((await req('GET', '/api/modules')).find((m) => m.slug === 'starting-panel').fat === true, 'modules list flags FAT');
 
+  // hotfix: correct a released version in place — same version, next revision, published back into it
+  const relBefore = await req('GET', '/api/modules/starting-panel/docs/A1.1');
+  const hf = await req('POST', '/api/modules/starting-panel/docs/A1.1/hotfix');
+  ok(hf.version === 'A1.1' && hf.revision === relBefore.doc.revision + 1 && hf.branch === 'draft/starting-panel-customer-a1.1',
+    `hotfix reopens A1.1 as r${hf.revision} on its branch`);
+  let hfDoc = await req('GET', '/api/modules/starting-panel/docs/A1.1');
+  ok(hfDoc.doc.status === 'released' && !!hfDoc.doc.hotfix, 'the version stays Released while the hotfix is open');
+  const twice = await req('POST', '/api/modules/starting-panel/docs/A1.1/hotfix').catch((e) => e);
+  ok(twice instanceof Error && /already being hotfixed/.test(twice.message), 'one hotfix at a time');
+  const nextDuring = await req('POST', '/api/modules/starting-panel/docs', { manual: 'customer', bump: 'minor' }).catch((e) => e);
+  ok(nextDuring instanceof Error && /being hotfixed/.test(nextDuring.message), 'no new version while a hotfix is open');
+  await req('PUT', '/api/modules/starting-panel/docs/A1.1/content', {
+    html: hfDoc.content.replace('</h2>', '</h2>\n<p>Torque the M4 screws to 1.2 Nm.</p>'),
+    bump: true,
+    summary: 'Corrected the screw torque',
+  });
+  hfDoc = await req('GET', '/api/modules/starting-panel/docs/A1.1');
+  ok(hfDoc.content.includes('1.2 Nm') && hfDoc.doc.revision === hf.revision + 1, 'the hotfix edits like a draft');
+  const mainCopy = await req('GET', '/api/manuals');
+  ok(Array.isArray(mainCopy), 'manuals list still reads while a hotfix is open');
+  await req('POST', '/api/modules/starting-panel/docs/A1.1/release');
+  const published = await req('GET', '/api/modules/starting-panel/docs/A1.1');
+  ok(published.doc.status === 'released' && !published.doc.hotfix && !published.doc.branch && published.content.includes('1.2 Nm'),
+    'publishing the hotfix merges it into the released version');
+  ok(published.doc.revisionRecord.some((r) => r.summary === 'Corrected the screw torque'), 'the correction is in the revision record');
+  ok(!(await req('GET', '/api/modules/starting-panel')).docs.find((d) => d.version === 'A1.1').branch, 'the hotfix branch is gone');
+  const hfDraft = await req('POST', '/api/modules/starting-panel/docs/A1.0/hotfix').catch((e) => e);
+  ok(hfDraft instanceof Error && /a hotfix corrects a released version/.test(hfDraft.message), 'a superseded version cannot be hotfixed');
+  // and it can be thrown away without touching the release
+  await req('POST', '/api/modules/starting-panel/docs/A1.1/hotfix');
+  await req('PUT', '/api/modules/starting-panel/docs/A1.1/content', { html: '<h2>Description</h2><p>Nonsense.</p>', bump: true, summary: 'oops' });
+  await req('POST', '/api/modules/starting-panel/docs/A1.1/discard');
+  const afterDiscard = await req('GET', '/api/modules/starting-panel/docs/A1.1');
+  ok(afterDiscard.doc.status === 'released' && !afterDiscard.doc.hotfix && afterDiscard.content.includes('1.2 Nm') && !afterDiscard.content.includes('Nonsense'),
+    'discarding a hotfix leaves the released version as it was');
+  ok(afterDiscard.doc.revision === published.doc.revision, 'the discarded revision is not counted');
+
   // manual types on a released module: technician + software manuals get their own streams
   const tech = await req('POST', '/api/modules/starting-panel/docs', { manual: 'technician', start: { mode: 'blank' }, checklist: { mode: 'template' } });
   ok(tech.key === 'technician:A1.0' && tech.branch === 'draft/starting-panel-technician-a1.0' && tech.fat === true, 'technician manual A1.0 added to a released module');

@@ -85,6 +85,8 @@ const VERSION_RE = /^A\d+\.\d+$/;
 const LEGACY_DOC_RE = /^modules\/([^/]+)\/docs\/(A\d+\.\d+)\/doc\.json$/;
 const TYPED_DOC_RE = /^modules\/([^/]+)\/docs\/([a-z][a-z-]*)\/(A\d+\.\d+)\/doc\.json$/;
 const isOpen = (d) => d.status === 'draft' || d.status === 'in-review';
+/** A released version being hotfixed edits like a draft: same version, next revision, own branch. */
+const isEditable = (d) => isOpen(d) || !!d.hotfix;
 /** Shared hardware catalog, one file on main: {items: [{id, name, type, version|manufacturer+model, notes}]} */
 const HARDWARE_FILE = 'hardware.json';
 
@@ -413,6 +415,7 @@ export async function deleteHardware(id) {
 function latestDocLabel(doc) {
   if (!doc) return null;
   if (isOpen(doc)) return `${doc.version} draft r${doc.revision}`;
+  if (doc.hotfix) return `${doc.version} hotfix r${doc.revision}`;
   return doc.version;
 }
 
@@ -488,7 +491,7 @@ function uncoveredReleases(module, docs, softwareFeed) {
  * closed by its successor's start, never by hand.
  *
  * Returns one entry per linked software:
- *   { name, fromVersion, registered, releases: [asc], manuals: [{ manual, key, version, status,
+ *   { name, fromVersion, registered, releases: [asc], manuals: [{ manual, key, version, status, hotfix,
  *     revision, from, to, open, closedBy, reviewedTo, needsReviewAgainst }] }
  */
 function softwareCoverage(module, docs, softwareFeed) {
@@ -529,6 +532,7 @@ function softwareCoverage(module, docs, softwareFeed) {
           key: link.doc.key,
           version: link.doc.version,
           status: link.doc.status,
+          hotfix: !!link.doc.hotfix,
           revision: link.doc.revision,
           from: link.from,
           to: upTo,
@@ -876,7 +880,7 @@ export async function saveTranslation(slug, key, lang, html, { source = 'ai', su
   lang = langOf(lang);
   if (lang === DEFAULT_LANG) throw new Error('English is the source language — edit it as content');
   const { branch, dir, meta } = await loadDraftDoc(slug, key);
-  if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
+  if (!isEditable(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
   const enContent = (await repo.show(branch, contentIn(dir))) || '';
   const ts = now();
   meta.languages = meta.languages || {};
@@ -1031,6 +1035,12 @@ export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump =
   if (typed.some(isOpen)) {
     throw new Error(`A ${type.label.toLowerCase()} draft already exists — release or discard it first`);
   }
+  const hotfixed = typed.find((d) => d.hotfix);
+  if (hotfixed) {
+    throw new Error(
+      `${type.label} ${hotfixed.version} is being hotfixed — publish or discard the hotfix before starting a new version`
+    );
+  }
   const latest = typed[0];
   const pv = parseDocVersion(latest.version);
   const version = bump === 'major' ? `A${pv.major + 1}.0` : `A${pv.major}.${pv.minor + 1}`;
@@ -1115,7 +1125,7 @@ async function loadDraftDoc(slug, key) {
 export async function saveDraftContent(slug, key, html, { bump = false, summary = '', lang = DEFAULT_LANG } = {}) {
   lang = langOf(lang);
   const { branch, dir, meta } = await loadDraftDoc(slug, key);
-  if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
+  if (!isEditable(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
   const version = meta.version;
   const ts = now();
   const tag = lang === DEFAULT_LANG ? '' : ` (${LANGUAGES[lang].short})`;
@@ -1157,7 +1167,7 @@ export async function getChecklist(slug, key) {
 /** Save (or remove, with null) the FAT checklist of a Draft/In-review doc; bumps the revision like a content edit. */
 export async function saveChecklist(slug, key, checklist, { summary = '' } = {}) {
   const { branch, dir, meta } = await loadDraftDoc(slug, key);
-  if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
+  if (!isEditable(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
   const version = meta.version;
   const normalized = checklist ? normalizeChecklist(checklist) : null;
   const ts = now();
@@ -1204,7 +1214,7 @@ export async function listComments(slug, key) {
 
 async function writeThreads(slug, key, mutateThreads, message) {
   const { branch, dir, meta } = await loadDraftDoc(slug, key);
-  if (!isOpen(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — comments are made on a Draft or In-review doc`);
+  if (!isEditable(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — comments are made on a Draft, In-review or hotfixed doc`);
   let result = null;
   await mutate(async () => {
     await repo.checkout(branch);
@@ -1315,13 +1325,16 @@ export async function setDocStatus(slug, key, status) {
 }
 
 /** Release: merge the draft branch into main, freeze the revision counter,
- *  supersede older released versions of the same manual type, delete the branch. */
+ *  supersede older released versions of the same manual type, delete the branch.
+ *  On a hotfix branch it publishes the correction instead: same version, the revision it was
+ *  edited to, nothing superseded. */
 export async function releaseDoc(slug, key) {
   const { branch, dir, meta, manual } = await loadDraftDoc(slug, key);
   const entry = await moduleOf(slug);
   const feed = await getSoftwareFeed();
   const version = meta.version;
   const ts = now();
+  if (meta.hotfix) return await publishHotfix({ slug, branch, dir, meta, manual, version, ts });
 
   await mutate(async () => {
     await repo.checkout('main');
@@ -1354,7 +1367,67 @@ export async function releaseDoc(slug, key) {
   return meta;
 }
 
-/** Discard a draft: delete its branch. A never-released module with no other draft disappears entirely. */
+/** Merge a hotfix back into the version it corrects: main takes the corrected content at the new
+ *  revision, the version stays Released, the branch goes. */
+async function publishHotfix({ slug, branch, dir, meta, manual, version, ts }) {
+  const rev = `r${meta.revision}`;
+  const last = meta.revisionRecord[meta.revisionRecord.length - 1];
+  if (last && last.rev === rev && last.summary === 'Hotfix (draft)') last.summary = 'Hotfix';
+  meta.hotfix = null;
+  meta.branch = null;
+  meta.updatedAt = ts;
+  await mutate(async () => {
+    await repo.checkout('main');
+    await repo.merge(branch, `Merge ${branch}: hotfix ${slug} ${MANUAL_TYPES[manual].label.toLowerCase()} ${version} ${rev}`);
+    await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
+    await repo.commitAll(`${slug}: publish ${MANUAL_TYPES[manual].label.toLowerCase()} ${version} ${rev} (hotfix)`);
+    await repo.deleteBranch(branch);
+  });
+  return meta;
+}
+
+/**
+ * Hotfix a released version: reopen its draft branch off main so the same version can be corrected
+ * in place (A1.0 r1 → r2) without a new version and without leaving the released manual — on main
+ * the doc stays Released and compiles as before, so what readers get only changes when the hotfix is
+ * published. One hotfix at a time, and none while a newer version of that manual type is open.
+ */
+export async function startHotfix(slug, key) {
+  const hit = await findDoc(slug, key);
+  if (!hit) throw new Error(`Doc ${slug} ${key} not found`);
+  const { entry, doc } = hit;
+  const type = manualTypeOf(doc.manual);
+  if (doc.hotfix) throw new Error(`${doc.version} is already being hotfixed — edit or publish it`);
+  if (doc.status !== 'released') {
+    throw new Error(
+      `${type.label} ${doc.version} is ${doc.status} — a hotfix corrects a released version` +
+        (isOpen(doc) ? '; edit the draft instead' : '')
+    );
+  }
+  const open = docsOfType(entry.docs, doc.manual).find(isOpen);
+  if (open) throw new Error(`${type.label} ${open.version} is open (${open.status}) — finish it before hotfixing ${doc.version}`);
+  const branch = docBranchName(slug, doc.manual, doc.version);
+  if ((await repo.branches()).includes(branch)) throw new Error(`Branch ${branch} already exists`);
+  const meta = await readJson('main', docJson(doc.dir));
+  if (!meta) throw new Error('Doc version not found');
+  const ts = now();
+  meta.branch = branch;
+  meta.revision += 1;
+  meta.updatedAt = ts;
+  meta.hotfix = { startedAt: ts, baseRevision: meta.revision - 1 };
+  meta.revisionRecord.push({ rev: `r${meta.revision}`, date: ts, summary: 'Hotfix (draft)' });
+  await mutate(async () => {
+    await repo.checkout('main');
+    await repo.createBranch(branch, 'main');
+    await repo.writeFile(docJson(doc.dir), JSON.stringify(meta, null, 2) + '\n');
+    await repo.commitAll(`${slug} ${doc.version}: start hotfix r${meta.revision}`);
+    await repo.checkout('main');
+  });
+  return { slug, manual: doc.manual, key: doc.key, version: doc.version, revision: meta.revision, branch };
+}
+
+/** Discard a draft: delete its branch. A never-released module with no other draft disappears entirely.
+ *  On a hotfix this drops the correction; the released version on main is untouched. */
 export async function discardDraft(slug, key) {
   const { branch } = await loadDraftDoc(slug, key);
   await mutate(async () => {
@@ -2126,11 +2199,13 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   const { modules } = await collectAll();
   const chapters = [];
   const chapterOf = async (entry, doc, extra = {}) => {
+    // An unpublished hotfix lives on a branch; the manual keeps compiling the released copy on main.
+    const ref = doc.hotfix ? 'main' : doc.ref;
     // Translation when the manual is compiled in another language; English (flagged) when there is none.
-    let content = lang === DEFAULT_LANG ? null : await repo.show(doc.ref, contentLangIn(doc.dir, lang));
+    let content = lang === DEFAULT_LANG ? null : await repo.show(ref, contentLangIn(doc.dir, lang));
     const langFallback = lang !== DEFAULT_LANG && !content;
-    if (!content) content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
-    const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
+    if (!content) content = (await repo.show(ref, contentIn(doc.dir))) || '';
+    const checklist = doc.fat ? await readJson(ref, checklistIn(doc.dir)) : null;
     return {
       slug: entry.module.slug,
       module: entry.module,

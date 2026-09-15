@@ -63,6 +63,8 @@ export const api = {
   backToDraft: (slug, version) => request(`/api/modules/${slug}/docs/${version}/back-to-draft`, { method: 'POST' }),
   release: (slug, version) => request(`/api/modules/${slug}/docs/${version}/release`, { method: 'POST' }),
   discard: (slug, version) => request(`/api/modules/${slug}/docs/${version}/discard`, { method: 'POST' }),
+  /** Reopen a released version to correct it in place; `release` publishes it back at the new revision. */
+  startHotfix: (slug, version) => request(`/api/modules/${slug}/docs/${version}/hotfix`, { method: 'POST' }),
   softwares: () => request('/api/softwares'),
   /** Software page rows: {name, modules:[{slug, name, manuals, docs, uncovered}], releases:[{version, coveredBy}]} */
   software: () => request('/api/software'),
