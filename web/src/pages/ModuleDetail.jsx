@@ -1143,30 +1143,38 @@ function AssetsTab({ slug, docs, module, onChanged }) {
   );
 }
 
+/** Compare two software versions numerically ("3.10.0" > "3.9.1"). */
+function cmpSwVersion(a, b) {
+  const nums = (x) => String(x || '').split(/[^\d]+/).filter(Boolean).map(Number);
+  const na = nums(a), nb = nums(b);
+  for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+    const d = (na[i] || 0) - (nb[i] || 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+/** Is this release inside a doc's covered range? */
+const inCover = (v, cov) => cmpSwVersion(v, cov.from) >= 0 && cmpSwVersion(v, cov.to || cov.from) <= 0;
+
+/** One collapsed row per linked software; expanding it shows its releases, newest first,
+ *  with the docs covering each and the docs still to link. */
 function SoftwareTab({ data, slug, reload }) {
   const toast = useToast();
-  const { module, docs, softwareFeed } = data;
+  const { module, docs, softwareFeed, uncovered = [] } = data;
   const [form, setForm] = useState({ name: module.softwares[0]?.name || '', version: '', manualAffecting: false, note: '' });
+  const [expanded, setExpanded] = useState({});
   // Every manual type the module maintains must cover a release on its own.
   const types = MANUAL_TYPES.filter((mt) => docs.some((d) => d.manual === mt.id));
   const releasedOf = (mt) => docs.find((d) => d.manual === mt.id && d.status === 'released');
   const openOf = (mt) => docs.find((d) => d.manual === mt.id && isOpenDoc(d));
 
+  const releasesOf = (name) =>
+    [...(softwareFeed[name] || [])].sort(
+      (a, b) => cmpSwVersion(b.version, a.version) || String(b.date || '').localeCompare(String(a.date || ''))
+    );
   const coveredBy = (swName, version) =>
-    docs.filter((d) => (d.covers || []).some((c) => c.name === swName && covered(version, c)));
-
-  function covered(v, cov) {
-    const nums = (x) => String(x || '').split(/[^\d]+/).filter(Boolean).map(Number);
-    const cmp = (a, b) => {
-      const na = nums(a), nb = nums(b);
-      for (let i = 0; i < Math.max(na.length, nb.length); i++) {
-        const d = (na[i] || 0) - (nb[i] || 0);
-        if (d !== 0) return d;
-      }
-      return 0;
-    };
-    return cmp(v, cov.from) >= 0 && cmp(v, cov.to || cov.from) <= 0;
-  }
+    docs.filter((d) => (d.covers || []).some((c) => c.name === swName && inCover(version, c)));
 
   function link(doc, swName, swVersion) {
     api
@@ -1180,6 +1188,7 @@ function SoftwareTab({ data, slug, reload }) {
       await api.registerRelease(form);
       toast(t('{name} {version} registered', { name: form.name, version: form.version }));
       setForm({ ...form, version: '', note: '', manualAffecting: false });
+      setExpanded({ ...expanded, [form.name]: true });
       reload();
     } catch (e) {
       toast(e.message, 'err');
@@ -1188,91 +1197,118 @@ function SoftwareTab({ data, slug, reload }) {
 
   return (
     <div>
-      {module.softwares.map((sw) => (
-        <div className="sw-block" key={sw.name}>
-          <h3>
-            {sw.name} <span className="muted">{t('linked from {version}', { version: sw.fromVersion || '—' })}</span>
-          </h3>
-          {!softwareFeed[sw.name] && (
-            <p className="hint warn">
-              {t('"{name}" was never created on the Software page, so its manuals cannot relate to a software version.', { name: sw.name })}{' '}
-              <Link to="/software">{t('Repair it on the Software page')}</Link>
-            </p>
-          )}
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t('Release')}</th>
-                <th>{t('Date')}</th>
-                <th>{t('Manual-affecting')}</th>
-                <th>{t('Covered by doc')}</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(softwareFeed[sw.name] || []).map((rel) => {
-                const covering = coveredBy(sw.name, rel.version);
-                const missingTypes = types.filter((mt) => !covering.some((d) => d.manual === mt.id));
-                return (
-                  <tr key={rel.version}>
-                    <td><strong>{rel.version}</strong> {rel.note && <span className="muted">— {rel.note}</span>}</td>
-                    <td className="muted">{timeAgo(rel.date)}</td>
-                    <td>{rel.manualAffecting ? <span className="badge badge-in-review">{t('Yes')}</span> : t('No')}</td>
-                    <td>
-                      {covering.length ? (
-                        <span className="manual-pills">
-                          {covering.map((d) => (
-                            <span key={d.key} className={`manual-pill mp-${d.status}`}>
-                              <span className="mp-type">{t(manualType(d.manual).short)}</span>
-                              <span className="mp-ver">{d.version}</span>
+      {module.softwares.map((sw) => {
+        const releases = releasesOf(sw.name);
+        const latest = releases[0];
+        const todo = uncovered.filter((u) => u.name === sw.name);
+        const unregistered = !softwareFeed[sw.name];
+        const isOpen = !!expanded[sw.name];
+        return (
+          <div className={`sw-block${isOpen ? ' open' : ''}`} key={sw.name}>
+            <button
+              type="button"
+              className="sw-head"
+              aria-expanded={isOpen}
+              onClick={() => setExpanded({ ...expanded, [sw.name]: !isOpen })}
+            >
+              <span className="sw-caret" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+              <span className="sw-name">{sw.name}</span>
+              <span className="muted">{t('linked from {version}', { version: sw.fromVersion || '—' })}</span>
+              <span className="sw-head-right">
+                {latest && (
+                  <span className="muted">
+                    {t('latest')} <strong className="sw-latest">{latest.version}</strong> · {timeAgo(latest.date)}
+                  </span>
+                )}
+                <span className="chip">{plural(releases.length, 'release')}</span>
+                {todo.length > 0 && (
+                  <span className="badge badge-in-review" title={t('Manual-affecting releases no doc version covers yet')}>
+                    {plural(todo.length, 'release')} {t('to cover')}
+                  </span>
+                )}
+                {unregistered && <span className="badge badge-missing">{t('not registered')}</span>}
+              </span>
+            </button>
+
+            {isOpen && (
+              <div className="sw-body">
+                {unregistered && (
+                  <p className="hint warn">
+                    {t('"{name}" was never created on the Software page, so its manuals cannot relate to a software version.', { name: sw.name })}{' '}
+                    <Link to="/software">{t('Repair it on the Software page')}</Link>
+                  </p>
+                )}
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>{t('Release')}</th>
+                      <th>{t('Date')}</th>
+                      <th>{t('Manual-affecting')}</th>
+                      <th>{t('Covered by doc')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {releases.map((rel) => {
+                      const covering = coveredBy(sw.name, rel.version);
+                      const missingTypes = types.filter((mt) => !covering.some((d) => d.manual === mt.id));
+                      return (
+                        <tr key={rel.version}>
+                          <td><strong>{rel.version}</strong> {rel.note && <span className="muted">— {rel.note}</span>}</td>
+                          <td className="muted">{timeAgo(rel.date)}</td>
+                          <td>{rel.manualAffecting ? <span className="badge badge-in-review">{t('Yes')}</span> : t('No')}</td>
+                          <td>
+                            <span className="manual-pills">
+                              {covering.map((d) => (
+                                <span key={d.key} className={`manual-pill mp-${d.status}`}>
+                                  <span className="mp-type">{t(manualType(d.manual).short)}</span>
+                                  <span className="mp-ver">{d.version}</span>
+                                </span>
+                              ))}
+                              {missingTypes.map((mt) => {
+                                const rel0 = releasedOf(mt);
+                                const open = openOf(mt);
+                                const target = !rel.manualAffecting && rel0 ? rel0 : open;
+                                if (!target) {
+                                  return (
+                                    <span key={mt.id} className="manual-pill mp-missing" title={t('needs a new {manual} version', { manual: t(mt.short) })}>
+                                      <span className="mp-type">{t(mt.short)}</span>
+                                      <span className="mp-ver">{t('new version needed')}</span>
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <button
+                                    key={mt.id}
+                                    className="manual-pill mp-missing mp-add"
+                                    title={
+                                      target === rel0
+                                        ? t("Extend the released {manual}'s covered range to this release", { manual: t(mt.label).toLowerCase() })
+                                        : t('Make {doc} the {manual} for {software} {version}', { doc: docLabel(target), manual: t(mt.label).toLowerCase(), software: sw.name, version: rel.version })
+                                    }
+                                    onClick={() => link(target, sw.name, rel.version)}
+                                  >
+                                    <span className="mp-plus" aria-hidden="true">+</span>
+                                    <span className="mp-type">{t(mt.short)}</span>
+                                    <span className="mp-ver">{target.version}</span>
+                                  </button>
+                                );
+                              })}
+                              {!covering.length && !missingTypes.length && <span className="muted">{t('not linked')}</span>}
                             </span>
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="muted">{t('not linked')}</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="btn-col" style={{ alignItems: 'flex-start' }}>
-                        {missingTypes.map((mt) => {
-                          const rel0 = releasedOf(mt);
-                          const open = openOf(mt);
-                          return (
-                            <span key={mt.id} className="btn-row">
-                              {!rel.manualAffecting && rel0 && (
-                                <button
-                                  className="btn btn-sm"
-                                  title={t("Extend the released {manual}'s covered range to this release", { manual: t(mt.label).toLowerCase() })}
-                                  onClick={() => link(rel0, sw.name, rel.version)}
-                                >
-                                  {t('Link to {doc}', { doc: docLabel(rel0) })}
-                                </button>
-                              )}
-                              {open && (
-                                <button
-                                  className="btn btn-sm"
-                                  title={t('Make {doc} the {manual} for {software} {version}', { doc: docLabel(open), manual: t(mt.label).toLowerCase(), software: sw.name, version: rel.version })}
-                                  onClick={() => link(open, sw.name, rel.version)}
-                                >
-                                  {t('Assign to {doc} ({status})', { doc: docLabel(open), status: t(open.status) })}
-                                </button>
-                              )}
-                              {rel.manualAffecting && !open && <span className="hint">{t('needs a new {manual} version', { manual: t(mt.short) })}</span>}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {(softwareFeed[sw.name] || []).length === 0 && (
-                <tr><td colSpan="5" className="muted">{t('No releases registered.')}</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      ))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {releases.length === 0 && (
+                      <tr><td colSpan="4" className="muted">{t('No releases registered.')}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       <div className="sw-register">
         <h3>{t('Register software release')}</h3>
