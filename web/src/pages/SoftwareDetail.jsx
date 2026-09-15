@@ -373,8 +373,14 @@ function OwnManualRow({ sw }) {
     setBusy(true);
     try {
       const r = await api.createSoftwareManual(sw.name, { group, fromVersion: sw.releases[sw.releases.length - 1]?.version || '' });
-      toast(t('Own manual of {name} created — opening the editor', { name: sw.name }));
-      navigate(`/modules/${r.slug}/docs/${r.key}/edit`);
+      // A module written as this software’s own manual was already there, only unlinked: it is adopted, not rewritten.
+      toast(
+        r.adopted
+          ? t('{name} linked to its existing manual', { name: sw.name })
+          : t('Own manual of {name} created — opening the editor', { name: sw.name })
+      );
+      if (r.adopted) navigate(`/modules/${r.slug}`);
+      else navigate(`/modules/${r.slug}/docs/${r.key}/edit`);
     } catch (e) {
       toast(e.message, 'err');
       setBusy(false);
@@ -391,7 +397,7 @@ function OwnManualRow({ sw }) {
       <button
         className="btn btn-primary btn-sm"
         disabled={busy}
-        title={t('Document {name} on its own, without a hardware module: software customer + technician manuals A1.0 in the same editor', { name: sw.name })}
+        title={t('Document {name} on its own, without a hardware module: software customer + technician manuals A1.0 in the same editor. A module already written as its own manual is linked back instead.', { name: sw.name })}
         onClick={create}
       >
         {busy ? t('Creating…') : t('Write its own manual')}

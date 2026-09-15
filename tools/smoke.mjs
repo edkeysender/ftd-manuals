@@ -893,8 +893,26 @@ try {
   await req('POST', `/api/modules/${ownSw.ownModule.slug}/software`, { name: 'STP Core' });
   const detachOne = await req('POST', `/api/modules/${ownSw.ownModule.slug}/software`, { name: 'Panel Tool', unlink: true });
   ok(detachOne.softwares.length === 1 && detachOne.softwares[0].name === 'STP Core', 'detaching works once another software documents the manuals');
-  // deleting the software itself still clears the links it is the last of
+  // deleting a software leaves its own-manual module behind with no software at all
   await req('DELETE', '/api/software/Panel%20Tool');
+  const orphaned = await req('GET', `/api/modules/${ownSw.ownModule.slug}`);
+  ok(orphaned.module.softwares.length === 1 && orphaned.module.softwares[0].name === 'STP Core',
+    'deleting the software unlinks it from its own-manual module');
+  // a software deleted and written again finds the module that already holds its manual
+  const beta = await req('POST', '/api/software', { name: 'Beta Tool', version: 'v1.0', ownManual: {} });
+  await req('DELETE', '/api/software/Beta%20Tool');
+  ok((await req('GET', `/api/modules/${beta.ownModule.slug}`)).module.softwares.length === 0,
+    'the own-manual module is left documenting nothing');
+  const readopted = await req('POST', '/api/software', { name: 'Beta Tool', version: 'v1.0', ownManual: {} });
+  ok(readopted.ownModule?.adopted === true && readopted.ownModule.slug === beta.ownModule.slug && readopted.ownModule.docs.length === 2,
+    'writing the own manual again adopts the module that already has it');
+  ok((await req('GET', `/api/modules/${beta.ownModule.slug}`)).module.softwares.some((s) => s.name === 'Beta Tool'),
+    'the adopted module documents the software again');
+  await req('DELETE', '/api/software/Beta%20Tool');
+  await req('DELETE', `/api/modules/${beta.ownModule.slug}`);
+  const takenName = await req('POST', '/api/software', { name: 'Starting Panel', version: 'v1.0', ownManual: {} }).catch((e) => e);
+  ok(takenName instanceof Error && /already exists/.test(takenName.message), 'a module that is not an own manual still blocks the name');
+  // cleanup: Panel Tool was already deleted above, its module is not
   await req('DELETE', `/api/modules/${ownSw.ownModule.slug}`);
   // languages: English is the source; Polish is a translation stored next to it
   const enDoc = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0');
@@ -1202,14 +1220,16 @@ try {
   ok(ownRow.modules.length === 1 && ownRow.modules[0].type === 'own-software' && ownRow.modules[0].fromVersion === 'v3.0.0' && ownRow.manualCount === 2, 'Software page row shows the own manual with its from-version');
   const ownDoc = await req('GET', '/api/modules/deck-planner/docs/software-customer:A1.0');
   ok(ownDoc.content.includes('<h2>Overview</h2>') && ownDoc.content.includes('Deck Planner') && ownDoc.doc.status === 'draft', 'own manual opens in the editor as a draft');
-  const ownDup = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', {}).catch((e) => e);
-  ok(ownDup instanceof Error && /already exists/.test(ownDup.message), 'a second own manual is refused');
+  const ownDup = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', {});
+  ok(ownDup.adopted === true && ownDup.slug === 'deck-planner' && ownDup.docs.length === 2,
+    'asking for the own manual again returns the one that exists');
   const ownUnknown = await req('POST', '/api/software/Nope/own-manual', {}).catch((e) => e);
   ok(ownUnknown instanceof Error && /not found/.test(ownUnknown.message), 'own manual of an unknown software is refused');
   const ownMcp = await call(140, 'create_software', { name: 'Route Editor', own_manual: true, group: 'IOS', version: 'v1.0' });
   ok(!(ownMcp instanceof Error) && ownMcp.ownModule?.slug === 'route-editor' && ownMcp.ownModule.docs.length === 2, 'MCP create_software own_manual creates the module too');
   const ownMcp2 = await call(141, 'create_software_manual', { name: 'Route Editor' });
-  ok(ownMcp2 instanceof Error && /already exists/.test(ownMcp2.message), 'MCP create_software_manual refuses a duplicate');
+  ok(!(ownMcp2 instanceof Error) && ownMcp2.adopted === true && ownMcp2.slug === 'route-editor',
+    'MCP create_software_manual returns the module that already holds it');
   const clash = await req('POST', '/api/software', { name: 'Starting Panel', ownManual: { group: 'SIM' } }).catch((e) => e);
   ok(clash instanceof Error && /already exists/.test(clash.message) && !(await req('GET', '/api/software')).some((r) => r.name === 'Starting Panel'), 'own manual clashing with a module slug fails before the feed is touched');
   await req('DELETE', '/api/modules/deck-planner');
