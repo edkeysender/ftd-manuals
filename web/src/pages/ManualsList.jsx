@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, GROUPS, MANUAL_TYPES, manualType, timeAgo } from '../api.js';
+import { api, GROUPS, ASSEMBLY_TYPES, manualType, timeAgo } from '../api.js';
 import ModulePicker from '../components/ModulePicker.jsx';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
@@ -166,7 +166,7 @@ function CreateManual({ onClose, onCreated }) {
               <label>
                 {t('Type')}
                 <select value={manual} onChange={(e) => setManual(e.target.value)} title={t('Which manual of each module is compiled into this document')}>
-                  {MANUAL_TYPES.map((mt) => (
+                  {ASSEMBLY_TYPES.map((mt) => (
                     <option key={mt.id} value={mt.id}>{t(mt.label)}</option>
                   ))}
                 </select>
