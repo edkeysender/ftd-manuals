@@ -662,7 +662,7 @@ try {
   await req('POST', '/api/modules/starting-panel/docs/A1.0/cover', { name: 'STP Core', version: 'v2.0.1' });
   let detail = await req('GET', '/api/modules/starting-panel');
   const cov = detail.docs[0].covers.find((c) => c.name === 'STP Core');
-  ok(cov.from === 'v2.0.0' && cov.to === 'v2.0.1', `A1.0 covers STP Core ${cov.from} – ${cov.to}`);
+  ok(cov.from === 'v2.0.0' && cov.reviewedTo === 'v2.0.1', `A1.0 covers STP Core from ${cov.from} onwards, reviewed to ${cov.reviewedTo}`);
   ok(detail.needsDoc === false, 'no orange dot with covered releases');
 
   await req('POST', '/api/softwares', { name: 'STP Core', version: 'v2.1.0', manualAffecting: true });
@@ -675,7 +675,7 @@ try {
   // next doc version becomes the manual for the uncovered release and clears the dot; later it supersedes A1.0
   const next = await req('POST', '/api/modules/starting-panel/docs', { bump: 'minor' });
   ok(next.version === 'A1.1' && next.key === 'customer:A1.1' && next.branch === 'draft/starting-panel-customer-a1.1', 'next version is customer A1.1');
-  ok(next.covers.length === 1 && next.covers[0].name === 'STP Core' && next.covers[0].from === 'v2.1.0' && next.covers[0].to === 'v2.1.0',
+  ok(next.covers.length === 1 && next.covers[0].name === 'STP Core' && next.covers[0].from === 'v2.1.0' && !next.covers[0].to,
     'new version is seeded to cover STP Core v2.1.0');
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.docs.find((d) => d.version === 'A1.1').covers[0].from === 'v2.1.0', 'A1.1 draft carries the covered release');
@@ -703,7 +703,7 @@ try {
   await req('POST', '/api/softwares', { name: 'STP Core', version: 'v2.1.1', manualAffecting: true });
   ok((await req('GET', '/api/modules/starting-panel')).uncovered.some((u) => u.version === 'v2.1.1'), 'v2.1.1 is uncovered');
   const assigned = await req('POST', '/api/modules/starting-panel/docs/A1.1/cover', { name: 'STP Core', version: 'v2.1.1' });
-  ok(assigned.covers[0].from === 'v2.1.0' && assigned.covers[0].to === 'v2.1.1', 'draft A1.1 now covers STP Core v2.1.0 – v2.1.1');
+  ok(assigned.covers[0].from === 'v2.1.0' && assigned.covers[0].reviewedTo === 'v2.1.1', 'draft A1.1 covers STP Core from v2.1.0, reviewed to v2.1.1');
   ok((await req('GET', '/api/modules/starting-panel')).uncovered.length === 0, 'assigning to the draft clears the uncovered list');
   const badSw = await req('POST', '/api/modules/starting-panel/docs/A1.1/cover', { name: 'Other Soft', version: 'v1' }).catch((e) => e);
   ok(badSw instanceof Error && /not linked to this module/.test(badSw.message), 'cannot cover a software the module is not linked to');
@@ -713,8 +713,8 @@ try {
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.docs.find((d) => d.version === 'A1.0').status === 'superseded', 'A1.0 superseded by A1.1');
   ok(detail.docs.find((d) => d.version === 'A1.1').status === 'released', 'A1.1 released');
-  ok(detail.docs.find((d) => d.version === 'A1.1').covers[0].to === 'v2.1.1' && detail.needsDoc === false,
-    'released A1.1 keeps its covered range; no orange dot');
+  ok(detail.docs.find((d) => d.version === 'A1.1').covers[0].reviewedTo === 'v2.1.1' && detail.needsDoc === false,
+    'released A1.1 is reviewed up to the newest release; no orange dot');
   const superseded = await req('POST', '/api/modules/starting-panel/docs/A1.0/cover', { name: 'STP Core', version: 'v2.1.1' }).catch((e) => e);
   ok(superseded instanceof Error && /superseded/.test(superseded.message), 'a superseded doc cannot take new releases');
   ok(detail.docs.find((d) => d.version === 'A1.1').fat === true && (await req('GET', '/api/modules/starting-panel/docs/A1.1/checklist')).checklist,
@@ -789,7 +789,7 @@ try {
   const reg = await call(111, 'register_software_release', { name: 'STP Core', version: 'v2.2.1', manual_affecting: false, note: 'hotfix' });
   ok(!(reg instanceof Error) && reg['STP Core'].some((r) => r.version === 'v2.2.1'), 'MCP register_software_release');
   const covMcp = await call(112, 'cover_release', { slug: 'starting-panel', manual: 'software-customer', software: 'STP Core', release: 'v2.2.1' });
-  ok(!(covMcp instanceof Error) && covMcp.covers[0].to === 'v2.2.1', 'MCP cover_release on the software customer draft');
+  ok(!(covMcp instanceof Error) && covMcp.covers[0].reviewedTo === 'v2.2.1', 'MCP cover_release on the software customer draft');
   const swTech = await call(113, 'create_doc_version', { slug: 'starting-panel', manual: 'software-technician', checklist: 'none' });
   ok(!(swTech instanceof Error) && swTech.key === 'software-technician:A1.0', 'MCP creates the software technician manual');
   ok(!((await call(114, 'submit_for_review', { slug: 'starting-panel', manual: 'software-technician' })) instanceof Error), 'MCP submit_for_review by manual');
@@ -895,12 +895,28 @@ try {
   // software-customer already spans v2.0.0–v2.2.1 (cover_release above), so only the other two types miss v2.2.0
   ok(detail.uncovered.filter((u) => u.version === 'v2.2.0').map((u) => u.manual).sort().join(',') === 'customer,technician', 'uncovered release listed per manual type');
   ok(detail.needsDoc === true, 'customer manual has no open draft → orange dot');
+  // the timeline behind the Software versions tab: the open version is flagged against the breaking release
+  const stpCov = detail.coverage.find((c) => c.name === 'STP Core');
+  const custOpen = stpCov.manuals.filter((r) => r.manual === 'customer').pop();
+  ok(custOpen.version === 'A1.1' && custOpen.open === true && custOpen.needsReviewAgainst === 'v2.2.0',
+    'open customer version needs review against the manual-affecting release');
+  ok(stpCov.releases.map((r) => r.version).join(',') === stpCov.releases.map((r) => r.version).slice().sort((a, b) => a.localeCompare(b)).join(','),
+    'coverage releases come out oldest first');
   await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/cover', { name: 'STP Core', version: 'v2.2.0' });
   await req('POST', '/api/modules/starting-panel/docs/software-customer:A1.0/cover', { name: 'STP Core', version: 'v2.2.0' });
   const nextCust = await req('POST', '/api/modules/starting-panel/docs', { manual: 'customer', bump: 'major' });
   ok(nextCust.key === 'customer:A2.0' && nextCust.covers[0]?.from === 'v2.2.0', 'customer A2.0 seeded with the release the customer stream did not cover');
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.uncovered.length === 0 && detail.needsDoc === false, 'every manual type covers v2.2.0');
+  // each version documents its software until the next version takes over; the newest stays open
+  const chain = detail.coverage
+    .find((c) => c.name === 'STP Core')
+    .manuals.filter((r) => r.manual === 'customer')
+    .map((r) => `${r.version}:${r.from}→${r.open ? 'latest' : r.to}`)
+    .join(' ');
+  ok(chain === 'A1.0:v2.0.0→v2.0.1 A1.1:v2.1.0→v2.1.1 A2.0:v2.2.0→latest', `customer coverage chain: ${chain}`);
+  ok(detail.coverage.find((c) => c.name === 'STP Core').manuals.find((r) => r.version === 'A1.1' && r.manual === 'customer').closedBy === 'v2.2.0',
+    'the released version is closed by the version that took over');
   // release the technician manual; assemble a technician manual from it
   await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/submit-review');
   await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/release');

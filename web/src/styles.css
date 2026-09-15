@@ -155,21 +155,55 @@ code { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 0.92em; bac
 .tabs button { border: none; background: none; padding: 9px 14px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .tabs button.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
 
-.sw-block { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; background: var(--panel); }
-.sw-block.open { border-color: var(--accent-border); }
-.sw-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: none; background: none; text-align: left; color: var(--ink); font-size: 14px; }
-.sw-head:hover { background: var(--soft); border-radius: 10px; }
-.sw-block.open .sw-head { border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; }
-.sw-caret { color: var(--muted); width: 12px; }
-.sw-name { font-weight: 600; }
-.sw-head-right { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; font-size: 12.5px; }
-.sw-latest { color: var(--ink); }
-.sw-body { padding: 4px 14px 14px; }
-.sw-body .table { margin-top: 8px; }
-button.manual-pill.mp-add { cursor: pointer; }
-button.manual-pill.mp-add:hover { border-color: var(--accent); color: var(--accent); }
-.manual-pill .mp-plus { color: var(--muted); font-weight: 600; }
-button.manual-pill.mp-add:hover .mp-plus { color: var(--accent); }
+/* ---- Software versions tab: releases across, manuals down ---- */
+.sw-tl { margin-bottom: 26px; }
+.sw-tl-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.sw-tl-head h3 { margin: 0; }
+.sw-tl-legend { margin-left: auto; display: flex; gap: 14px; color: var(--muted); font-size: 12px; }
+.sw-tl-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.lg { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.lg-affecting { background: var(--orange); }
+.lg-released { background: var(--green); }
+.lg-draft { background: var(--accent); }
+
+.sw-grid { display: grid; align-items: center; row-gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 14px 16px; overflow-x: auto; }
+.sw-gh { font-size: 11px; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; padding-bottom: 8px; border-bottom: 1px solid var(--line); align-self: stretch; }
+.sw-gh-status { text-align: right; padding-left: 14px; }
+.sw-col { display: flex; flex-direction: column; gap: 2px; }
+.sw-col-ver { font-size: 12.5px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0; display: inline-flex; align-items: center; gap: 5px; }
+.sw-col-date { font-size: 11px; }
+.sw-col.affecting .sw-col-ver { color: var(--orange); }
+.sw-col.open .sw-col-ver { color: var(--muted); font-weight: 500; }
+
+.sw-row-label { white-space: nowrap; padding-right: 14px; font-size: 13px; }
+.sw-row-label a { color: inherit; text-decoration: none; }
+.sw-row-label a:hover { color: var(--accent); }
+.sw-bar { border-radius: 7px; padding: 6px 12px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid transparent; }
+.sw-bar-draft { background: var(--accent-soft-2); border-color: var(--accent-border); color: var(--accent); }
+.sw-bar-released { background: var(--green-soft); border-color: var(--green-border); color: var(--green); }
+.sw-bar-old { background: var(--soft); border-color: var(--line); color: var(--muted); }
+.sw-bar-unreviewed { border: 1px dashed var(--amber-border); color: var(--amber-ink); background: transparent; }
+.sw-closed { font-size: 12px; color: var(--muted); padding-left: 12px; white-space: nowrap; }
+.sw-row-status { text-align: right; padding-left: 14px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.sw-row-status.st-released { color: var(--green); }
+.sw-row-status.st-unreviewed { color: var(--amber-ink); }
+.sw-empty { padding: 10px 0; }
+
+.sw-todo { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; padding: 10px 14px; border: 1px solid var(--amber-border); background: var(--amber-soft); border-radius: 9px; font-size: 13px; }
+.sw-todo .btn-row { margin-left: auto; }
+
+.sw-rel-title { font-size: 11px; letter-spacing: .05em; color: var(--muted); text-transform: uppercase; margin: 18px 0 8px; }
+.sw-rel-list { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.sw-rel { display: grid; grid-template-columns: minmax(200px, 1fr) max-content max-content minmax(150px, max-content); gap: 16px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); border-left: 3px solid transparent; }
+.sw-rel:first-child { border-top: none; }
+.sw-rel.affecting { border-left-color: var(--orange); }
+.sw-rel-date { font-size: 12.5px; white-space: nowrap; }
+.sw-rel-what { font-size: 12.5px; text-align: right; }
+
+@media (max-width: 760px) {
+  .sw-rel { grid-template-columns: 1fr max-content; }
+  .sw-rel-what { grid-column: 1 / -1; text-align: left; }
+}
 .sw-register { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
 .sw-register h3 { margin: 0 0 10px; }
 .pair { display: flex; gap: 8px; align-items: center; }
@@ -502,8 +536,6 @@ label.inline { font-weight: 400; color: var(--muted); }
 .manual-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 2px 8px; font-size: 12px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
 .manual-pill .mp-type { font-weight: 600; }
 .manual-pill .mp-ver { color: var(--muted); }
-.manual-pill .mp-status { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; opacity: .8; border-left: 1px solid var(--line); padding-left: 6px; }
-a.manual-pill { text-decoration: none; color: inherit; }
 .manual-pill.mp-draft { border-color: var(--accent-border); background: var(--accent-soft-2); }
 .manual-pill.mp-in-review { border-color: var(--amber-border); background: var(--amber-soft); }
 .manual-pill.mp-released { border-color: var(--green-border); background: var(--green-soft); }

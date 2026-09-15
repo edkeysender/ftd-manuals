@@ -458,41 +458,134 @@ function manualsSummary(docs) {
   return out;
 }
 
-/** Orange dot: some manual type has a manual-affecting software release not covered by
- *  any of its doc versions, and no draft/in-review doc of that type exists yet. */
+/** Orange dot: some manual type has a manual-affecting software release its open doc version
+ *  has never been reviewed against, and no draft/in-review doc of that type exists yet. */
 function needsDoc(module, docs, softwareFeed) {
   return uncoveredReleases(module, docs, softwareFeed).some((u) => !docsOfType(docs, u.manual).some(isOpen));
 }
 
-/** Manual-affecting releases of the module's softwares (at/after the linked from-version)
- *  that no doc version of a manual type covers yet — each one needs its own doc version
- *  of every manual the module maintains. Entries: { manual, name, version }. */
+/** Manual-affecting releases the module's manuals have not been checked against: each manual type
+ *  documents a software from one version onwards, so a breaking release is not "uncovered" but
+ *  unreviewed — it either still applies (confirm it) or needs the next doc version.
+ *  Entries: { manual, name, version } — the shape the modules list and the Software page read. */
 function uncoveredReleases(module, docs, softwareFeed) {
   const out = [];
-  for (const manual of manualTypesOf(docs)) {
-    const typed = docsOfType(docs, manual);
-    for (const sw of module.softwares || []) {
-      for (const rel of softwareFeed[sw.name] || []) {
-        if (!rel.manualAffecting) continue;
-        if (sw.fromVersion && compareSwVersions(rel.version, sw.fromVersion) < 0) continue;
-        const covered = typed.some((d) => (d.covers || []).some((c) => c.name === sw.name && versionCovered(rel.version, c)));
-        if (!covered) out.push({ manual, name: sw.name, version: rel.version });
-      }
+  for (const sw of softwareCoverage(module, docs, softwareFeed)) {
+    for (const row of sw.manuals) {
+      if (row.needsReviewAgainst) out.push({ manual: row.manual, name: sw.name, version: row.needsReviewAgainst });
     }
   }
   return out;
 }
 
-/** Fold a release into a covers list: new row, or widen the existing range. */
+/**
+ * How the module's manuals sit against each linked software's releases — the timeline behind the
+ * Software versions tab.
+ *
+ * A manual type documents a software as a **chain** of doc versions: each version starts at the
+ * release named in its `covers[].from` and documents everything after it until the next version of
+ * that manual type takes over, so the newest version is always open ("→ latest"). A version is
+ * closed by its successor's start, never by hand.
+ *
+ * Returns one entry per linked software:
+ *   { name, fromVersion, registered, releases: [asc], manuals: [{ manual, key, version, status,
+ *     revision, from, to, open, closedBy, reviewedTo, needsReviewAgainst }] }
+ */
+function softwareCoverage(module, docs, softwareFeed) {
+  return (module.softwares || []).map((sw) => {
+    const releases = [...(softwareFeed[sw.name] || [])].sort((a, b) => compareSwVersions(a.version, b.version));
+    const newest = releases.length ? releases[releases.length - 1].version : sw.fromVersion || '';
+    const earliest = releases.length ? releases[0].version : sw.fromVersion || '';
+    const manuals = [];
+
+    for (const manual of manualTypesOf(docs)) {
+      // Oldest doc version first: the chain reads left to right, like the releases.
+      const chain = docsOfType(docs, manual)
+        .filter((d) => d.status !== 'superseded' || (d.covers || []).some((c) => c.name === sw.name))
+        .map((d) => {
+          const cov = (d.covers || []).find((c) => c.name === sw.name) || {};
+          return { doc: d, cov, from: cov.from || sw.fromVersion || earliest };
+        })
+        .sort((a, b) => compareDocVersions(a.doc.version, b.doc.version));
+
+      chain.forEach((link, i) => {
+        // The next version that actually starts later takes over from this one.
+        const successor = chain.slice(i + 1).find((n) => compareSwVersions(n.from, link.from) > 0);
+        const open = !successor;
+        // Last release this version documents: the newest one before its successor starts.
+        const upTo = successor
+          ? [...releases].reverse().find((r) => compareSwVersions(r.version, successor.from) < 0)?.version || link.from
+          : null;
+        // Everything up to `reviewedTo` has been seen by an author (doc created, released, or
+        // confirmed by hand); `to` on a doc written before open ranges counts as reviewed.
+        const reviewedTo = [link.cov.reviewedTo, link.cov.to, link.from].filter(Boolean).sort(compareSwVersions).pop();
+        const needsReviewAgainst = open
+          ? [...releases]
+              .reverse()
+              .find((r) => r.manualAffecting && compareSwVersions(r.version, reviewedTo) > 0)?.version || null
+          : null;
+        manuals.push({
+          manual,
+          key: link.doc.key,
+          version: link.doc.version,
+          status: link.doc.status,
+          revision: link.doc.revision,
+          from: link.from,
+          to: upTo,
+          open,
+          closedBy: successor ? successor.from : null,
+          reviewedTo,
+          needsReviewAgainst,
+        });
+      });
+    }
+
+    return {
+      name: sw.name,
+      fromVersion: sw.fromVersion || '',
+      registered: !!softwareFeed[sw.name],
+      newest,
+      releases,
+      manuals,
+    };
+  });
+}
+
+/** Fold a release into a covers list: a new row starting there, or the confirmation that the
+ *  version documents it too (`reviewedTo`). Ranges close by succession, so `to` is never set here. */
 function addCover(covers, swName, swVersion) {
   const cov = covers.find((c) => c.name === swName);
   if (!cov) {
-    covers.push({ name: swName, from: swVersion, to: swVersion });
+    covers.push({ name: swName, from: swVersion, reviewedTo: swVersion });
   } else {
-    if (compareSwVersions(swVersion, cov.from) < 0) cov.from = swVersion;
-    if (compareSwVersions(swVersion, cov.to || cov.from) > 0) cov.to = swVersion;
+    if (!cov.from || compareSwVersions(swVersion, cov.from) < 0) cov.from = swVersion;
+    if (compareSwVersions(swVersion, cov.reviewedTo || cov.from) > 0) cov.reviewedTo = swVersion;
   }
   return covers;
+}
+
+/**
+ * Start a covers list for a doc version taking over the chain. Per linked software the new
+ * version starts at, in order: the release that asked for it (`start`), the module's link start
+ * (`fromLinkStart`, the very first version of a manual), the oldest manual-affecting release the
+ * version before it was never reviewed against (`after`: name → reviewedTo) — that release is why
+ * a new version is being written — else the newest release there is.
+ */
+function coversFrom(module, feed, { start = null, fromLinkStart = false, after = {} } = {}) {
+  return (module.softwares || []).map((s) => {
+    const releases = [...(feed[s.name] || [])].sort((a, b) => compareSwVersions(a.version, b.version));
+    const newest = releases.length ? releases[releases.length - 1].version : '';
+    const seen = after[s.name];
+    const breaking = seen ? releases.find((r) => r.manualAffecting && compareSwVersions(r.version, seen) > 0) : null;
+    const from =
+      (start && start.name === s.name && start.version) ||
+      (fromLinkStart && s.fromVersion) ||
+      breaking?.version ||
+      newest ||
+      s.fromVersion ||
+      '';
+    return { name: s.name, from, reviewedTo: newest || from };
+  });
 }
 
 export async function getSoftwareFeed() {
@@ -716,6 +809,7 @@ export async function getModule(slug) {
     softwareFeed: Object.fromEntries(
       (entry.module.softwares || []).map((s) => [s.name, feed[s.name] || []])
     ),
+    coverage: softwareCoverage(entry.module, entry.docs, feed),
   };
 }
 
@@ -817,7 +911,7 @@ export async function saveTranslation(slug, key, lang, html, { source = 'ai', su
  * spec: { manual, content, checklist|null, revisionSeed, startSummary, copiedFrom }
  * `module` is written onto the branch when it is not on main yet (never-released module).
  */
-async function writeFirstDoc(module, spec, moduleOnMain) {
+async function writeFirstDoc(module, spec, moduleOnMain, feed = {}) {
   const slug = module.slug;
   const manual = manualTypeOf(spec.manual).id;
   const version = 'A1.0';
@@ -834,7 +928,7 @@ async function writeFirstDoc(module, spec, moduleOnMain) {
     createdAt: created,
     updatedAt: created,
     releasedAt: null,
-    covers: (module.softwares || []).map((s) => ({ name: s.name, from: s.fromVersion, to: s.fromVersion })),
+    covers: coversFrom(module, feed, { fromLinkStart: true }),
     revisionRecord: [...(spec.revisionSeed || []), { rev: 'r1', date: created, summary: spec.startSummary || 'Initial draft' }],
     copiedFrom: spec.copiedFrom || null,
     fat: !!checklist,
@@ -869,6 +963,7 @@ export async function createModuleDoc(input, manuals) {
     }
   }
   await assertSoftwareLinks(input.softwares); // a manual relates to a software created on the Software page
+  const feed = await getSoftwareFeed();
   const existing = await readJson('main', moduleFile(slug));
   const branches = await repo.branches();
   if (existing || branches.some((b) => b.startsWith(`draft/${slug}-`))) {
@@ -894,7 +989,7 @@ export async function createModuleDoc(input, manuals) {
   const docs = [];
   await mutate(async () => {
     await commitNewHardware(catalog, hw.newItems); // the catalog lives on main; the branches are cut after it
-    for (const spec of manuals) docs.push(await writeFirstDoc(module, spec, false));
+    for (const spec of manuals) docs.push(await writeFirstDoc(module, spec, false, feed));
   });
 
   const first = docs[0];
@@ -915,13 +1010,19 @@ export async function addManual(slug, spec) {
   const onMain = !!(await readJson('main', moduleFile(slug)));
   let doc;
   await mutate(async () => {
-    doc = await writeFirstDoc(module, spec, onMain);
+    doc = await writeFirstDoc(module, spec, onMain, await getSoftwareFeed());
   });
   return { slug, ...doc };
 }
 
-/** Create the next doc version of one manual type, starting from its latest released content. */
-export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump = 'minor') {
+/**
+ * Create the next doc version of one manual type, on its own draft branch, starting from its
+ * latest released content. It takes over the coverage chain from the version before it: from
+ * `fromRelease` ({name, version}) when a manual-affecting release asks for a new version, else
+ * from each linked software's newest release. The version before it is closed at that point —
+ * nothing is written on it, the chain derives it (see softwareCoverage).
+ */
+export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump = 'minor', { fromRelease = null } = {}) {
   const entry = await moduleOf(slug);
   if (!entry) throw new Error('Module not found');
   const type = manualTypeOf(manual);
@@ -948,13 +1049,17 @@ export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump =
     const html = await repo.show('main', contentLangIn(latest.dir, code));
     if (html) translations.push({ code, html });
   }
-  // The new version is the manual for every manual-affecting release this manual type does not cover yet.
-  const covers = uncoveredReleases(entry.module, entry.docs, await getSoftwareFeed())
-    .filter((r) => r.manual === type.id)
-    .reduce((acc, r) => addCover(acc, r.name, r.version), []);
-  const coversLabel = covers
-    .map((c) => `${c.name} ${c.to && c.to !== c.from ? `${c.from}–${c.to}` : c.from}`)
-    .join(', ');
+  // The new version documents each software from where it takes over, onwards: the release that
+  // asked for it, else the breaking release the version before it never answered.
+  const feed = await getSoftwareFeed();
+  const after = Object.fromEntries(
+    softwareCoverage(entry.module, entry.docs, feed).map((sw) => [
+      sw.name,
+      sw.manuals.filter((r) => r.manual === type.id).pop()?.reviewedTo || '',
+    ])
+  );
+  const covers = coversFrom(entry.module, feed, { start: fromRelease, after });
+  const coversLabel = covers.filter((c) => c.from).map((c) => `${c.name} ${c.from}+`).join(', ');
   const doc = {
     version,
     manual: type.id,
@@ -1214,6 +1319,7 @@ export async function setDocStatus(slug, key, status) {
 export async function releaseDoc(slug, key) {
   const { branch, dir, meta, manual } = await loadDraftDoc(slug, key);
   const entry = await moduleOf(slug);
+  const feed = await getSoftwareFeed();
   const version = meta.version;
   const ts = now();
 
@@ -1225,6 +1331,11 @@ export async function releaseDoc(slug, key) {
     meta.releasedAt = ts;
     meta.updatedAt = ts;
     meta.branch = null;
+    // Releasing it is the author saying it documents every release out today.
+    for (const cov of meta.covers || []) {
+      const newest = [...(feed[cov.name] || [])].sort((a, b) => compareSwVersions(a.version, b.version)).pop();
+      if (newest && compareSwVersions(newest.version, cov.reviewedTo || cov.from || '') > 0) cov.reviewedTo = newest.version;
+    }
     await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
 
     // Supersede older released versions of the same manual type.

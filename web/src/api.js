@@ -154,6 +154,17 @@ export const MANUAL_TYPES = [
 ];
 export const manualType = (id) => MANUAL_TYPES.find((t) => t.id === id) || { id, label: id, short: id, kind: 'hardware', sections: [] };
 
+/** Compare software versions numerically, like compareSwVersions in server/docgen.js ('3.10' > '3.9'). */
+export function compareSwVersions(a, b) {
+  const nums = (v) => String(v || '').split(/[^0-9]+/).filter(Boolean).map(Number);
+  const na = nums(a), nb = nums(b);
+  for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+    const d = (na[i] || 0) - (nb[i] || 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
 /** Doc languages: English is the source of every doc, the others are optional translations (mirrors server/docgen.js LANGUAGES). */
 export const LANGUAGES = [
   { code: 'en', label: 'English', short: 'EN', source: true },
