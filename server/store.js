@@ -1815,14 +1815,19 @@ export async function linkSoftware(slug, name, fromVersion = '') {
 }
 
 /** Remove a software link from a module. Its docs keep their covered ranges. */
-export async function unlinkSoftware(slug, name) {
+/** Unlink a software from a module. `force` is for deleteSoftware, which is removing the software
+ *  itself and has already dealt with the manuals — everywhere else a module's software manuals
+ *  must keep something to document. */
+export async function unlinkSoftware(slug, name, { force = false } = {}) {
   name = cleanSwName(name);
   const entry = await moduleOf(slug);
   if (!entry) throw new Error(`Module "${slug}" not found`);
   if (!(entry.module.softwares || []).some((s) => s.name === name)) throw new Error(`${name} is not linked to ${slug}`);
-  const open = entry.docs.filter((d) => isOpen(d) && MANUAL_TYPES[d.manual].kind === 'software');
-  if (open.length && (entry.module.softwares || []).length === 1) {
-    throw new Error(`${slug} has an open software manual draft (${open.map((d) => d.key).join(', ')}) — discard or release it before unlinking its only software`);
+  const swDocs = entry.docs.filter((d) => MANUAL_TYPES[d.manual].kind === 'software');
+  if (!force && swDocs.length && (entry.module.softwares || []).length === 1) {
+    throw new Error(
+      `${entry.module.name} keeps ${swDocs.map((d) => d.key).join(', ')} and ${name} is its only software — a software manual has to relate to a software version. Link the module to another software first, or delete the manual.`
+    );
   }
   const updated = await updateModule(slug, { softwares: entry.module.softwares.filter((s) => s.name !== name) });
   return { slug, name: entry.module.name, softwares: updated.softwares };
@@ -1850,7 +1855,7 @@ export async function deleteSoftware(name) {
   }
   const unlinked = [];
   for (const { module } of linked) {
-    await unlinkSoftware(module.slug, name);
+    await unlinkSoftware(module.slug, name, { force: true });
     unlinked.push(module.slug);
   }
   const releases = (feed[name] || []).length;
@@ -1904,13 +1909,16 @@ export async function deleteSoftwareRelease(name, version) {
     throw new Error(`${name} ${version} is not a registered release${releases.length ? ` — one of ${releases.map((r) => r.version).join(', ')}` : ''}`);
   }
   const { modules } = await collectAll();
-  const links = modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name && s.fromVersion === version));
+  // Only modules still linked to the software: a detached one keeps its covers as history, and
+  // history is not a reason to refuse.
+  const linked = modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name));
+  const links = linked.filter(({ module }) => module.softwares.some((s) => s.name === name && s.fromVersion === version));
   if (links.length) {
     throw new Error(
       `${name} ${version} is where ${links.map((m) => m.module.name).join(', ')} ${links.length > 1 ? 'link' : 'links'} to the software — point the link at another release first`
     );
   }
-  const anchored = modules.flatMap(({ module, docs }) =>
+  const anchored = linked.flatMap(({ module, docs }) =>
     docs
       .filter((d) => (d.covers || []).some((c) => c.name === name && c.from === version))
       .map((d) => `${module.name} ${MANUAL_TYPES[d.manual].short} ${d.version}`)
