@@ -343,7 +343,7 @@ const STRINGS = {
     revisionRecord: 'Revision record', documentRevisions: 'Document revisions', versionInEffect: (v, d) => `Document version ${v}, released ${d}.`, revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
     introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualGroup: 'Manual group', manualType: 'Manual type', docCode: 'Document code',
     hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes', notHardware: 'No parts — not a hardware module',
-    softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', notSoftware: 'Not software-related',
+    softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', notSoftware: 'Not software-related', andLater: 'and later',
     audienceRow: (label, audience) => `${label} — ${audience} audience`,
     introAudience: { technician: 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.', customer: 'It is intended for the operator of the simulator.' },
     introSubject: (kind, name, detail) => (kind === 'software' ? `the software of the <strong>${name}</strong> module (${detail})` : `the <strong>${name}</strong> module (${detail})`),
@@ -369,7 +369,7 @@ const STRINGS = {
     revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', versionInEffect: (v, d) => `Wersja dokumentu ${v}, wydana ${d}.`, revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
     introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualGroup: 'Grupa instrukcji', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
     hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi', notHardware: 'Brak części — moduł bez sprzętu',
-    softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', notSoftware: 'Nie dotyczy oprogramowania',
+    softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', notSoftware: 'Nie dotyczy oprogramowania', andLater: 'i nowsze',
     audienceRow: (label, audience) => `${label} — odbiorca: ${audience}`,
     introAudience: { technician: 'Jest przeznaczony dla instalatora i technika serwisu i nie stanowi części dokumentacji przekazywanej operatorowi symulatora.', customer: 'Jest przeznaczony dla operatora symulatora.' },
     introSubject: (kind, name, detail) => (kind === 'software' ? `oprogramowania modułu <strong>${name}</strong> (${detail})` : `modułu <strong>${name}</strong> (${detail})`),
@@ -408,7 +408,7 @@ export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHi
     (module.softwares || [])
       .map((s) => {
         const cov = (doc.covers || []).find((c) => c.name === s.name);
-        const range = cov ? (cov.to && cov.to !== cov.from ? `${cov.from} – ${cov.to}` : cov.from) : s.fromVersion;
+        const range = cov ? (cov.to ? (cov.to === cov.from ? cov.from : `${cov.from} – ${cov.to}`) : `${cov.from} ${T.andLater}`) : s.fromVersion;
         return `<tr><td>${esc(s.name)}</td><td>${esc(range || '—')}</td></tr>`;
       })
       .join('\n') || `<tr><td colspan="2">${T.notSoftware}</td></tr>`;
@@ -931,10 +931,11 @@ export function compareSwVersions(a, b) {
   return 0;
 }
 
-/** Is software version v inside a doc's covered range {from, to}? */
+/** Is software version v inside a doc's covered range? A range runs from `from` onwards and stays
+ *  open ("→ latest") until a later doc version of the same manual type takes over — `to` is then
+ *  stamped as the last release this version documents. */
 export function versionCovered(v, cov) {
   if (!cov || !cov.from) return false;
-  const from = cov.from;
-  const to = cov.to || cov.from;
-  return compareSwVersions(v, from) >= 0 && compareSwVersions(v, to) <= 0;
+  if (compareSwVersions(v, cov.from) < 0) return false;
+  return !cov.to || compareSwVersions(v, cov.to) <= 0;
 }

@@ -254,7 +254,7 @@ app.post('/api/modules/:slug/docs', wrap(async (req, res) => {
   const m = await store.getModule(req.params.slug);
   if (!m) throw new Error('Module not found');
   if (m.docs.some((d) => d.manual === type.id)) {
-    return res.json(await store.createNextDocVersion(req.params.slug, type.id, body.bump || 'minor'));
+    return res.json(await store.createNextDocVersion(req.params.slug, type.id, body.bump || 'minor', { fromRelease: body.fromRelease || null }));
   }
   const moduleInput = { ...m.module, hardwareItems: m.module.hardwareItems || [] };
   const { spec, aiNote } = await manualSpec(moduleInput, type.id, body.start || { mode: 'blank' }, body.checklist || null);
