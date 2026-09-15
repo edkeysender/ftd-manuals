@@ -538,6 +538,7 @@ export const PL = {
   'new version needed': 'potrzebna nowa wersja',
   'Covered by doc': 'Objęte dokumentem',
   'not linked': 'niepowiązane',
+  'Open {doc} — {status}': 'Otwórz {doc} — {status}',
   "Extend the released {manual}'s covered range to this release": 'Rozszerz zakres wydanej instrukcji ({manual}) o to wydanie',
   'Make {doc} the {manual} for {software} {version}': 'Ustaw {doc} jako {manual} dla {software} {version}',
   'needs a new {manual} version': 'wymaga nowej wersji ({manual})',

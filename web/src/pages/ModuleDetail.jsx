@@ -1259,10 +1259,16 @@ function SoftwareTab({ data, slug, reload }) {
                           <td>
                             <span className="manual-pills">
                               {covering.map((d) => (
-                                <span key={d.key} className={`manual-pill mp-${d.status}`}>
+                                <Link
+                                  key={d.key}
+                                  to={`/modules/${slug}/docs/${d.key}/edit`}
+                                  className={`manual-pill row-link mp-${d.status}`}
+                                  title={t("Open {doc} — {status}", { doc: docLabel(d), status: t(d.status) })}
+                                >
                                   <span className="mp-type">{t(manualType(d.manual).short)}</span>
                                   <span className="mp-ver">{d.version}</span>
-                                </span>
+                                  <span className="mp-status">{t(d.status)}</span>
+                                </Link>
                               ))}
                               {missingTypes.map((mt) => {
                                 const rel0 = releasedOf(mt);
@@ -1290,6 +1296,7 @@ function SoftwareTab({ data, slug, reload }) {
                                     <span className="mp-plus" aria-hidden="true">+</span>
                                     <span className="mp-type">{t(mt.short)}</span>
                                     <span className="mp-ver">{target.version}</span>
+                                    <span className="mp-status">{t(target.status)}</span>
                                   </button>
                                 );
                               })}
