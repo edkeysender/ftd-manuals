@@ -44,8 +44,12 @@ The functional spec lives in this file's history and in the Modules spec provide
   (same `Editor` with `review`); the author handles threads in the editor's Comments tab — **Ask AI to
   propose** runs the chat with the comment as instruction, and accepting that pending edit resolves the thread.
   MCP: `list_comments`, `reply_comment`, `resolve_comment`. No auth: the reviewer name is a browser prompt.
-- Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…` while draft,
+- Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…`,
   own revision record, own draft branch `draft/<slug>-<manual>-a1.0` (one open draft per manual type).
+  A released version is corrected in place by a **hotfix** (`startHotfix` in `store.js`, MCP `start_hotfix`,
+  ⋯ → Hotfix on the Manuals tab): its branch reopens at the next revision and the edit tools treat it as a draft,
+  while on `main` it stays Released and keeps compiling — `releaseDoc` publishes the correction back into the
+  same version, `discardDraft` drops it. One at a time, and no new version while one is open.
   Only **Released** versions compile into simulator manuals; an assembled manual (`manuals/<slug>/manual.json`)
   has a `manual` type and takes that type's doc from every chapter module — and when a chapter module also has
   a **released software manual of the same audience** (customer → software-customer, technician →

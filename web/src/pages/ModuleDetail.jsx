@@ -349,7 +349,32 @@ function ManualsTab({ data, slug, act, reload }) {
     const go = (view) => navigate(`/modules/${slug}/docs/${d.key}/${view}`);
     const primary = [];
     const more = [];
-    if (isOpenDoc(d)) {
+    if (d.hotfix) {
+      // Same version, next revision: edit it, publish it back into the release, or drop it.
+      primary.push(
+        <button key="edit" className="btn btn-primary btn-sm" onClick={() => go('edit')}>
+          {t('Edit hotfix')}
+        </button>
+      );
+      primary.push(
+        <button
+          key="publish"
+          className="btn btn-sm"
+          title={t('Merge the correction into the released {version}', { version: d.version })}
+          onClick={() => act(() => api.release(slug, d.key), t('{doc} r{rev} published', { doc: docLabel(d), rev: d.revision }))}
+        >
+          {t('Publish hotfix')}
+        </button>
+      );
+      more.push({
+        label: t('Discard hotfix'),
+        danger: true,
+        onClick: () => {
+          if (confirm(t('Discard the hotfix of {version}? The released manual stays as it is.', { version: d.version })))
+            act(() => api.discard(slug, d.key), t('Hotfix of {doc} discarded', { doc: docLabel(d) }));
+        },
+      });
+    } else if (isOpenDoc(d)) {
       if (d.status === 'draft') {
         primary.push(<button key="edit" className="btn btn-primary btn-sm" onClick={() => go('edit')}>{t('Edit')}</button>);
         primary.push(
@@ -390,6 +415,17 @@ function ManualsTab({ data, slug, act, reload }) {
       }
     } else {
       primary.push(<button key="view" className="btn btn-primary btn-sm" onClick={() => go('edit')}>{t('View')}</button>);
+      if (d.status === 'released' && !docs.some((o) => o.manual === d.manual && (isOpenDoc(o) || o.hotfix))) {
+        more.push({
+          label: t('Hotfix'),
+          hint: t('Correct this released version in place — same version, next revision'),
+          onClick: () =>
+            act(
+              () => api.startHotfix(slug, d.key),
+              t('Hotfix of {doc} started', { doc: docLabel(d) })
+            ).then(() => go('edit')),
+        });
+      }
       if (d.fat) {
         primary.push(
           <a key="fat" className="btn btn-sm" href={`/api/modules/${slug}/docs/${d.key}/checklist.html`} target="_blank" rel="noreferrer" title={t('Blank FAT protocol for this doc version')}>
@@ -411,7 +447,14 @@ function ManualsTab({ data, slug, act, reload }) {
       <td className="muted row-label" title={d.branch || 'main'}>{label}</td>
       <td><strong>{d.version}</strong></td>
       <td className="muted">r{d.revision}</td>
-      <td><StatusBadge status={d.status} /></td>
+      <td>
+        <StatusBadge status={d.status} />
+        {d.hotfix && (
+          <span className="badge badge-draft" style={{ marginLeft: 6 }} title={t('A correction of this version is open on {branch}', { branch: d.branch })}>
+            {t('hotfix r{rev}', { rev: d.revision })}
+          </span>
+        )}
+      </td>
       <td className="muted">{timeAgo(d.updatedAt)}</td>
       <td className="actions-cell">{rowActions(d, mt)}</td>
     </tr>

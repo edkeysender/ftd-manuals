@@ -436,6 +436,11 @@ app.post('/api/softwares', wrap(async (req, res) => {
   res.json(await store.registerSoftwareRelease(req.body));
 }));
 
+/** Correct a released version in place: reopens its branch at the next revision. */
+app.post('/api/modules/:slug/docs/:version/hotfix', wrap(async (req, res) => {
+  res.json(await store.startHotfix(req.params.slug, req.params.version));
+}));
+
 app.post('/api/modules/:slug/docs/:version/cover', wrap(async (req, res) => {
   const { name, version: swVersion } = req.body;
   res.json(await store.linkReleaseToDoc(req.params.slug, req.params.version, name, swVersion));

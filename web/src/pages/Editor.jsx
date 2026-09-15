@@ -280,7 +280,7 @@ export default function Editor({ review: reviewProp = false }) {
   const htmlRef = useRef('');
   htmlRef.current = html;
 
-  const docOpen = docMeta && (docMeta.status === 'draft' || docMeta.status === 'in-review');
+  const docOpen = docMeta && (docMeta.status === 'draft' || docMeta.status === 'in-review' || !!docMeta.hotfix);
   const editable = docOpen && !review;
   const canComment = !!docOpen; // anyone viewing an open draft may comment
   const openComments = comments.filter((c) => c.status === 'open');
@@ -1180,7 +1180,16 @@ export default function Editor({ review: reviewProp = false }) {
               {t('Commit revision')}
             </button>
           )}
-          {!review && docMeta.status === 'draft' && (
+          {!review && docMeta.hotfix && (
+            <button
+              className="btn btn-primary btn-sm"
+              title={t('Merge the correction back into {version} — readers get it as soon as it is published', { version })}
+              onClick={release}
+            >
+              {t('Publish hotfix')}
+            </button>
+          )}
+          {!review && !docMeta.hotfix && docMeta.status === 'draft' && (
             <button className="btn btn-primary btn-sm" onClick={submitReview}>
               {t('Submit for review')}
             </button>
