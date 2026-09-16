@@ -602,6 +602,11 @@ label.inline { font-weight: 400; color: var(--muted); }
 .manual-card .table { font-size: 13px; }
 .manual-card .table th, .manual-card .table td { padding: 7px 10px; }
 .manual-kind { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 4px; padding: 1px 6px; }
+/** Who a manual is written for — the one thing you want to read off a row at a glance. */
+.manual-audience { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.manual-audience.customer { color: var(--blue-ink); background: var(--blue-soft); }
+.manual-audience.technician { color: var(--amber-ink); background: var(--amber-soft); }
+.create-manual-menu .cm-item .manual-audience { flex: 0 0 auto; }
 .manual-kind.hardware { color: var(--blue-ink); background: var(--blue-soft); }
 .manual-kind.software { color: var(--violet-ink); background: var(--violet-soft); }
 .manual-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
