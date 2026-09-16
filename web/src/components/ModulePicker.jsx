@@ -1,6 +1,6 @@
 import React from 'react';
 import StatusBadge from './StatusBadge.jsx';
-import { manualType } from '../api.js';
+import { manualType, isOwnSoftware } from '../api.js';
 import { t } from '../i18n.jsx';
 
 /**
@@ -11,7 +11,7 @@ import { t } from '../i18n.jsx';
 export default function ModulePicker({ modules, selected, onChange, manual = 'customer' }) {
   // A software documented on its own has only software manuals, and those compile as extra chapters
   // of the module they belong to — never as a chapter of their own. It is not a chapter to pick.
-  modules = modules.filter((m) => m.type !== 'own-software' || selected.includes(m.slug));
+  modules = modules.filter((m) => !isOwnSoftware(m) || selected.includes(m.slug));
   const typeStatus = (m) => (m.manuals && m.manuals[manual] ? m.manuals[manual].status : 'missing');
   const typeLabel = t(manualType(manual).label).toLowerCase();
   const toggle = (slug) =>
