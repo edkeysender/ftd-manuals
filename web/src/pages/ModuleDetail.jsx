@@ -286,7 +286,11 @@ function ActionMenu({ items }) {
  * The one "+ Create manual" button: a menu over the four manual types. Types the module already
  * has (or software types while no software is linked) are listed but disabled, with the reason.
  */
-function CreateManualMenu({ docs, hasSoftware, onPick }) {
+/** The manual types a module writes itself: its audiences. Software manuals belong to the software
+ *  that is documented on its own and reach the module's manual as inherited chapters. */
+const MODULE_MANUALS = MANUAL_TYPES.filter((mt) => mt.kind === 'hardware');
+
+function CreateManualMenu({ docs, onPick }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -297,7 +301,7 @@ function CreateManualMenu({ docs, hasSoftware, onPick }) {
     document.addEventListener('keydown', esc);
     return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
   }, [open]);
-  const allTaken = MANUAL_TYPES.every((mt) => docs.some((d) => d.manual === mt.id));
+  const allTaken = MODULE_MANUALS.every((mt) => docs.some((d) => d.manual === mt.id));
   return (
     <div className="create-manual" ref={ref}>
       <button className="btn btn-primary" disabled={allTaken} title={allTaken ? t('Every manual type already exists — use New version on its card') : ''} onClick={() => setOpen((o) => !o)}>
@@ -306,15 +310,12 @@ function CreateManualMenu({ docs, hasSoftware, onPick }) {
       {open && (
         <div className="create-manual-menu" role="menu">
           <div className="cm-title">{t('Choose manual type')}</div>
-          {MANUAL_TYPES.map((mt) => {
+          {MODULE_MANUALS.map((mt) => {
             const existing = docs.find((d) => d.manual === mt.id);
-            const noSoftware = mt.kind === 'software' && !hasSoftware;
-            const disabled = !!existing || noSoftware;
+            const disabled = !!existing;
             const why = existing
               ? t('Already created — {version} r{rev}', { version: existing.version, rev: existing.revision || 1 })
-              : noSoftware
-                ? t('Link the module to a software first (Software versions tab)')
-                : mt.sections.map((s) => t(s)).join(' · ');
+              : mt.sections.map((s) => t(s)).join(' · ');
             return (
               <button key={mt.id} className="cm-item" role="menuitem" disabled={disabled} onClick={() => { setOpen(false); onPick(mt.id); }}>
                 <span className={`manual-kind ${mt.kind}`}>{mt.kind === 'software' ? 'SW' : 'HW'}</span>
@@ -344,7 +345,6 @@ function ManualsTab({ data, slug, act, reload }) {
   const navigate = useNavigate();
   const toast = useToast();
   const { isAdmin } = useAuth();
-  const hasSoftware = (module.softwares || []).length > 0;
   // Which manual cards to show — remembered in this browser (the strip scrolls sideways, so narrowing it helps).
   const [filter, setFilter] = useState(() => {
     try { return localStorage.getItem(MANUAL_FILTER_KEY) || 'all'; } catch { return 'all'; }
@@ -478,6 +478,9 @@ function ManualsTab({ data, slug, act, reload }) {
   );
 
   const created = MANUAL_TYPES.filter((mt) => docs.some((d) => d.manual === mt.id));
+  // Software manuals a module wrote before they belonged to the software still show and still work;
+  // the filters only offer a kind the module actually has something of.
+  const filters = MANUAL_FILTERS.filter((f) => f.id === 'all' || created.some(f.match));
   const shownGroups = shownTypes.filter((mt) => docs.some((d) => d.manual === mt.id));
 
   return (
@@ -486,11 +489,11 @@ function ManualsTab({ data, slug, act, reload }) {
         <h2>
           {t('Manuals')} <span className="muted small">{t('{n} of {total} types created', { n: created.length, total: MANUAL_TYPES.length })}</span>
         </h2>
-        <CreateManualMenu docs={docs} hasSoftware={hasSoftware} onPick={setAdding} />
+        <CreateManualMenu docs={docs} onPick={setAdding} />
       </div>
       <div className="manual-filter">
         <div className="mode-toggle" role="tablist" title={t('Which manuals to show — remembered in this browser')}>
-          {MANUAL_FILTERS.map((f) => {
+          {filters.map((f) => {
             const n = created.filter(f.match).length;
             return (
               <button key={f.id} className={f.id === filter ? 'active' : ''} onClick={() => pickFilter(f.id)}>
