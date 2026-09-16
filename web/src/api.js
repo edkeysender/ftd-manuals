@@ -23,6 +23,20 @@ async function request(url, opts = {}) {
   return data;
 }
 
+/**
+ * A doc hangs off an owner: a module (a slug) or a software that owns its manuals
+ * ({ software: name }). Every doc-scoped call below takes one and builds its path from it.
+ */
+export const ownerPath = (owner) =>
+  owner && typeof owner === 'object' && owner.software
+    ? `/api/software/${encodeURIComponent(owner.software)}`
+    : `/api/modules/${owner}`;
+/** The route of an owner's page in the app. */
+export const ownerHref = (owner) =>
+  owner && typeof owner === 'object' && owner.software
+    ? `/software/${encodeURIComponent(owner.software)}`
+    : `/modules/${owner}`;
+
 export const api = {
   /* login & users */
   me: () => request('/api/auth/me'),
@@ -40,31 +54,31 @@ export const api = {
   status: () => request('/api/status'),
   modules: () => request('/api/modules'),
   createModule: (input) => request('/api/modules', { method: 'POST', body: input }),
-  module: (slug) => request(`/api/modules/${slug}`),
+  module: (slug) => request(`${ownerPath(slug)}`),
   /** Module metadata patch: name, code, category, group, softwares, hardware ([{id}] and/or new items). */
-  updateModule: (slug, patch) => request(`/api/modules/${slug}`, { method: 'PATCH', body: patch }),
+  updateModule: (slug, patch) => request(`${ownerPath(slug)}`, { method: 'PATCH', body: patch }),
   hardware: () => request('/api/hardware'),
   createHardware: (item) => request('/api/hardware', { method: 'POST', body: item }),
   updateHardware: (id, patch) => request(`/api/hardware/${id}`, { method: 'PUT', body: patch }),
   deleteHardware: (id) => request(`/api/hardware/${id}`, { method: 'DELETE' }),
   /** New draft of one manual type: {manual, bump} for a next version, {manual, start, checklist} for a manual the module lacks. */
-  nextDocVersion: (slug, body) => request(`/api/modules/${slug}/docs`, { method: 'POST', body: typeof body === 'string' ? { bump: body } : body }),
+  nextDocVersion: (slug, body) => request(`${ownerPath(slug)}/docs`, { method: 'POST', body: typeof body === 'string' ? { bump: body } : body }),
   manualTypes: () => request('/api/manual-types'),
   /** lang: 'en' (source) or a translation code — content is '' when that translation does not exist yet. */
-  doc: (slug, version, lang = 'en') => request(`/api/modules/${slug}/docs/${version}${lang && lang !== 'en' ? `?lang=${lang}` : ''}`),
+  doc: (slug, version, lang = 'en') => request(`${ownerPath(slug)}/docs/${version}${lang && lang !== 'en' ? `?lang=${lang}` : ''}`),
   saveContent: (slug, version, html, bump = false, summary = '', lang = 'en') =>
-    request(`/api/modules/${slug}/docs/${version}/content`, {
+    request(`${ownerPath(slug)}/docs/${version}/content`, {
       method: 'PUT',
       body: { html, bump, summary, lang },
     }),
   /** AI translation of the English body into lang (or store `html` as the translation). Returns the doc in that language. */
-  translate: (slug, version, lang, html) => request(`/api/modules/${slug}/docs/${version}/translate`, { method: 'POST', body: { lang, html } }),
-  submitReview: (slug, version) => request(`/api/modules/${slug}/docs/${version}/submit-review`, { method: 'POST' }),
-  backToDraft: (slug, version) => request(`/api/modules/${slug}/docs/${version}/back-to-draft`, { method: 'POST' }),
-  release: (slug, version) => request(`/api/modules/${slug}/docs/${version}/release`, { method: 'POST' }),
-  discard: (slug, version) => request(`/api/modules/${slug}/docs/${version}/discard`, { method: 'POST' }),
+  translate: (slug, version, lang, html) => request(`${ownerPath(slug)}/docs/${version}/translate`, { method: 'POST', body: { lang, html } }),
+  submitReview: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/submit-review`, { method: 'POST' }),
+  backToDraft: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/back-to-draft`, { method: 'POST' }),
+  release: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/release`, { method: 'POST' }),
+  discard: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/discard`, { method: 'POST' }),
   /** Reopen a released version to correct it in place; `release` publishes it back at the new revision. */
-  startHotfix: (slug, version) => request(`/api/modules/${slug}/docs/${version}/hotfix`, { method: 'POST' }),
+  startHotfix: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/hotfix`, { method: 'POST' }),
   softwares: () => request('/api/softwares'),
   /** Software page rows: {name, modules:[{slug, name, manuals, docs, uncovered}], releases:[{version, coveredBy}]} */
   software: () => request('/api/software'),
@@ -72,18 +86,20 @@ export const api = {
   /** The software's own manual: an own-software module named after it with blank SW customer + technician drafts. */
   createSoftwareManual: (name, body) => request(`/api/software/${encodeURIComponent(name)}/own-manual`, { method: 'POST', body }),
   /** Deletes the module: draft branches, folder on main, chapter in every manual. */
-  deleteModule: (slug) => request(`/api/modules/${slug}`, { method: 'DELETE' }),
+  deleteModule: (slug) => request(`${ownerPath(slug)}`, { method: 'DELETE' }),
   /** Unlinks the software from every module and drops it (with its releases) from the feed. */
   deleteSoftware: (name) => request(`/api/software/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+  /** Deletes the manuals a software owns; the software and its releases stay. Admin only. */
+  deleteSoftwareManual: (name) => request(`/api/software/${encodeURIComponent(name)}/manual`, { method: 'DELETE' }),
   /** Repair: a name modules link that was never created as a software → merged into a registered one. */
   mergeSoftware: (name, into) => request(`/api/software/${encodeURIComponent(name)}/merge`, { method: 'POST', body: { into } }),
-  linkSoftware: (slug, body) => request(`/api/modules/${slug}/software`, { method: 'POST', body }),
+  linkSoftware: (slug, body) => request(`${ownerPath(slug)}/software`, { method: 'POST', body }),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
   /** Admin only. Refused while a module link or a doc version starts at that release. */
   deleteRelease: (name, version) =>
     request(`/api/software/${encodeURIComponent(name)}/releases/${encodeURIComponent(version)}`, { method: 'DELETE' }),
   coverRelease: (slug, version, name, swVersion) =>
-    request(`/api/modules/${slug}/docs/${version}/cover`, { method: 'POST', body: { name, version: swVersion } }),
+    request(`${ownerPath(slug)}/docs/${version}/cover`, { method: 'POST', body: { name, version: swVersion } }),
   aiChat: (body) => request('/api/ai/chat', { method: 'POST', body }),
   manuals: () => request('/api/manuals'),
   manual: (slug, lang = 'en') => request(`/api/manuals/${slug}${lang && lang !== 'en' ? `?lang=${lang}` : ''}`),
@@ -99,33 +115,33 @@ export const api = {
   mcpInfo: () => request('/api/mcp-info'),
   // opts.attachments: keep every file as it is (a download), instead of expanding documents into pictures
   uploadAssets: (slug, version, files, opts = {}) =>
-    request(`/api/modules/${slug}/docs/${version}/assets`, { method: 'POST', body: { files, ...opts } }),
-  listAssets: (slug) => request(`/api/modules/${slug}/assets`),
+    request(`${ownerPath(slug)}/docs/${version}/assets`, { method: 'POST', body: { files, ...opts } }),
+  listAssets: (slug) => request(`${ownerPath(slug)}/assets`),
   deleteAsset: (slug, version, name) =>
-    request(`/api/modules/${slug}/docs/${version}/assets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    request(`${ownerPath(slug)}/docs/${version}/assets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   /** body: {appliesTo: [hardware ids]} and/or {verify: true} */
   setAssetMeta: (slug, version, name, body) =>
-    request(`/api/modules/${slug}/docs/${version}/assets/${encodeURIComponent(name)}/meta`, { method: 'PUT', body }),
+    request(`${ownerPath(slug)}/docs/${version}/assets/${encodeURIComponent(name)}/meta`, { method: 'PUT', body }),
   inbox: () => request('/api/inbox'),
   uploadInbox: (files) => request('/api/inbox', { method: 'POST', body: { files } }),
   deleteInbox: (name) => request(`/api/inbox/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   importInbox: (slug, version, names, keep = false) =>
-    request(`/api/modules/${slug}/docs/${version}/assets/import`, { method: 'POST', body: { names, keep } }),
+    request(`${ownerPath(slug)}/docs/${version}/assets/import`, { method: 'POST', body: { names, keep } }),
   /** Photo → FTD house-style line-art. body: {name, dataBase64} or {assetName}, plus optional instructions. */
-  illustrate: (slug, version, body) => request(`/api/modules/${slug}/docs/${version}/illustrate`, { method: 'POST', body }),
+  illustrate: (slug, version, body) => request(`${ownerPath(slug)}/docs/${version}/illustrate`, { method: 'POST', body }),
   illustrationStyle: () => request('/api/settings/illustration-style'),
   saveIllustrationStyle: (style) => request('/api/settings/illustration-style', { method: 'PUT', body: { style } }),
   uploadStyleExemplars: (files) => request('/api/settings/illustration-style/exemplars', { method: 'POST', body: { files } }),
   deleteStyleExemplar: (name) => request(`/api/settings/illustration-style/exemplars/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   /** Review comments of a doc version (threads on selected text, kept on the draft branch). */
-  comments: (slug, version) => request(`/api/modules/${slug}/docs/${version}/comments`),
-  addComment: (slug, version, body) => request(`/api/modules/${slug}/docs/${version}/comments`, { method: 'POST', body }),
-  replyComment: (slug, version, id, body) => request(`/api/modules/${slug}/docs/${version}/comments/${id}/replies`, { method: 'POST', body }),
-  setCommentStatus: (slug, version, id, body) => request(`/api/modules/${slug}/docs/${version}/comments/${id}`, { method: 'PUT', body }),
-  deleteComment: (slug, version, id) => request(`/api/modules/${slug}/docs/${version}/comments/${id}`, { method: 'DELETE' }),
-  checklist: (slug, version) => request(`/api/modules/${slug}/docs/${version}/checklist`),
+  comments: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/comments`),
+  addComment: (slug, version, body) => request(`${ownerPath(slug)}/docs/${version}/comments`, { method: 'POST', body }),
+  replyComment: (slug, version, id, body) => request(`${ownerPath(slug)}/docs/${version}/comments/${id}/replies`, { method: 'POST', body }),
+  setCommentStatus: (slug, version, id, body) => request(`${ownerPath(slug)}/docs/${version}/comments/${id}`, { method: 'PUT', body }),
+  deleteComment: (slug, version, id) => request(`${ownerPath(slug)}/docs/${version}/comments/${id}`, { method: 'DELETE' }),
+  checklist: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/checklist`),
   saveChecklist: (slug, version, checklist, summary = '') =>
-    request(`/api/modules/${slug}/docs/${version}/checklist`, { method: 'PUT', body: { checklist, summary } }),
+    request(`${ownerPath(slug)}/docs/${version}/checklist`, { method: 'PUT', body: { checklist, summary } }),
 };
 
 export const CATEGORIES = [

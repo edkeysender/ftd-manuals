@@ -69,10 +69,48 @@ async function readJsonMany(requests) {
 }
 
 const moduleFile = (slug) => `modules/${slug}/module.json`;
-/** Folder of one doc version: modules/<slug>/docs/<manual>/<version>. Docs created before the
+
+/**
+ * Docs hang off an **owner**: a module (`modules/<slug>`) or a software documented on its own
+ * (`software/<slug>`, an application with no hardware). An owner is addressed by a `ref`: a bare
+ * module slug, or `sw:<slug>` for a software. Everything past the lookup works on the doc record,
+ * which carries its own `dir` and `branch`, so the rest of the store does not care which it is.
+ */
+const SW_REF = 'sw:';
+const swRef = (slug) => `${SW_REF}${slug}`;
+const isSwRef = (ref) => String(ref || '').startsWith(SW_REF);
+const refSlug = (ref) => (isSwRef(ref) ? String(ref).slice(SW_REF.length) : String(ref || ''));
+const ownerRoot = (ref) => (isSwRef(ref) ? `software/${refSlug(ref)}` : `modules/${refSlug(ref)}`);
+const softwareFile = (slug) => `software/${slug}/software.json`;
+const ownerFileOf = (ref) => (isSwRef(ref) ? softwareFile(refSlug(ref)) : moduleFile(refSlug(ref)));
+/** draft/<slug>-<manual>-a1.0, and draft/sw/<slug>-… for a software (a ref cannot carry the colon). */
+const ownerBranch = (ref, manual, version) => docBranchName(isSwRef(ref) ? `sw/${refSlug(ref)}` : refSlug(ref), manual, version);
+
+/**
+ * A software that owns its manuals, shaped like the module records the rest of the store reads:
+ * the software is its own subject, it documents itself from `fromVersion` onwards, and it has no
+ * hardware. `kind: software` is what tells the generated sections and the UI what they are looking at.
+ */
+function softwareOwner(raw) {
+  return {
+    slug: raw.slug,
+    name: raw.name,
+    kind: 'software',
+    category: 'software',
+    code: raw.code || null,
+    type: null,
+    hardwareIds: [],
+    hardwareItems: [],
+    softwares: [{ name: raw.name, fromVersion: raw.fromVersion || '' }],
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt || raw.createdAt,
+  };
+}
+
+/** Folder of one doc version: <owner root>/docs/<manual>/<version>. Docs created before the
  *  manual split live in modules/<slug>/docs/<version> (customer manual) and are read from there —
  *  every doc record carries its `dir`, so nothing is ever moved. */
-const docDir = (slug, manual, version) => `modules/${slug}/docs/${manual}/${version}`;
+const docDir = (ref, manual, version) => `${ownerRoot(ref)}/docs/${manual}/${version}`;
 const docJson = (dir) => `${dir}/doc.json`;
 const contentIn = (dir) => `${dir}/content.html`;
 /** Translation of the body: content.<lang>.html next to the English content.html. */
@@ -84,6 +122,8 @@ const commentsIn = (dir) => `${dir}/comments.json`;
 const VERSION_RE = /^A\d+\.\d+$/;
 const LEGACY_DOC_RE = /^modules\/([^/]+)\/docs\/(A\d+\.\d+)\/doc\.json$/;
 const TYPED_DOC_RE = /^modules\/([^/]+)\/docs\/([a-z][a-z-]*)\/(A\d+\.\d+)\/doc\.json$/;
+const SW_DOC_RE = /^software\/([^/]+)\/docs\/([a-z][a-z-]*)\/(A\d+\.\d+)\/doc\.json$/;
+const SW_FILE_RE = /^software\/([^/]+)\/software\.json$/;
 const isOpen = (d) => d.status === 'draft' || d.status === 'in-review';
 /** A released version being hotfixed edits like a draft: same version, next revision, own branch. */
 const isEditable = (d) => isOpen(d) || !!d.hotfix;
@@ -155,42 +195,55 @@ async function collectAllUncached() {
   const draftBranches = branches.filter((b) => b.startsWith('draft/'));
   const refs = ['main', ...draftBranches];
 
-  // slug -> { moduleRefs: Set, docs: Map(key -> { manual, version, dir, refs: Set }) }
+  // owner ref -> { ownerRefs: Set, docs: Map(key -> { manual, version, dir, refs: Set }) }
+  // The ref is a module slug, or sw:<slug> for a software that owns its manuals itself.
   const found = new Map();
-  const listings = await Promise.all(refs.map((ref) => repo.lsFiles(ref, 'modules')));
+  const listings = await Promise.all(refs.map((ref) => repo.lsFiles(ref, ['modules', 'software'])));
+  const ownerEntry = (key) => {
+    if (!found.has(key)) found.set(key, { ownerRefs: new Set(), docs: new Map() });
+    return found.get(key);
+  };
   for (let i = 0; i < refs.length; i++) {
     const ref = refs[i];
     for (const f of listings[i]) {
       let m = /^modules\/([^/]+)\/module\.json$/.exec(f);
       if (m) {
-        const slug = m[1];
-        if (!found.has(slug)) found.set(slug, { moduleRefs: new Set(), docs: new Map() });
-        found.get(slug).moduleRefs.add(ref);
+        ownerEntry(m[1]).ownerRefs.add(ref);
+        continue;
+      }
+      if ((m = SW_FILE_RE.exec(f))) {
+        ownerEntry(swRef(m[1])).ownerRefs.add(ref);
         continue;
       }
       let slug;
       let manual;
       let version;
+      let key;
       if ((m = TYPED_DOC_RE.exec(f))) {
         [, slug, manual, version] = m;
         if (!MANUAL_TYPES[manual]) continue; // unknown folder — not a manual type we know
+        key = slug;
+      } else if ((m = SW_DOC_RE.exec(f))) {
+        [, slug, manual, version] = m;
+        if (!MANUAL_TYPES[manual]) continue;
+        key = swRef(slug);
       } else if ((m = LEGACY_DOC_RE.exec(f))) {
         [, slug, version] = m;
         manual = DEFAULT_MANUAL;
+        key = slug;
       } else continue;
-      if (!found.has(slug)) found.set(slug, { moduleRefs: new Set(), docs: new Map() });
-      const docs = found.get(slug).docs;
-      const key = docKey(manual, version);
-      if (!docs.has(key)) docs.set(key, { manual, version, dir: f.slice(0, -'/doc.json'.length), refs: new Set() });
-      docs.get(key).refs.add(ref);
+      const docs = ownerEntry(key).docs;
+      const dk = docKey(manual, version);
+      if (!docs.has(dk)) docs.set(dk, { manual, version, dir: f.slice(0, -'/doc.json'.length), refs: new Set() });
+      docs.get(dk).refs.add(ref);
     }
   }
 
   // Every module.json and doc.json we might need, fetched in one git process.
   const wanted = [];
-  for (const [slug, info] of found) {
-    const moduleRef = info.moduleRefs.has('main') ? 'main' : [...info.moduleRefs][0];
-    wanted.push({ ref: moduleRef, file: moduleFile(slug) });
+  for (const [ownerKey, info] of found) {
+    const moduleRef = info.ownerRefs.has('main') ? 'main' : [...info.ownerRefs][0];
+    if (moduleRef) wanted.push({ ref: moduleRef, file: ownerFileOf(ownerKey) });
     for (const d of info.docs.values()) {
       for (const ref of d.refs) {
         wanted.push({ ref, file: docJson(d.dir) });
@@ -204,11 +257,16 @@ async function collectAllUncached() {
   const hardware = normalizeCatalog(get('main', HARDWARE_FILE));
 
   const modules = [];
-  for (const [slug, info] of found) {
-    const moduleRef = info.moduleRefs.has('main') ? 'main' : [...info.moduleRefs][0];
-    const raw = get(moduleRef, moduleFile(slug));
+  const softwareOwners = [];
+  for (const [ownerKey, info] of found) {
+    const moduleRef = info.ownerRefs.has('main') ? 'main' : [...info.ownerRefs][0];
+    const raw = moduleRef ? get(moduleRef, ownerFileOf(ownerKey)) : null;
     if (!raw) continue;
-    const module = withHardwareItems(raw, hardware);
+    // Every draft branch is cut from main, so it carries a copy of every software record that
+    // existed then. A software exists while its record is on main or it still has docs somewhere —
+    // otherwise an old branch would resurrect one that was deleted.
+    if (isSwRef(ownerKey) && !info.ownerRefs.has('main') && !info.docs.size) continue;
+    const module = isSwRef(ownerKey) ? softwareOwner(raw) : withHardwareItems(raw, hardware);
 
     const docs = [];
     for (const [key, d] of info.docs) {
@@ -234,17 +292,19 @@ async function collectAllUncached() {
       }
       if (chosen) {
         const threads = chosenRef !== 'main' ? get(chosenRef, commentsIn(d.dir))?.threads || [] : [];
-        docs.push({ ...chosen, manual: d.manual, key, dir: d.dir, ref: chosenRef, docCode: manualDocCode(module, d.manual), openComments: threads.filter((c) => c.status === 'open').length });
+        docs.push({ ...chosen, manual: d.manual, key, dir: d.dir, ref: chosenRef, owner: ownerKey, docCode: manualDocCode(module, d.manual), openComments: threads.filter((c) => c.status === 'open').length });
       }
     }
     // newest version first within a manual type; types in their canonical order
     docs.sort(
       (a, b) => MANUAL_ORDER.indexOf(a.manual) - MANUAL_ORDER.indexOf(b.manual) || compareDocVersions(b.version, a.version)
     );
-    modules.push({ module, docs, draftBranches });
+    (isSwRef(ownerKey) ? softwareOwners : modules).push({ module, docs, draftBranches, ref: ownerKey });
   }
-  modules.sort((a, b) => a.module.name.localeCompare(b.module.name));
-  collectCache = { modules, draftBranches, hardware };
+  const byName = (a, b) => a.module.name.localeCompare(b.module.name);
+  modules.sort(byName);
+  softwareOwners.sort(byName);
+  collectCache = { modules, softwareOwners, draftBranches, hardware };
   return collectCache;
 }
 
@@ -698,22 +758,27 @@ export async function mergeSoftware(oldName, newName) {
  * (software-customer / software-technician) and the releases with the docs covering each.
  */
 export async function listSoftware() {
-  const { modules } = await collectAll();
+  const { modules, softwareOwners } = await collectAll();
   const feed = await getSoftwareFeed();
   const names = new Set(Object.keys(feed));
   for (const { module } of modules) for (const s of module.softwares || []) if (s?.name) names.add(s.name);
+  for (const { module } of softwareOwners) names.add(module.name);
   const SW_TYPES = MANUAL_ORDER.filter((t) => MANUAL_TYPES[t].kind === 'software');
   return [...names]
     .sort((a, b) => a.localeCompare(b))
     .map((name) => {
-      const linked = modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name));
+      // The software itself, when it owns its manuals, reads as one more row: it documents itself.
+      const own = softwareOwners.find((o) => o.module.name === name) || null;
+      const linked = [...(own ? [own] : []), ...modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name))];
       const rows = linked.map(({ module, docs }) => {
-        const link = module.softwares.find((s) => s.name === name);
+        const link = (module.softwares || []).find((s) => s.name === name) || {};
         const summary = manualsSummary(docs);
         const manuals = {};
         for (const t of SW_TYPES) if (summary[t]) manuals[t] = summary[t];
         return {
           slug: module.slug,
+          ref: module.kind === 'software' ? swRef(module.slug) : module.slug,
+          own: module.kind === 'software', // the software documenting itself, with no module at all
           name: module.name,
           code: module.code || null,
           type: module.type || null, // own-software = the software's own manual (no hardware)
@@ -746,7 +811,9 @@ export async function listSoftware() {
           (softwareCoverage(module, docs, feed).find((c) => c.name === name)?.manuals || []).map((row) => ({
             ...row,
             slug: module.slug,
-            moduleName: module.name,
+            ref: module.kind === 'software' ? swRef(module.slug) : module.slug,
+            own: module.kind === 'software',
+            moduleName: module.kind === 'software' ? null : module.name,
           }))
         ),
       };
@@ -791,28 +858,28 @@ export async function listModules() {
   });
 }
 
-export async function getModule(slug) {
-  const { modules } = await collectAll();
-  const entry = modules.find((m) => m.module.slug === slug);
+export async function getModule(ref) {
+  const entry = await ownerOf(ref);
   if (!entry) return null;
+  const slug = entry.module.slug;
   const feed = await getSoftwareFeed();
 
-  // History: commits touching this module's folder across main + its draft branches.
-  let history = historyCache.get(slug);
+  // History: commits touching this owner's folder across main + its draft branches.
+  let history = historyCache.get(ref);
   if (!history) {
     const seen = new Set();
     history = [];
     const refs = ['main', ...entry.docs.filter((d) => d.ref !== 'main').map((d) => d.ref)];
-    for (const ref of refs) {
-      for (const c of await repo.log(ref, `modules/${slug}`, 50)) {
+    for (const r of refs) {
+      for (const c of await repo.log(r, ownerRoot(ref), 50)) {
         if (!seen.has(c.hash)) {
           seen.add(c.hash);
-          history.push({ ...c, ref });
+          history.push({ ...c, ref: r });
         }
       }
     }
     history.sort((a, b) => b.date.localeCompare(a.date));
-    historyCache.set(slug, history);
+    historyCache.set(ref, history);
   }
 
   return {
@@ -833,9 +900,8 @@ export async function getModule(slug) {
 
 /** Find one doc record by key ("technician:A1.0", or bare "A1.0" = customer manual).
  *  Returns { entry, doc } or null. */
-async function findDoc(slug, key) {
-  const { modules } = await collectAll();
-  const entry = modules.find((m) => m.module.slug === slug);
+async function findDoc(ref, key) {
+  const entry = await ownerOf(ref);
   if (!entry) return null;
   const { manual, version } = parseDocKey(key);
   const doc = entry.docs.find((d) => d.manual === manual && d.version === version);
@@ -1039,12 +1105,12 @@ export async function addManual(slug, spec) {
  * from each linked software's newest release. The version before it is closed at that point —
  * nothing is written on it, the chain derives it (see softwareCoverage).
  */
-export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump = 'minor', { fromRelease = null } = {}) {
-  const entry = await moduleOf(slug);
+export async function createNextDocVersion(ref, manual = DEFAULT_MANUAL, bump = 'minor', { fromRelease = null } = {}) {
+  const entry = await ownerOf(ref);
   if (!entry) throw new Error('Module not found');
   const type = manualTypeOf(manual);
   const typed = docsOfType(entry.docs, type.id);
-  if (!typed.length) throw new Error(`This module has no ${type.label.toLowerCase()} yet — create one first`);
+  if (!typed.length) throw new Error(`This ${entry.module.kind === 'software' ? 'software' : 'module'} has no ${type.label.toLowerCase()} yet — create one first`);
   if (typed.some(isOpen)) {
     throw new Error(`A ${type.label.toLowerCase()} draft already exists — release or discard it first`);
   }
@@ -1057,8 +1123,8 @@ export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump =
   const latest = typed[0];
   const pv = parseDocVersion(latest.version);
   const version = bump === 'major' ? `A${pv.major + 1}.0` : `A${pv.major}.${pv.minor + 1}`;
-  const branch = docBranchName(slug, type.id, version);
-  const dir = docDir(slug, type.id, version);
+  const branch = ownerBranch(ref, type.id, version);
+  const dir = docDir(ref, type.id, version);
   const created = now();
 
   const content =
@@ -1097,7 +1163,7 @@ export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump =
       ...latest.revisionRecord.map((r) => ({ ...r, inherited: true })),
       { rev: 'r1', date: created, summary: `Draft based on ${latest.version}${coversLabel ? ` for ${coversLabel}` : ''}` },
     ],
-    copiedFrom: { slug, manual: type.id, version: latest.version },
+    copiedFrom: { slug: entry.module.slug, manual: type.id, version: latest.version },
     fat: !!checklist,
     languages: Object.fromEntries(translations.map((t) => [t.code, { ...latest.languages[t.code], basedOnRevision: 1 }])),
   };
@@ -1109,11 +1175,11 @@ export async function createNextDocVersion(slug, manual = DEFAULT_MANUAL, bump =
     await repo.writeFile(contentIn(dir), content);
     for (const t of translations) await repo.writeFile(contentLangIn(dir, t.code), t.html);
     if (checklist) await repo.writeFile(checklistIn(dir), checklist);
-    await repo.commitAll(`${slug}: create ${type.label.toLowerCase()} ${version} r1 (draft)${coversLabel ? ` for ${coversLabel}` : ''}`);
+    await repo.commitAll(`${entry.module.slug}: create ${type.label.toLowerCase()} ${version} r1 (draft)${coversLabel ? ` for ${coversLabel}` : ''}`);
     await repo.checkout('main');
   });
 
-  return { slug, manual: type.id, key: docKey(type.id, version), version, branch, fat: doc.fat, covers };
+  return { slug: entry.module.slug, ref, manual: type.id, key: docKey(type.id, version), version, branch, fat: doc.fat, covers };
 }
 
 /** The live copy of an open draft: its branch, folder and doc.json as on the branch. */
@@ -1341,17 +1407,17 @@ export async function setDocStatus(slug, key, status) {
  *  supersede older released versions of the same manual type, delete the branch.
  *  On a hotfix branch it publishes the correction instead: same version, the revision it was
  *  edited to, nothing superseded. */
-export async function releaseDoc(slug, key) {
-  const { branch, dir, meta, manual } = await loadDraftDoc(slug, key);
-  const entry = await moduleOf(slug);
+export async function releaseDoc(ref, key) {
+  const { branch, dir, meta, manual } = await loadDraftDoc(ref, key);
+  const entry = await ownerOf(ref);
   const feed = await getSoftwareFeed();
   const version = meta.version;
   const ts = now();
-  if (meta.hotfix) return await publishHotfix({ slug, branch, dir, meta, manual, version, ts });
+  if (meta.hotfix) return await publishHotfix({ slug: entry.module.slug, branch, dir, meta, manual, version, ts });
 
   await mutate(async () => {
     await repo.checkout('main');
-    await repo.merge(branch, `Merge ${branch}: release ${slug} ${MANUAL_TYPES[manual].label.toLowerCase()} ${version}`);
+    await repo.merge(branch, `Merge ${branch}: release ${entry.module.slug} ${MANUAL_TYPES[manual].label.toLowerCase()} ${version}`);
 
     meta.status = 'released';
     meta.releasedAt = ts;
@@ -1374,7 +1440,7 @@ export async function releaseDoc(slug, key) {
       await repo.writeFile(docJson(other.dir), JSON.stringify(onMain, null, 2) + '\n');
     }
 
-    await repo.commitAll(`${slug}: release ${MANUAL_TYPES[manual].label.toLowerCase()} ${version}`);
+    await repo.commitAll(`${entry.module.slug}: release ${MANUAL_TYPES[manual].label.toLowerCase()} ${version}`);
     await repo.deleteBranch(branch);
   });
   return meta;
@@ -1400,14 +1466,81 @@ async function publishHotfix({ slug, branch, dir, meta, manual, version, ts }) {
 }
 
 /**
+ * Write a software its own manuals: software customer + technician A1.0 drafts under
+ * `software/<slug>/`, owned by the software. No module is created — an application without
+ * hardware is not a part of the simulator, it is its own subject.
+ *
+ * Returns { ref, slug, name, docs: [{manual, key, version, branch}] }.
+ */
+export async function createSoftwareManuals(name, { fromVersion = '', startSummary } = {}) {
+  name = cleanSwName(name);
+  if (!name) throw new Error('Software name is required');
+  const feed = await getSoftwareFeed();
+  if (!feed[name]) throw notRegistered(name);
+  const slug = slugify(name);
+  const ref = swRef(slug);
+  if (await ownerOf(ref)) throw new Error(`${name} already has its own manual`);
+  // Written before softwares owned their docs? Then those manuals are the ones it wants.
+  const legacy = await adoptOwnSoftwareModule(name, fromVersion || feed[name].at(-1)?.version || '');
+  if (legacy) return legacy;
+  const releases = [...(feed[name] || [])].sort((a, b) => compareSwVersions(a.version, b.version));
+  const newest = releases.length ? releases[releases.length - 1].version : '';
+  const from = String(fromVersion || newest || '').trim();
+  if (from && !releases.some((r) => r.version === from)) {
+    throw new Error(
+      `${name} ${from} is not a registered release${releases.length ? ` — one of ${releases.map((r) => r.version).join(', ')}` : ''}`
+    );
+  }
+  const created = now();
+  const owner = { slug, name, fromVersion: from, createdAt: created, updatedAt: created };
+  const softwares = [{ name, fromVersion: from }];
+  const manuals = MODULE_TYPES['own-software'].manuals;
+  const docs = [];
+  await mutate(async () => {
+    await repo.checkout('main');
+    for (const manual of manuals) {
+      const version = 'A1.0';
+      const branch = ownerBranch(ref, manual, version);
+      const dir = docDir(ref, manual, version);
+      await repo.createBranch(branch, 'main');
+      const doc = {
+        version,
+        manual,
+        revision: 1,
+        status: 'draft',
+        branch,
+        createdAt: created,
+        updatedAt: created,
+        releasedAt: null,
+        covers: [{ name, from, reviewedTo: newest || from }],
+        revisionRecord: [{ rev: 'r1', date: created, summary: startSummary || `Own manual of the ${name} software` }],
+        copiedFrom: null,
+        fat: false,
+      };
+      await repo.writeFile(softwareFile(slug), JSON.stringify(owner, null, 2) + '\n');
+      await repo.writeFile(docJson(dir), JSON.stringify(doc, null, 2) + '\n');
+      await repo.writeFile(contentIn(dir), blankContent(name, [], manual, softwares));
+      await repo.commitAll(`${name}: create ${MANUAL_TYPES[manual].label.toLowerCase()} ${version} r1 (draft)`);
+      await repo.checkout('main');
+      docs.push({ manual, key: docKey(manual, version), version, branch });
+    }
+    // the software record itself belongs on main, so the software exists without any draft
+    await repo.checkout('main');
+    await repo.writeFile(softwareFile(slug), JSON.stringify(owner, null, 2) + '\n');
+    await repo.commitAll(`${name}: own manual`);
+  });
+  return { ref, slug, name, docs, key: docs[0]?.key || null };
+}
+
+/**
  * Hotfix a released version: reopen its draft branch off main so the same version can be corrected
  * in place (A1.0 r1 → r2) without a new version and without leaving the released manual — on main
  * the doc stays Released and compiles as before, so what readers get only changes when the hotfix is
  * published. One hotfix at a time, and none while a newer version of that manual type is open.
  */
-export async function startHotfix(slug, key) {
-  const hit = await findDoc(slug, key);
-  if (!hit) throw new Error(`Doc ${slug} ${key} not found`);
+export async function startHotfix(ref, key) {
+  const hit = await findDoc(ref, key);
+  if (!hit) throw new Error(`Doc ${ref} ${key} not found`);
   const { entry, doc } = hit;
   const type = manualTypeOf(doc.manual);
   if (doc.hotfix) throw new Error(`${doc.version} is already being hotfixed — edit or publish it`);
@@ -1419,7 +1552,7 @@ export async function startHotfix(slug, key) {
   }
   const open = docsOfType(entry.docs, doc.manual).find(isOpen);
   if (open) throw new Error(`${type.label} ${open.version} is open (${open.status}) — finish it before hotfixing ${doc.version}`);
-  const branch = docBranchName(slug, doc.manual, doc.version);
+  const branch = ownerBranch(ref, doc.manual, doc.version);
   if ((await repo.branches()).includes(branch)) throw new Error(`Branch ${branch} already exists`);
   const meta = await readJson('main', docJson(doc.dir));
   if (!meta) throw new Error('Doc version not found');
@@ -1433,10 +1566,10 @@ export async function startHotfix(slug, key) {
     await repo.checkout('main');
     await repo.createBranch(branch, 'main');
     await repo.writeFile(docJson(doc.dir), JSON.stringify(meta, null, 2) + '\n');
-    await repo.commitAll(`${slug} ${doc.version}: start hotfix r${meta.revision}`);
+    await repo.commitAll(`${entry.module.slug} ${doc.version}: start hotfix r${meta.revision}`);
     await repo.checkout('main');
   });
-  return { slug, manual: doc.manual, key: doc.key, version: doc.version, revision: meta.revision, branch };
+  return { slug: entry.module.slug, ref, manual: doc.manual, key: doc.key, version: doc.version, revision: meta.revision, branch };
 }
 
 /** Discard a draft: delete its branch. A never-released module with no other draft disappears entirely.
@@ -1453,11 +1586,11 @@ export async function discardDraft(slug, key) {
 /* Assets (images and other files in the module folder)                */
 /* ------------------------------------------------------------------ */
 
-const assetFile = (slug, name) => `modules/${slug}/assets/${name}`;
+const assetFile = (ref, name) => `${ownerRoot(ref)}/assets/${name}`;
 /** Sidecar next to the assets folder: {fileName: stamp}. A stamp records what the image
  *  showed when it was added — doc version, each linked software's newest release, each
  *  hardware unit's version — plus `appliesTo` (subset of the module's hardware ids; [] = all). */
-const assetMetaFile = (slug) => `modules/${slug}/assets.json`;
+const assetMetaFile = (ref) => `${ownerRoot(ref)}/assets.json`;
 
 const hwVersionOf = (h) => (h.type === 'ftd' ? h.version || '' : [h.manufacturer, h.model].filter(Boolean).join(' '));
 
@@ -1511,6 +1644,28 @@ export function describeAssetVersion(asset) {
   return note;
 }
 
+/**
+ * Turn what a caller wrote — a module slug, or the name or slug of a software that owns its
+ * manuals — into an owner ref. Modules win: they are what a bare slug has always meant.
+ */
+export async function resolveOwnerRef(ref) {
+  if (!ref || isSwRef(ref)) return ref;
+  const { modules, softwareOwners } = await collectAll();
+  if (modules.some((m) => m.module.slug === ref)) return ref;
+  const slug = slugify(String(ref));
+  const sw = softwareOwners.find((o) => o.module.slug === slug || o.module.name === ref);
+  return sw ? swRef(sw.module.slug) : ref;
+}
+
+/** The owner a doc-scoped call addresses: a module by slug, or a software by `sw:<slug>`. */
+async function ownerOf(ref) {
+  const { modules, softwareOwners } = await collectAll();
+  const pool = isSwRef(ref) ? softwareOwners : modules;
+  const slug = refSlug(ref);
+  return pool.find((m) => m.module.slug === slug) || null;
+}
+
+/** Modules only — hardware, metadata and assembly work on these. */
 async function moduleOf(slug) {
   const { modules } = await collectAll();
   return modules.find((m) => m.module.slug === slug) || null;
@@ -1536,7 +1691,8 @@ export function sanitizeAssetName(name) {
   return stem + ext;
 }
 
-export const assetUrl = (slug, name) => `/api/modules/${slug}/assets/${encodeURIComponent(name)}`;
+export const assetUrl = (ref, name) =>
+  `${isSwRef(ref) ? `/api/software/${encodeURIComponent(refSlug(ref))}` : `/api/modules/${ref}`}/assets/${encodeURIComponent(name)}`;
 
 /** Kind of an asset by name: a picture the manual embeds, a PDF, or an attachment — a file the
  *  reader downloads from the manual (ready-to-use configuration, firmware, spreadsheet…). */
@@ -1564,7 +1720,7 @@ export async function saveAssets(slug, key, files, { attachments = false } = {})
   }
   // reject truncated / mislabelled files before anything is committed; non-image files are attachments
   for (const f of files) validateAsset(f.name, f.buffer) || validateAttachment(f.name, f.buffer);
-  const entry = await moduleOf(slug);
+  const entry = await ownerOf(slug);
   const stamp = currentStamp(entry?.module || {}, await getSoftwareFeed());
   const ts = now();
   const saved = [];
@@ -1591,7 +1747,7 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  *  is shared by every version of a module, so removing such a file would break a manual
  *  that has already been released. */
 async function releasedDocsUsingAsset(slug, name, exceptKey) {
-  const entry = await moduleOf(slug);
+  const entry = await ownerOf(slug);
   const re = new RegExp(`/assets/${escapeRe(encodeURIComponent(name))}(?=["'?\\s>)])`);
   const users = [];
   for (const d of entry?.docs || []) {
@@ -1639,7 +1795,7 @@ export async function setAssetMeta(slug, key, name, { appliesTo, verify = false 
   const version = docMeta.version;
   const base = sanitizeAssetName(name);
   if (!(await getAsset(slug, base))) throw new Error(`Asset "${name}" not found`);
-  const entry = await moduleOf(slug);
+  const entry = await ownerOf(slug);
   const module = entry?.module || {};
   const feed = await getSoftwareFeed();
   const ids = hardwareItemsOf(module).map((h) => h.id).filter(Boolean);
@@ -1709,11 +1865,11 @@ export async function listAssets(slug) {
   const drafts = branches.filter((b) => b.startsWith(`draft/${slug}-`));
   const names = new Set();
   for (const ref of [...drafts, 'main']) {
-    for (const f of await repo.lsFiles(ref, `modules/${slug}/assets`)) {
+    for (const f of await repo.lsFiles(ref, `${ownerRoot(slug)}/assets`)) {
       names.add(f.split('/').pop());
     }
   }
-  const [meta, entry, feed] = await Promise.all([readAssetMeta(slug, ['main', ...drafts]), moduleOf(slug), getSoftwareFeed()]);
+  const [meta, entry, feed] = await Promise.all([readAssetMeta(slug, ['main', ...drafts]), ownerOf(slug), getSoftwareFeed()]);
   const module = entry?.module || {};
   return [...names].map((n) => {
     const m = meta[n] || null;
@@ -1732,18 +1888,14 @@ const cleanSwName = (name) => String(name || '').trim();
  * its first release and linked to modules right away. Software manuals of a module become
  * available once the module is linked to a software.
  * { name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}], ownManual?: {} }
- * ownManual: the software also gets its OWN manual — an own-software module named after it
- * (see createOwnSoftwareModule), so an application without hardware is documented in the
- * same editor as everything else.
+ * ownManual: the software also gets its OWN manuals right away — software customer + technician
+ * drafts owned by the software itself (see createSoftwareManuals), no module anywhere.
  */
 export async function createSoftware({ name, version, manualAffecting, note, modules = [], ownManual = null }) {
   name = cleanSwName(name);
   if (!name) throw new Error('Software name is required');
   const feed = await getSoftwareFeed();
   if (feed[name]) throw new Error(`Software "${name}" already exists — register a release or link it to a module instead`);
-  // A name only known from module links (data from before software had to be created here) is
-  // created now — that is the repair for such links.
-  if (ownManual) await assertNoModule(name); // fail before the feed is touched
   const releases = version ? [{ version: String(version).trim(), date: now(), manualAffecting: !!manualAffecting, note: note || '' }] : [];
   feed[name] = releases;
   await mutate(async () => {
@@ -1756,7 +1908,7 @@ export async function createSoftware({ name, version, manualAffecting, note, mod
     if (!m || !m.slug) continue;
     links.push(await linkSoftware(m.slug, name, m.fromVersion || version || ''));
   }
-  const ownModule = ownManual ? await createOwnSoftwareModule(name, { ...ownManual, fromVersion: version || '' }) : null;
+  const ownModule = ownManual ? await createSoftwareManuals(name, { ...ownManual, fromVersion: version || '' }) : null;
   return { name, releases, modules: links, ownModule };
 }
 
@@ -1777,49 +1929,27 @@ async function ownModuleInTheWay(name) {
   return { slug, existing: entry.module, adopt };
 }
 
-/** Refuse when a module of that name is in the way and is not this software’s own manual. */
-async function assertNoModule(name) {
-  const hit = await ownModuleInTheWay(name);
-  if (!hit || hit.adopt) return hit;
-  throw new Error(`A module "${hit.slug}" already exists (${hit.existing.name}) — link the software to it on the Software page instead`);
-}
 
 /**
- * A software's OWN manual: an own-software module named after the software, linked to it,
- * with blank drafts of the software customer + technician manuals. Everything else (editor,
- * revisions, review, releases, translations, assembled manuals) is the module machinery.
- * { fromVersion?, startSummary? } → createModuleDoc result.
+ * Software written as its own manual **before** softwares owned their docs: an own-software module
+ * named after it. Those modules are never migrated and never created any more — this links one back
+ * to its software when the link was lost (the software deleted, or the module detached), so writing
+ * the manual again finds the manuals that exist instead of starting a second set.
+ * Returns the adopted module, or null when there is nothing of the kind.
  */
-export async function createOwnSoftwareModule(name, { fromVersion = '', startSummary } = {}) {
-  name = cleanSwName(name);
-  if (!name) throw new Error('Software name is required');
-  const feed = await getSoftwareFeed();
-  if (!feed[name]) throw notRegistered(name);
-  const inTheWay = await assertNoModule(name);
-  if (!fromVersion) fromVersion = feed[name].at(-1)?.version || '';
-  if (inTheWay?.adopt) {
-    // Its manuals are already written — the software just lost its link to them.
-    const linked = await linkSoftware(inTheWay.slug, name, fromVersion);
-    const entry = await moduleOf(inTheWay.slug);
-    const docs = entry.docs.filter((d) => MANUAL_TYPES[d.manual].kind === 'software');
-    return {
-      slug: inTheWay.slug,
-      adopted: true,
-      softwares: linked.softwares,
-      docs: docs.map((d) => ({ manual: d.manual, key: d.key, version: d.version, status: d.status })),
-      key: docs[0]?.key || null,
-    };
-  }
-  // The manual covers the software from the given version (defaulted above to its newest release).
-  const softwares = [{ name, fromVersion: String(fromVersion || '').trim() }];
-  const input = { name, code: null, category: 'software', type: 'own-software', hardware: [], softwares };
-  const specs = MODULE_TYPES['own-software'].manuals.map((manual) => ({
-    manual,
-    content: blankContent(name, [], manual, softwares),
-    checklist: null,
-    startSummary: startSummary || `Own manual of the ${name} software`,
-  }));
-  return await createModuleDoc(input, specs);
+async function adoptOwnSoftwareModule(name, fromVersion) {
+  const inTheWay = await ownModuleInTheWay(name);
+  if (!inTheWay?.adopt) return null;
+  const linked = await linkSoftware(inTheWay.slug, name, fromVersion);
+  const entry = await moduleOf(inTheWay.slug);
+  const docs = entry.docs.filter((d) => MANUAL_TYPES[d.manual].kind === 'software');
+  return {
+    slug: inTheWay.slug,
+    adopted: true,
+    softwares: linked.softwares,
+    docs: docs.map((d) => ({ manual: d.manual, key: d.key, version: d.version, status: d.status })),
+    key: docs[0]?.key || null,
+  };
 }
 
 /** Link a software to a module (appends to module.softwares; updates from-version when already linked).
@@ -1866,8 +1996,15 @@ export async function deleteSoftware(name) {
   name = cleanSwName(name);
   if (!name) throw new Error('Software name is required');
   const feed = await getSoftwareFeed();
-  const linked = (await collectAll()).modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name));
-  if (!feed[name] && !linked.length) throw new Error(`Software "${name}" not found`);
+  const { modules, softwareOwners } = await collectAll();
+  const linked = modules.filter(({ module }) => (module.softwares || []).some((s) => s.name === name));
+  const own = softwareOwners.find((o) => o.module.name === name) || null;
+  if (!feed[name] && !linked.length && !own) throw new Error(`Software "${name}" not found`);
+  if (own) {
+    throw new Error(
+      `${name} has its own manual (${own.docs.map((d) => d.key).join(', ')}) — delete the manual first, or it would document a software that no longer exists`
+    );
+  }
   const released = [];
   for (const { module, docs } of linked) {
     if ((module.softwares || []).length !== 1) continue;
@@ -1892,6 +2029,26 @@ export async function deleteSoftware(name) {
     });
   }
   return { name, unlinked, released, releases };
+}
+
+/**
+ * Delete a software's own manuals: every doc version it owns, its draft branches and its folder
+ * on main. The software itself, with its releases, stays — it simply stops being documented.
+ */
+export async function deleteSoftwareManuals(name) {
+  name = cleanSwName(name);
+  const slug = slugify(name);
+  const entry = await ownerOf(swRef(slug));
+  if (!entry) throw new Error(`${name} has no own manual`);
+  const branches = entry.docs.map((d) => d.branch).filter(Boolean);
+  const docs = entry.docs.length;
+  await mutate(async () => {
+    await repo.checkout('main');
+    for (const b of branches) await repo.deleteBranch(b);
+    await repo.removePath(`software/${slug}`);
+    await repo.commitAll(`${name}: delete own manual`);
+  });
+  return { name, slug, docs, branches };
 }
 
 /** Register a new version (release) of a software in the feed. */

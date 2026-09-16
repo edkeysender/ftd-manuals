@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { manualType, compareSwVersions } from '../api.js';
+import { manualType, compareSwVersions, ownerHref } from '../api.js';
 import { t, plural } from '../i18n.jsx';
 
 /** Releases are stamped with a full timestamp; both views want the day. */
@@ -95,7 +95,7 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, on
             <React.Fragment key={`${rowKey(row)}-${row.from}`}>
               <div className="sw-row-label">
                 <Link
-                  to={`/modules/${row.slug || slug}/docs/${row.key}/edit`}
+                  to={`${ownerHref(row.own ? { software: sw.name } : row.slug || slug)}/docs/${row.key}/edit`}
                   title={t('Open {doc}', { doc: rowLabel(row) })}
                 >
                   {row.moduleName && <span className="sw-row-mod">{row.moduleName}</span>}

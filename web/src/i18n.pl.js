@@ -588,6 +588,15 @@ export const PL = {
     'Odłączyć {module} od {software}? Napisane instrukcje zachowują treść i objęte wydania.',
   '{module} detached from {software}': 'Odłączono {module} od {software}',
   '{name} linked to its existing manual': 'Powiązano {name} z istniejącą instrukcją',
+  'Its own manual': 'Własna instrukcja',
+  'legacy module': 'moduł zastany',
+  'Written before a software could own its manuals — still a module':
+    'Napisana zanim oprogramowanie mogło mieć własne instrukcje — nadal moduł',
+  'Delete the manuals {software} owns — the software and its releases stay':
+    'Usuń instrukcje należące do {software} — samo oprogramowanie i jego wydania pozostaną',
+  'Delete the manuals {software} owns? Their versions, drafts and assets go. The software and its releases stay.':
+    'Usunąć instrukcje należące do {software}? Ich wersje, wersje robocze i zasoby zostaną usunięte. Oprogramowanie i jego wydania pozostaną.',
+  '{software} manual deleted': 'Usunięto instrukcję {software}',
   'Delete manual': 'Usuń instrukcję',
   'Delete this software manual with all its doc versions, drafts and assets':
     'Usuń tę instrukcję oprogramowania wraz ze wszystkimi wersjami dokumentu, wersjami roboczymi i zasobami',

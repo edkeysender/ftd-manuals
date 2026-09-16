@@ -346,8 +346,13 @@ const STRINGS = {
     softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', notSoftware: 'Not software-related', andLater: 'and later',
     audienceRow: (label, audience) => `${label} — ${audience} audience`,
     introAudience: { technician: 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.', customer: 'It is intended for the operator of the simulator.' },
-    introSubject: (kind, name, detail) => (kind === 'software' ? `the software of the <strong>${name}</strong> module (${detail})` : `the <strong>${name}</strong> module (${detail})`),
-    intro1: (typeLabel, subject, audience) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience} It is a standalone mini-manual and is compiled into every simulator manual that includes this module when this document version is released.`,
+    introSubject: (kind, name, detail, standalone) =>
+      kind === 'software'
+        ? standalone
+          ? `the <strong>${name}</strong> software`
+          : `the software of the <strong>${name}</strong> module (${detail})`
+        : `the <strong>${name}</strong> module (${detail})`,
+    intro1: (typeLabel, subject, audience) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience} It is a standalone mini-manual and is compiled into every simulator manual that includes it when this document version is released.`,
     intro2: (version, draftRev) => `Document version ${version}${draftRev ? ` (draft, revision ${draftRev})` : ''}. Only released document versions are compiled into simulator manuals.`,
     // assembled manual
     tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
@@ -372,8 +377,13 @@ const STRINGS = {
     softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', notSoftware: 'Nie dotyczy oprogramowania', andLater: 'i nowsze',
     audienceRow: (label, audience) => `${label} — odbiorca: ${audience}`,
     introAudience: { technician: 'Jest przeznaczony dla instalatora i technika serwisu i nie stanowi części dokumentacji przekazywanej operatorowi symulatora.', customer: 'Jest przeznaczony dla operatora symulatora.' },
-    introSubject: (kind, name, detail) => (kind === 'software' ? `oprogramowania modułu <strong>${name}</strong> (${detail})` : `modułu <strong>${name}</strong> (${detail})`),
-    intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience} Jest samodzielną mini-instrukcją i po wydaniu tej wersji dokumentu wchodzi w skład każdej instrukcji symulatora zawierającej ten moduł.`,
+    introSubject: (kind, name, detail, standalone) =>
+      kind === 'software'
+        ? standalone
+          ? `oprogramowania <strong>${name}</strong>`
+          : `oprogramowania modułu <strong>${name}</strong> (${detail})`
+        : `modułu <strong>${name}</strong> (${detail})`,
+    intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience} Jest samodzielną mini-instrukcją i po wydaniu tej wersji dokumentu wchodzi w skład każdej instrukcji symulatora, która ją zawiera.`,
     intro2: (version, draftRev) => `Wersja dokumentu ${version}${draftRev ? ` (robocza, rewizja ${draftRev})` : ''}. Do instrukcji symulatora kompilowane są wyłącznie wydane wersje dokumentów.`,
     tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
@@ -422,13 +432,16 @@ export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHi
       .join('\n') || `<tr><td colspan="3">${T.notHardware}</td></tr>`;
 
   const type = manualTypeOf(doc.manual);
+  // A software documented on its own: it is its own subject and has no hardware to list.
+  const ownedBySoftware = module.kind === 'software';
   const typeLabel = esc(T.manualTypes[type.id]);
   const typeLower = lang === 'en' ? typeLabel.toLowerCase() : typeLabel.charAt(0).toLowerCase() + typeLabel.slice(1);
   const audience = T.introAudience[type.audience];
   const subject = T.introSubject(
     type.kind,
     esc(module.name),
-    type.kind === 'software' ? esc(softwareLabel(module.softwares)) : esc(module.code || module.slug)
+    type.kind === 'software' ? esc(softwareLabel(module.softwares)) : esc(module.code || module.slug),
+    ownedBySoftware
   );
 
   return `<section class="auto-section" data-auto="1">
@@ -452,20 +465,20 @@ ${record || `<tr><td colspan="3">${T.noRevisions}</td></tr>`}
 <h2>${T.generalInfo}</h2>
 <table>
 <tbody>
-<tr><th>${T.module}</th><td>${esc(module.name)}</td></tr>
+<tr><th>${ownedBySoftware ? T.software : T.module}</th><td>${esc(module.name)}</td></tr>
 <tr><th>${T.code}</th><td>${esc(module.code || '—')}</td></tr>
-<tr><th>${T.category}</th><td>${esc(T.categories[module.category] || module.category || '—')}</td></tr>
+${ownedBySoftware ? '' : `<tr><th>${T.category}</th><td>${esc(T.categories[module.category] || module.category || '—')}</td></tr>`}
 <tr><th>${T.manualType}</th><td>${T.audienceRow(typeLabel, esc(T.audiences[type.audience]))}</td></tr>
 <tr><th>${T.docCode}</th><td>${esc(manualDocCode(module, type.id))}</td></tr>
 </tbody>
 </table>
-<h3>${T.hardware}</h3>
+${ownedBySoftware ? '' : `<h3>${T.hardware}</h3>
 <table>
 <thead><tr><th>${T.unit}</th><th>${T.relation}</th><th>${T.notes}</th></tr></thead>
 <tbody>
 ${hwRows}
 </tbody>
-</table>
+</table>`}
 <h3>${T.softwareRelation}</h3>
 <table>
 <thead><tr><th>${T.software}</th><th>${T.coveredReleases}</th></tr></thead>

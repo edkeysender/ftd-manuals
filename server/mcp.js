@@ -822,6 +822,8 @@ async function callTool(name, args) {
   if (name === 'discard_doc' && !String(args.version || '').trim()) {
     throw new Error('discard_doc needs an explicit version (e.g. "A1.0" with manual, or "technician:A1.0") — it is irreversible');
   }
+  // `slug` may name a module or a software that owns its manuals — both are doc owners.
+  if (args && args.slug) args = { ...args, slug: await store.resolveOwnerRef(args.slug) };
   if (DOC_SCOPED.has(name)) args = { ...args, version: await resolveDocKey(args) };
   switch (name) {
     case 'list_manual_types':
@@ -841,7 +843,7 @@ async function callTool(name, args) {
         ownManual: args.own_manual ? { startSummary: 'Created via MCP' } : null,
       });
     case 'create_software_manual':
-      return await store.createOwnSoftwareModule(args.name, { fromVersion: args.from_version || '', startSummary: 'Created via MCP' });
+      return await store.createSoftwareManuals(args.name, { fromVersion: args.from_version || '', startSummary: 'Created via MCP' });
     case 'delete_module':
       return await store.deleteModule(args.slug);
     case 'delete_software':

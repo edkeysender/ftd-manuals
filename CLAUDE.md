@@ -67,14 +67,28 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Module types (`MODULE_TYPES` in `server/docgen.js`, mirrored in `web/src/api.js`): what a module IS decides
   which manuals are drafted on creation — `own-module` / `third-party-kit` → customer + technician,
   `own-software` → the software pair (a software named after the module is auto-created when none is picked),
-  `module-software` → all four. The reverse path — a software's **own manual**, documented without hardware —
-  is the same thing: `createOwnSoftwareModule()` (store) makes an `own-software` module named after the software
-  (Software page "Write its own manual" / new-software modal checkbox, `POST /api/software/:name/own-manual`,
-  `ownManual` on `POST /api/software`, MCP `create_software {own_manual}` / `create_software_manual`); the
-  Software page row carries `type` so the UI knows. There is no separate software-level doc store — never add one. Doc codes derive as `<CODE>-TECH-HW` / `<CODE>-USER-SW` (`manualDocCode`,
+  `module-software` → all four. Doc codes derive as `<CODE>-TECH-HW` / `<CODE>-USER-SW` (`manualDocCode`,
   `docCode` on every doc record, shown in generated section 3). "Parts" are the hardware catalog: a line with
   a trailing version ("Płyta czołowa v1") = made by FTD, without = bought COTS (`parseParts`; `parts` on
   POST /api/modules and MCP `create_module`). New-module modal is compact (no steps).
+- A doc hangs off an **owner**: a module (`modules/<slug>/docs/…`) or a **software that owns its manuals**
+  (`software/<slug>/docs/…`, an application with no hardware). An owner is addressed by a `ref` — a bare
+  module slug, or `sw:<slug>` — which `ownerOf()` resolves; `ownerRoot`, `docDir` and `ownerBranch`
+  (`draft/sw/<slug>-…`) build its paths, and everything past the lookup works on the doc record, which
+  carries its own `dir` and `branch`. `softwareOwner()` shapes a software like the module records the rest
+  of the store reads (`kind: software`, it documents itself, no hardware), so the editor, revisions,
+  review, releases, hotfixes, translations, assets and coverage are the same machinery for both. Writing
+  a software its manuals (`createSoftwareManuals`, Software page "Write its own manual",
+  `POST /api/software/:name/own-manual`, `ownManual` on `POST /api/software`, MCP
+  `create_software {own_manual}` / `create_software_manual`) creates **no module**; its docs are reached
+  at `/api/software/<name>/docs/<key>` and `/#/software/<name>/docs/<key>/edit` (`ownerPath`/`ownerHref`
+  in `web/src/api.js`, `docPaths`/`ownerPaths` in `index.js`), and over MCP by naming the software as
+  `slug` (`resolveOwnerRef`). Deleting a software is refused while it owns manuals —
+  `DELETE /api/software/:name/manual` removes those first. Softwares written as own-software **modules**
+  before this are never migrated: they keep working, and writing the manual again adopts one
+  (`adoptOwnSoftwareModule`) instead of starting a second set. An own-software module is not listed among
+  modules and cannot be a chapter (`hardwareModules` in `web/src/api.js`); a software-owned manual is not
+  assembled into a simulator manual at all — it stands on its own.
 - Manual groups (`SIM` / `IOS` / `RACK`, RACK legacy) belong to an **assembled manual**, not to a module — a module
   carries none, and which manuals it compiles into follows from the chapters they list. Hardware: a shared catalog (`hardware.json` on `main`, items
   `{id, name, type: ftd|cots, version | manufacturer+model, notes}`); a module links **N** items via
