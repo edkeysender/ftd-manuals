@@ -336,11 +336,9 @@ export const PL = {
   'Not linked to any module yet — link one above to enable its software manuals.': 'Niepowiązane z żadnym modułem — powiąż powyżej, aby włączyć instrukcje oprogramowania.',
   'No manual yet — write its own manual above (an application without hardware), or link a module whose manual covers it.':
     'Brak instrukcji — napisz własną instrukcję powyżej (aplikacja bez sprzętu) albo powiąż moduł, którego instrukcja ją obejmuje.',
-  'Own manual': 'Własna instrukcja',
   'own manual': 'własna instrukcja',
   'The software documented on its own — no hardware module': 'Oprogramowanie udokumentowane samodzielnie — bez modułu sprzętowego',
   'Manual group': 'Grupa instrukcji',
-  'Write its own manual': 'Napisz własną instrukcję',
   'Document {name} on its own, without a hardware module: software customer + technician manuals A1.0 in the same editor':
     'Udokumentuj {name} samodzielnie, bez modułu sprzętowego: instrukcje oprogramowania dla klienta i technika A1.0 w tym samym edytorze',
   'Own manual of {name} created — opening the editor': 'Utworzono własną instrukcję {name} — otwieram edytor',
@@ -589,6 +587,8 @@ export const PL = {
   '{module} detached from {software}': 'Odłączono {module} od {software}',
   '{name} linked to its existing manual': 'Powiązano {name} z istniejącą instrukcją',
   'Its own manual': 'Własna instrukcja',
+  'Document {name} itself: software customer + technician manuals A1.0, owned by the software — no module':
+    'Opisz samo {name}: instrukcje SW użytkownika i technika A1.0, należące do oprogramowania — bez modułu',
   'legacy module': 'moduł zastany',
   'Written before a software could own its manuals — still a module':
     'Napisana zanim oprogramowanie mogło mieć własne instrukcje — nadal moduł',
