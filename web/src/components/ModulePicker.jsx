@@ -36,7 +36,6 @@ export default function ModulePicker({ modules, selected, onChange, manual = 'cu
               <span className="picker-name">
                 {m.name} {m.code && <code>{m.code}</code>}
               </span>
-              <span className="chip">{m.group}</span>
               <StatusBadge status={typeStatus(m)} />
             </label>
           ))}

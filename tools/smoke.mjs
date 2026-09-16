@@ -180,13 +180,13 @@ try {
     name: 'Starting Panel',
     code: 'SW-STP',
     category: 'software',
-    group: 'SIM',
     hardware: { type: 'ftd', version: 'v2' },
     softwares: [{ name: 'STP Core', fromVersion: 'v2.0.0' }],
     start: { mode: 'blank' },
     checklist: { mode: 'template' },
   });
   ok(created.slug === 'starting-panel' && created.version === 'A1.0', 'wizard creates starting-panel A1.0');
+  ok(!('group' in (await req('GET', '/api/modules/starting-panel')).module), 'a module is created without a manual group');
   ok(created.fat === true, 'wizard seeds a FAT checklist from the template');
   ok(created.branch === 'draft/starting-panel-customer-a1.0' && created.key === 'customer:A1.0' && created.docs.length === 1,
     `draft branch is ${created.branch} (default manual type = customer)`);

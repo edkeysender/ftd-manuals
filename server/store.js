@@ -716,7 +716,6 @@ export async function listSoftware() {
           slug: module.slug,
           name: module.name,
           code: module.code || null,
-          group: module.group,
           type: module.type || null, // own-software = the software's own manual (no hardware)
           fromVersion: link.fromVersion || '',
           softwareCount: (module.softwares || []).length,
@@ -777,7 +776,6 @@ export async function listModules() {
       name: module.name,
       code: module.code || null,
       category: module.category,
-      group: module.group,
       hardware: module.hardwareItems,
       hardwareLabel: hardwareLabel(module),
       softwares: module.softwares || [],
@@ -999,7 +997,6 @@ export async function createModuleDoc(input, manuals) {
     name: input.name,
     code: input.code || null,
     category: input.category || 'software',
-    group: input.group,
     type: input.type || null, // own-module | third-party-kit | own-software | module-software
     hardwareIds: hw.ids,
     softwares: input.softwares || [],
@@ -1734,7 +1731,7 @@ const cleanSwName = (name) => String(name || '').trim();
  * Create a software: a new name in the release feed (softwares.json on main), optionally with
  * its first release and linked to modules right away. Software manuals of a module become
  * available once the module is linked to a software.
- * { name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}], ownManual?: {group?} }
+ * { name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}], ownManual?: {} }
  * ownManual: the software also gets its OWN manual — an own-software module named after it
  * (see createOwnSoftwareModule), so an application without hardware is documented in the
  * same editor as everything else.
@@ -1791,12 +1788,11 @@ async function assertNoModule(name) {
  * A software's OWN manual: an own-software module named after the software, linked to it,
  * with blank drafts of the software customer + technician manuals. Everything else (editor,
  * revisions, review, releases, translations, assembled manuals) is the module machinery.
- * { group?: SIM|IOS, fromVersion?, startSummary? } → createModuleDoc result.
+ * { fromVersion?, startSummary? } → createModuleDoc result.
  */
-export async function createOwnSoftwareModule(name, { group = 'SIM', fromVersion = '', startSummary } = {}) {
+export async function createOwnSoftwareModule(name, { fromVersion = '', startSummary } = {}) {
   name = cleanSwName(name);
   if (!name) throw new Error('Software name is required');
-  if (!['SIM', 'IOS', 'RACK'].includes(group)) throw new Error('Manual group must be SIM or IOS');
   const feed = await getSoftwareFeed();
   if (!feed[name]) throw notRegistered(name);
   const inTheWay = await assertNoModule(name);
@@ -1816,7 +1812,7 @@ export async function createOwnSoftwareModule(name, { group = 'SIM', fromVersion
   }
   // The manual covers the software from the given version (defaulted above to its newest release).
   const softwares = [{ name, fromVersion: String(fromVersion || '').trim() }];
-  const input = { name, code: null, category: 'software', group, type: 'own-software', hardware: [], softwares };
+  const input = { name, code: null, category: 'software', type: 'own-software', hardware: [], softwares };
   const specs = MODULE_TYPES['own-software'].manuals.map((manual) => ({
     manual,
     content: blankContent(name, [], manual, softwares),
@@ -2452,7 +2448,7 @@ export async function updateModule(slug, patch) {
   const refs = [...(onMain ? ['main'] : []), ...entry.docs.filter((d) => isOpen(d) && d.branch).map((d) => d.branch)];
   if (!refs.length) throw new Error('Module has no draft branch and is not released — nothing to write to');
   const { hardwareItems, ...module } = entry.module;
-  for (const k of ['name', 'code', 'category', 'group', 'softwares']) {
+  for (const k of ['name', 'code', 'category', 'softwares']) {
     if (patch[k] !== undefined) module[k] = patch[k];
   }
   if (patch.softwares !== undefined) await assertSoftwareLinks(module.softwares, entry.module.softwares);

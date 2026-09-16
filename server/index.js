@@ -157,7 +157,6 @@ async function manualSpec(moduleInput, manualId, start, fat) {
 app.post('/api/modules', wrap(async (req, res) => {
   const input = req.body;
   if (!input.name) throw new Error('Module name is required');
-  if (!['SIM', 'IOS', 'RACK'].includes(input.group)) throw new Error('Manual group must be SIM or IOS');
 
   // The module type decides which manuals are drafted: own-module / third-party-kit
   // (customer + technician), own-software (the software pair), module-software (all four).
@@ -217,12 +216,9 @@ app.get('/api/modules/:slug', wrap(async (req, res) => {
   res.json(m);
 }));
 
-/** Module metadata: name, code, category, group, softwares, hardware (catalog ids and/or new items). */
+/** Module metadata: name, code, category, softwares, hardware (catalog ids and/or new items). */
 app.patch('/api/modules/:slug', wrap(async (req, res) => {
   const patch = req.body || {};
-  if (patch.group !== undefined && !['SIM', 'IOS', 'RACK'].includes(patch.group)) {
-    throw new Error('Manual group must be SIM, IOS or RACK');
-  }
   res.json(await store.updateModule(req.params.slug, patch));
 }));
 
@@ -398,17 +394,17 @@ app.get('/api/software', wrap(async (req, res) => {
   res.json(await store.listSoftware());
 }));
 
-/** Create a software: {name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}], ownManual?: {group?}}
+/** Create a software: {name, version?, manualAffecting?, note?, modules?: [{slug, fromVersion?}], ownManual?: {}}
  *  ownManual → the software also gets its own manual (an own-software module named after it; result.ownModule). */
 app.post('/api/software', wrap(async (req, res) => {
   res.json(await store.createSoftware(req.body || {}));
 }));
 
 /** The own manual of an existing software: an own-software module named after it, linked to it,
- *  with blank software customer + technician drafts. {group?: SIM|IOS, fromVersion?} */
+ *  with blank software customer + technician drafts. {fromVersion?} */
 app.post('/api/software/:name/own-manual', wrap(async (req, res) => {
-  const { group, fromVersion } = req.body || {};
-  res.json(await store.createOwnSoftwareModule(req.params.name, { group: group || 'SIM', fromVersion: fromVersion || '' }));
+  const { fromVersion } = req.body || {};
+  res.json(await store.createOwnSoftwareModule(req.params.name, { fromVersion: fromVersion || '' }));
 }));
 
 /** Delete a module: its draft branches, its folder on main and its chapter in every manual. */

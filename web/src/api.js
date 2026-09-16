@@ -136,6 +136,7 @@ export const CATEGORIES = [
   ['software', 'Software'],
 ];
 
+/** Groups of an assembled manual — a simulator manual or an IOS manual (RACK is legacy data). */
 export const GROUPS = [
   ['SIM', 'Simulator'],
   ['IOS', 'IOS'],

@@ -169,7 +169,7 @@ function SoftwareBlock({ sw, all = [], reload }) {
                   <div className="module-cell">
                     <Link to={`/modules/${mod.slug}`} className="module-name">{mod.name}</Link>
                     <span className="module-sub">
-                      {mod.code && <code>{mod.code}</code>} <span className="chip">{mod.group}</span>
+                      {mod.code && <code>{mod.code}</code>}
                       {mod.type === 'own-software' && <span className="chip" title={t('The software documented on its own — no hardware module')}>{t('own manual')}</span>}
                       <button
                         className="btn btn-sm btn-danger row-detach"

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { api, CATEGORIES, GROUPS, MODULE_TYPES, moduleType } from '../api.js';
+import { api, CATEGORIES, MODULE_TYPES, moduleType } from '../api.js';
 import { useToast } from '../App.jsx';
 import { t } from '../i18n.jsx';
 
@@ -22,7 +22,6 @@ export default function Wizard({ onClose, onCreated }) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [category, setCategory] = useState('cockpit-hardware');
-  const [group, setGroup] = useState('SIM');
   const [type, setType] = useState('own-module');
   const [software, setSoftware] = useState('');
   const [softwareList, setSoftwareList] = useState([]);
@@ -43,7 +42,6 @@ export default function Wizard({ onClose, onCreated }) {
         name: name.trim(),
         code: code.trim() || null,
         category,
-        group,
         type,
         software: software || null,
         parts,
@@ -84,14 +82,6 @@ export default function Wizard({ onClose, onCreated }) {
               <select value={category} onChange={(e) => setCategory(e.target.value)}>
                 {CATEGORIES.map(([k, l]) => (
                   <option key={k} value={k}>{t(l)}</option>
-                ))}
-              </select>
-            </label>
-            <label className="form-row">
-              <span>{t('Group')}</span>
-              <select value={group} onChange={(e) => setGroup(e.target.value)}>
-                {GROUPS.map(([k]) => (
-                  <option key={k} value={k}>{k}</option>
                 ))}
               </select>
             </label>

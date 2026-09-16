@@ -208,7 +208,6 @@ function NewSoftwareModal({ onClose, onCreated }) {
                       onChange={() => setSelected(selected.includes(m.slug) ? selected.filter((s) => s !== m.slug) : [...selected, m.slug])}
                     />
                     <span className="picker-name">{m.name} {m.code && <code>{m.code}</code>}</span>
-                    <span className="chip">{m.group}</span>
                   </label>
                 ))}
                 {modules.length === 0 && <div className="muted">{t('No modules yet.')}</div>}
