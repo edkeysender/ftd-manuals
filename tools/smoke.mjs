@@ -889,36 +889,46 @@ try {
   ok(!(unlinkOk instanceof Error) && unlinkOk.softwares.length === 2, 'link_software unlink removes the link');
   const unlinkMissing = await call(127, 'link_software', { slug: 'starting-panel', name: 'Orphan Tool', unlink: true });
   ok(unlinkMissing instanceof Error && /not linked/.test(unlinkMissing.message), 'unlinking a software that is not linked is an error');
-  // a software manual has to relate to a software: detaching the last one is refused while it exists
-  const ownSw = await req('POST', '/api/software', { name: 'Panel Tool', version: 'v1.0', ownManual: true });
-  ok(!!ownSw.ownModule, 'own-software module created for the detach check');
-  const detachLast = await req('POST', `/api/modules/${ownSw.ownModule.slug}/software`, { name: 'Panel Tool', unlink: true }).catch((e) => e);
-  ok(detachLast instanceof Error && /its only software/.test(detachLast.message) && /software-customer:A1.0/.test(detachLast.message),
-    'a module cannot be detached from the software its manuals document');
-  await req('POST', `/api/modules/${ownSw.ownModule.slug}/software`, { name: 'STP Core' });
-  const detachOne = await req('POST', `/api/modules/${ownSw.ownModule.slug}/software`, { name: 'Panel Tool', unlink: true });
-  ok(detachOne.softwares.length === 1 && detachOne.softwares[0].name === 'STP Core', 'detaching works once another software documents the manuals');
-  // deleting a software leaves its own-manual module behind with no software at all
+  // a software documented on its own: its manuals belong to the software, and no module is made
+  const ownSw = await req('POST', '/api/software', { name: 'Panel Tool', version: 'v1.0', ownManual: {} });
+  ok(ownSw.ownModule?.ref === 'sw:panel-tool' && ownSw.ownModule.docs.length === 2, 'the software owns two manual drafts');
+  ok(!(await req('GET', '/api/modules')).some((m) => m.slug === 'panel-tool'), 'writing a software manual creates no module');
+  const ownDoc = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
+  ok(ownDoc.doc.status === 'draft' && ownDoc.module.kind === 'software' && ownDoc.module.name === 'Panel Tool',
+    'the doc reads through the software, with the software as its subject');
+  ok(ownDoc.generated.includes('Panel Tool') && !ownDoc.generated.includes('>Hardware<'),
+    'its generated sections name the software and list no hardware');
+  await req('PUT', '/api/software/Panel%20Tool/docs/software-customer:A1.0/content', {
+    html: ownDoc.content.replace('</h2>', '</h2>\n<p>Start the kiosk from the desktop shortcut.</p>'),
+    bump: true,
+    summary: 'Overview written',
+  });
+  const ownEdited = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
+  ok(ownEdited.content.includes('desktop shortcut') && ownEdited.doc.revision === 2, 'a software manual edits like any other draft');
+  await req('POST', '/api/software/Panel%20Tool/docs/software-customer:A1.0/submit-review');
+  await req('POST', '/api/software/Panel%20Tool/docs/software-customer:A1.0/release');
+  const releasedOwn = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
+  ok(releasedOwn.doc.status === 'released' && !releasedOwn.doc.branch, 'a software manual releases like any other doc');
+  // it shows on the Software page as the software documenting itself
+  const ownRowSw = (await req('GET', '/api/software')).find((x) => x.name === 'Panel Tool');
+  ok(ownRowSw.modules.length === 1 && ownRowSw.modules[0].own === true && ownRowSw.modules[0].ref === 'sw:panel-tool',
+    'the Software page lists the software itself as the owner of its manuals');
+  ok(ownRowSw.coverage.manuals.some((r) => r.own && r.key === 'software-customer:A1.0' && r.open),
+    'its manuals are on the coverage timeline');
+  // asking again returns what exists instead of writing a second set
+  const ownAgain = await req('POST', '/api/software/Panel%20Tool/own-manual', {}).catch((e) => e);
+  ok(ownAgain instanceof Error && /already has its own manual/.test(ownAgain.message), 'a software has one set of own manuals');
+  // a module, in contrast, must keep a software for its software manuals to document
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Panel Tool' });
+  const detachOne = await req('POST', '/api/modules/starting-panel/software', { name: 'Panel Tool', unlink: true });
+  ok(!detachOne.softwares.some((x) => x.name === 'Panel Tool'), 'a module detaches from a software it only links to');
+  // a module of the same name is no longer in the way: the manuals live under software/
+  const sameName = await req('POST', '/api/software', { name: 'Starting Panel', version: 'v1.0', ownManual: {} });
+  ok(sameName.ownModule?.ref === 'sw:starting-panel', 'a software may share a name with a module and still own its manuals');
+  await req('DELETE', '/api/software/Starting%20Panel/manual');
+  await req('DELETE', '/api/software/Starting%20Panel');
+  await req('DELETE', '/api/software/Panel%20Tool/manual');
   await req('DELETE', '/api/software/Panel%20Tool');
-  const orphaned = await req('GET', `/api/modules/${ownSw.ownModule.slug}`);
-  ok(orphaned.module.softwares.length === 1 && orphaned.module.softwares[0].name === 'STP Core',
-    'deleting the software unlinks it from its own-manual module');
-  // a software deleted and written again finds the module that already holds its manual
-  const beta = await req('POST', '/api/software', { name: 'Beta Tool', version: 'v1.0', ownManual: {} });
-  await req('DELETE', '/api/software/Beta%20Tool');
-  ok((await req('GET', `/api/modules/${beta.ownModule.slug}`)).module.softwares.length === 0,
-    'the own-manual module is left documenting nothing');
-  const readopted = await req('POST', '/api/software', { name: 'Beta Tool', version: 'v1.0', ownManual: {} });
-  ok(readopted.ownModule?.adopted === true && readopted.ownModule.slug === beta.ownModule.slug && readopted.ownModule.docs.length === 2,
-    'writing the own manual again adopts the module that already has it');
-  ok((await req('GET', `/api/modules/${beta.ownModule.slug}`)).module.softwares.some((s) => s.name === 'Beta Tool'),
-    'the adopted module documents the software again');
-  await req('DELETE', '/api/software/Beta%20Tool');
-  await req('DELETE', `/api/modules/${beta.ownModule.slug}`);
-  const takenName = await req('POST', '/api/software', { name: 'Starting Panel', version: 'v1.0', ownManual: {} }).catch((e) => e);
-  ok(takenName instanceof Error && /already exists/.test(takenName.message), 'a module that is not an own manual still blocks the name');
-  // cleanup: Panel Tool was already deleted above, its module is not
-  await req('DELETE', `/api/modules/${ownSw.ownModule.slug}`);
   // languages: English is the source; Polish is a translation stored next to it
   const enDoc = await req('GET', '/api/modules/starting-panel/docs/technician:A1.0');
   ok(enDoc.lang === 'en' && enDoc.languages.en.source === true && enDoc.languages.pl.exists === false, 'doc reports its languages (pl missing)');
@@ -1217,31 +1227,42 @@ try {
   const delUnknownSw = await req('DELETE', '/api/software/Nope').catch((e) => e);
   ok(delUnknownSw instanceof Error && /not found/.test(delUnknownSw.message), 'deleting an unknown software is refused');
 
-  // a software's OWN manual: an own-software module named after it, edited like any doc
+  // a software's OWN manuals: owned by the software, edited like any other doc
   await req('POST', '/api/software', { name: 'Deck Planner', version: 'v3.0.0' });
-  const own = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', { group: 'IOS' });
-  ok(own.slug === 'deck-planner' && own.key === 'software-customer:A1.0' && own.docs.length === 2 && own.docs.every((d) => d.manual.startsWith('software-')), 'own manual = own-software module with the software pair');
+  const own = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', {});
+  ok(own.ref === 'sw:deck-planner' && own.key === 'software-customer:A1.0' && own.docs.length === 2 && own.docs.every((d) => d.manual.startsWith('software-')),
+    'own manual = the software pair, owned by the software');
   const ownRow = (await req('GET', '/api/software')).find((r) => r.name === 'Deck Planner');
-  ok(ownRow.modules.length === 1 && ownRow.modules[0].type === 'own-software' && ownRow.modules[0].fromVersion === 'v3.0.0' && ownRow.manualCount === 2, 'Software page row shows the own manual with its from-version');
-  const ownDoc = await req('GET', '/api/modules/deck-planner/docs/software-customer:A1.0');
-  ok(ownDoc.content.includes('<h2>Overview</h2>') && ownDoc.content.includes('Deck Planner') && ownDoc.doc.status === 'draft', 'own manual opens in the editor as a draft');
-  const ownDup = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', {});
-  ok(ownDup.adopted === true && ownDup.slug === 'deck-planner' && ownDup.docs.length === 2,
-    'asking for the own manual again returns the one that exists');
+  ok(ownRow.modules.length === 1 && ownRow.modules[0].own === true && ownRow.modules[0].fromVersion === 'v3.0.0' && ownRow.manualCount === 2,
+    'Software page row shows the own manual with its from-version');
+  const deckDoc = await req('GET', '/api/software/' + encodeURIComponent('Deck Planner') + '/docs/software-customer:A1.0');
+  ok(deckDoc.content.includes('<h2>Overview</h2>') && deckDoc.content.includes('Deck Planner') && deckDoc.doc.status === 'draft', 'own manual opens in the editor as a draft');
+  const ownDup = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', {}).catch((e) => e);
+  ok(ownDup instanceof Error && /already has its own manual/.test(ownDup.message), 'a software writes its own manuals once');
   const ownUnknown = await req('POST', '/api/software/Nope/own-manual', {}).catch((e) => e);
   ok(ownUnknown instanceof Error && /not found/.test(ownUnknown.message), 'own manual of an unknown software is refused');
-  const ownMcp = await call(140, 'create_software', { name: 'Route Editor', own_manual: true, group: 'IOS', version: 'v1.0' });
-  ok(!(ownMcp instanceof Error) && ownMcp.ownModule?.slug === 'route-editor' && ownMcp.ownModule.docs.length === 2, 'MCP create_software own_manual creates the module too');
-  const ownMcp2 = await call(141, 'create_software_manual', { name: 'Route Editor' });
-  ok(!(ownMcp2 instanceof Error) && ownMcp2.adopted === true && ownMcp2.slug === 'route-editor',
-    'MCP create_software_manual returns the module that already holds it');
-  const clash = await req('POST', '/api/software', { name: 'Starting Panel', ownManual: { group: 'SIM' } }).catch((e) => e);
-  ok(clash instanceof Error && /already exists/.test(clash.message) && !(await req('GET', '/api/software')).some((r) => r.name === 'Starting Panel'), 'own manual clashing with a module slug fails before the feed is touched');
-  await req('DELETE', '/api/modules/deck-planner');
-  await req('DELETE', '/api/modules/route-editor');
+  const ownMcp = await call(140, 'create_software', { name: 'Route Editor', own_manual: true, version: 'v1.0' });
+  ok(!(ownMcp instanceof Error) && ownMcp.ownModule?.ref === 'sw:route-editor' && ownMcp.ownModule.docs.length === 2,
+    'MCP create_software own_manual writes the software its manuals');
+  ok(!(await req('GET', '/api/modules')).some((m) => m.slug === 'route-editor'), 'and still no module');
+  // agents address a software the same way they address a module
+  const swDoc = await call(142, 'get_doc', { slug: 'Route Editor', manual: 'software-customer' });
+  ok(!(swDoc instanceof Error) && swDoc.doc.key === 'software-customer:A1.0' && swDoc.module.name === 'Route Editor',
+    'MCP get_doc reaches a software-owned manual by name');
+  const ownEdit = await call(143, 'insert_into_section', { slug: 'route-editor', manual: 'software-customer', section: 'Overview', html: '<p>Written over MCP.</p>', summary: 'Overview' });
+  ok(!(ownEdit instanceof Error), 'MCP edits a software-owned manual by slug');
+  ok((await call(144, 'get_doc', { slug: 'route-editor', manual: 'software-customer' })).content.includes('Written over MCP.'),
+    'the edit landed on the software’s own manual');
+  const delDocumented = await req('DELETE', '/api/software/' + encodeURIComponent('Deck Planner')).catch((e) => e);
+  ok(delDocumented instanceof Error && /delete the manual first/.test(delDocumented.message),
+    'a software that documents itself is not deleted out from under its manual');
+  const delManual = await req('DELETE', '/api/software/' + encodeURIComponent('Deck Planner') + '/manual');
+  ok(delManual.docs === 2 && !(await req('GET', '/api/software')).find((r) => r.name === 'Deck Planner').modules.length,
+    'deleting the manual leaves the software undocumented');
   await req('DELETE', '/api/software/' + encodeURIComponent('Deck Planner'));
+  await req('DELETE', '/api/software/' + encodeURIComponent('Route Editor') + '/manual');
   await req('DELETE', '/api/software/' + encodeURIComponent('Route Editor'));
-  ok(!(await req('GET', '/api/modules')).some((m) => ['deck-planner', 'route-editor'].includes(m.slug)), 'own-manual modules removed (cleanup)');
+  ok(!(await req('GET', '/api/software')).some((r) => ['Deck Planner', 'Route Editor'].includes(r.name)), 'softwares and their own manuals removed (cleanup)');
 
   // history exists
   detail = await req('GET', '/api/modules/starting-panel');

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, MANUAL_TYPES, manualType, timeAgo, hardwareModules } from '../api.js';
+import { api, MANUAL_TYPES, manualType, timeAgo, hardwareModules, ownerHref } from '../api.js';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 import SoftwareTimeline from '../components/SoftwareTimeline.jsx';
@@ -51,6 +51,8 @@ export default function SoftwareDetail() {
 }
 
 function SoftwareBlock({ sw, all = [], reload }) {
+  /** Where a row of the table lives: a module of its own, or the software itself. */
+  const ownerOf = (mod) => ownerHref(mod.own ? { software: sw.name } : mod.slug);
   const toast = useToast();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -90,11 +92,22 @@ function SoftwareBlock({ sw, all = [], reload }) {
     );
   }
 
+  /** Delete the manuals the software owns. The software and its releases stay. */
+  function deleteOwnManual() {
+    if (
+      !confirm(
+        t('Delete the manuals {software} owns? Their versions, drafts and assets go. The software and its releases stay.', { software: sw.name })
+      )
+    )
+      return;
+    act('own-manual', () => api.deleteSoftwareManual(sw.name), t('{software} manual deleted', { software: sw.name }));
+  }
+
   async function createManual(mod, mt) {
     const r = await act(`${mod.slug}:${mt.id}`, () => api.nextDocVersion(mod.slug, { manual: mt.id, start: { mode: 'blank' }, checklist: { mode: 'none' } }));
     if (r) {
       toast(t('{type} {version} r1 created for {module}', { type: t(mt.label), version: r.version, module: mod.name }));
-      navigate(`/modules/${mod.slug}/docs/${r.key}/edit`);
+      navigate(`${ownerOf(mod)}/docs/${r.key}/edit`);
     }
   }
 
@@ -167,18 +180,37 @@ function SoftwareBlock({ sw, all = [], reload }) {
               <tr key={mod.slug}>
                 <td>
                   <div className="module-cell">
-                    <Link to={`/modules/${mod.slug}`} className="module-name">{mod.name}</Link>
+                    {mod.own ? (
+                      <span className="module-name">{t('Its own manual')}</span>
+                    ) : (
+                      <Link to={`/modules/${mod.slug}`} className="module-name">{mod.name}</Link>
+                    )}
                     <span className="module-sub">
                       {mod.code && <code>{mod.code}</code>}
-                      {mod.type === 'own-software' && <span className="chip" title={t('The software documented on its own — no hardware module')}>{t('own manual')}</span>}
-                      <button
-                        className="btn btn-sm btn-danger row-detach"
-                        disabled={busy === `${mod.slug}:unlink`}
-                        title={t('Stop relating {module} to {software} — its manuals keep what they documented', { module: mod.name, software: sw.name })}
-                        onClick={() => detach(mod)}
-                      >
-                        {t('Detach')}
-                      </button>
+                      {mod.type === 'own-software' && (
+                        <span className="chip" title={t('Written before a software could own its manuals — still a module')}>{t('legacy module')}</span>
+                      )}
+                      {mod.own ? (
+                        isAdmin && (
+                          <button
+                            className="btn btn-sm btn-danger row-detach"
+                            disabled={busy === 'own-manual'}
+                            title={t('Delete the manuals {software} owns — the software and its releases stay', { software: sw.name })}
+                            onClick={deleteOwnManual}
+                          >
+                            {t('Delete manual')}
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          className="btn btn-sm btn-danger row-detach"
+                          disabled={busy === `${mod.slug}:unlink`}
+                          title={t('Stop relating {module} to {software} — its manuals keep what they documented', { module: mod.name, software: sw.name })}
+                          onClick={() => detach(mod)}
+                        >
+                          {t('Detach')}
+                        </button>
+                      )}
                     </span>
                   </div>
                 </td>
@@ -207,7 +239,7 @@ function SoftwareBlock({ sw, all = [], reload }) {
                               key={d.key}
                               className={`manual-pill mp-${d.status} row-link`}
                               title={`${d.key} · r${d.revision} · ${d.status} · ${d.branch || 'main'}`}
-                              onClick={() => navigate(`/modules/${mod.slug}/docs/${d.key}/edit`)}
+                              onClick={() => navigate(`${ownerOf(mod)}/docs/${d.key}/edit`)}
                             >
                               <span className="mp-type">{d.version}</span>
                               <span className="mp-ver">{isOpenDoc(d) ? t('draft r{n}', { n: d.revision }) : t(d.status)}</span>
@@ -216,7 +248,7 @@ function SoftwareBlock({ sw, all = [], reload }) {
                         </span>
                         <span className="btn-row">
                           {open ? (
-                            <button className="btn btn-primary btn-sm" onClick={() => navigate(`/modules/${mod.slug}/docs/${open.key}/edit`)}>
+                            <button className="btn btn-primary btn-sm" onClick={() => navigate(`${ownerOf(mod)}/docs/${open.key}/edit`)}>
                               {t('Edit {version}', { version: open.version })}
                             </button>
                           ) : (
@@ -257,16 +289,16 @@ function SoftwareBlock({ sw, all = [], reload }) {
             onConfirm={(row, release) =>
               act(
                 `${row.slug}:${row.manual}`,
-                () => api.coverRelease(row.slug, row.key, sw.name, release),
+                () => api.coverRelease(row.own ? { software: sw.name } : row.slug, row.key, sw.name, release),
                 t('{doc} now covers {software} {version}', { doc: `${t(manualType(row.manual).short)} ${row.version}`, software: sw.name, version: release })
               )
             }
             onNewVersion={(row, release) =>
               act(
                 `${row.slug}:${row.manual}`,
-                () => api.nextDocVersion(row.slug, { manual: row.manual, bump: 'major', fromRelease: { name: sw.name, version: release } }),
+                () => api.nextDocVersion(row.own ? { software: sw.name } : row.slug, { manual: row.manual, bump: 'major', fromRelease: { name: sw.name, version: release } }),
                 t('New {type} version started from {software} {version}', { type: t(manualType(row.manual).label).toLowerCase(), software: sw.name, version: release })
-              ).then((r) => r && navigate(`/modules/${row.slug}/docs/${r.key}/edit`))
+              ).then((r) => r && navigate(`${ownerHref(row.own ? { software: sw.name } : row.slug)}/docs/${r.key}/edit`))
             }
             onDeleteRelease={
               isAdmin

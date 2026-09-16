@@ -192,9 +192,11 @@ export class GitRepo {
   }
 
   /** All file paths under `prefix` at `ref`. */
+  /** Files under one or more path prefixes at a ref. */
   async lsFiles(ref, prefix) {
+    const prefixes = Array.isArray(prefix) ? prefix : [prefix];
     try {
-      const out = await this.raw(['ls-tree', '-r', '--name-only', ref, '--', prefix]);
+      const out = await this.raw(['ls-tree', '-r', '--name-only', ref, '--', ...prefixes]);
       return out.split('\n').filter(Boolean);
     } catch (e) {
       if (e instanceof GitMissingError) return [];

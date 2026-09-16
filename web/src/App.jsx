@@ -126,6 +126,8 @@ export default function App() {
               <Route path="/modules/:slug" element={<ModuleDetail />} />
               <Route path="/modules/:slug/docs/:version/edit" element={<Editor />} />
               <Route path="/modules/:slug/docs/:version/review" element={<Editor review />} />
+              <Route path="/software/:name/docs/:version/edit" element={<Editor />} />
+              <Route path="/software/:name/docs/:version/review" element={<Editor review />} />
               <Route path="/parts" element={<PartsList />} />
               <Route path="/software" element={<SoftwareList />} />
               <Route path="/software/:name" element={<SoftwareDetail />} />

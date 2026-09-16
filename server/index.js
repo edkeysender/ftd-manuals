@@ -64,7 +64,17 @@ app.get('/api/auth/me', auth.requireAuth, (req, res) => res.json({ user: auth.pu
 app.use('/api', auth.requireAuth);
 app.use('/api', auth.viewerGuard); // viewers read and comment in reviews, nothing else
 app.delete('/api/*', auth.requireAdmin);
-app.post('/api/modules/:slug/docs/:version/discard', auth.requireAdmin);
+/**
+ * Docs hang off an owner: a module (/api/modules/<slug>/…) or a software documented on its own
+ * (/api/software/<name>/…). Both paths reach the same handlers; `ownerRef` says which owner the
+ * store should address — a bare slug, or `sw:<slug>`.
+ */
+const ownerRef = (req) =>
+  req.params.name !== undefined ? `sw:${store.slugify(req.params.name)}` : req.params.slug;
+const docPaths = (suffix = '') => [`/api/modules/:slug/docs/:version${suffix}`, `/api/software/:name/docs/:version${suffix}`];
+const ownerPaths = (suffix = '') => [`/api/modules/:slug${suffix}`, `/api/software/:name${suffix}`];
+
+app.post(docPaths('/discard'), auth.requireAdmin);
 
 app.post('/api/auth/password', wrap(async (req, res) => {
   const { current, next } = req.body || {};
@@ -211,7 +221,7 @@ app.post('/api/modules', wrap(async (req, res) => {
 }));
 
 app.get('/api/modules/:slug', wrap(async (req, res) => {
-  const m = await store.getModule(req.params.slug);
+  const m = await store.getModule(ownerRef(req));
   if (!m) return res.status(404).json({ error: 'Module not found' });
   res.json(m);
 }));
@@ -219,7 +229,7 @@ app.get('/api/modules/:slug', wrap(async (req, res) => {
 /** Module metadata: name, code, category, softwares, hardware (catalog ids and/or new items). */
 app.patch('/api/modules/:slug', wrap(async (req, res) => {
   const patch = req.body || {};
-  res.json(await store.updateModule(req.params.slug, patch));
+  res.json(await store.updateModule(ownerRef(req), patch));
 }));
 
 /* ---------- hardware catalog ---------- */
@@ -244,24 +254,24 @@ app.delete('/api/hardware/:id', wrap(async (req, res) => {
  * creates its A1.0 (with `start` and `checklist` like the wizard); otherwise the next
  * version (`bump`: minor | major) based on the latest released content.
  */
-app.post('/api/modules/:slug/docs', wrap(async (req, res) => {
+app.post(ownerPaths('/docs'), wrap(async (req, res) => {
   const body = req.body || {};
   const type = manualTypeOf(body.manual || DEFAULT_MANUAL);
-  const m = await store.getModule(req.params.slug);
+  const m = await store.getModule(ownerRef(req));
   if (!m) throw new Error('Module not found');
   if (m.docs.some((d) => d.manual === type.id)) {
-    return res.json(await store.createNextDocVersion(req.params.slug, type.id, body.bump || 'minor', { fromRelease: body.fromRelease || null }));
+    return res.json(await store.createNextDocVersion(ownerRef(req), type.id, body.bump || 'minor', { fromRelease: body.fromRelease || null }));
   }
   const moduleInput = { ...m.module, hardwareItems: m.module.hardwareItems || [] };
   const { spec, aiNote } = await manualSpec(moduleInput, type.id, body.start || { mode: 'blank' }, body.checklist || null);
-  const created = await store.addManual(req.params.slug, spec);
+  const created = await store.addManual(ownerRef(req), spec);
   res.json({ ...created, aiNote });
 }));
 
 /* ---------- docs ---------- */
 /** ?lang=pl returns the Polish body (content '' when not translated yet) and Polish generated sections. */
-app.get('/api/modules/:slug/docs/:version', wrap(async (req, res) => {
-  const d = await store.getDoc(req.params.slug, req.params.version, { lang: req.query.lang || DEFAULT_LANG });
+app.get(docPaths(), wrap(async (req, res) => {
+  const d = await store.getDoc(ownerRef(req), req.params.version, { lang: req.query.lang || DEFAULT_LANG });
   if (!d) return res.status(404).json({ error: 'Doc not found' });
   res.json(d);
 }));
@@ -269,10 +279,10 @@ app.get('/api/modules/:slug/docs/:version', wrap(async (req, res) => {
 /** The languages a doc can have; English is the source, the others are translations. */
 app.get('/api/languages', (req, res) => res.json(Object.values(LANGUAGES)));
 
-app.put('/api/modules/:slug/docs/:version/content', wrap(async (req, res) => {
+app.put(docPaths('/content'), wrap(async (req, res) => {
   const { html, bump, summary, lang } = req.body;
   if (typeof html !== 'string') throw new Error('html is required');
-  res.json(await store.saveDraftContent(req.params.slug, req.params.version, html, { bump, summary, lang: lang || DEFAULT_LANG }));
+  res.json(await store.saveDraftContent(ownerRef(req), req.params.version, html, { bump, summary, lang: lang || DEFAULT_LANG }));
 }));
 
 /**
@@ -280,9 +290,9 @@ app.put('/api/modules/:slug/docs/:version/content', wrap(async (req, res) => {
  * return the doc as GET ?lang= would. `html` may be given instead to store a translation made
  * elsewhere (no AI call).
  */
-app.post('/api/modules/:slug/docs/:version/translate', wrap(async (req, res) => {
+app.post(docPaths('/translate'), wrap(async (req, res) => {
   const lang = langOf(req.body?.lang || 'pl');
-  const d = await store.getDoc(req.params.slug, req.params.version);
+  const d = await store.getDoc(ownerRef(req), req.params.version);
   if (!d) throw new Error('Doc not found');
   if (!(d.doc.status === 'draft' || d.doc.status === 'in-review')) throw new Error('Translations are added to a Draft or In-review doc version');
   let html = req.body?.html;
@@ -292,8 +302,8 @@ app.post('/api/modules/:slug/docs/:version/translate', wrap(async (req, res) => 
     html = await ai.translateHtml({ html: d.content, lang, module: d.module, doc: d.doc, guidelines: await store.getAiGuidelines() });
     source = 'ai';
   }
-  await store.saveTranslation(req.params.slug, req.params.version, lang, html, { source, summary: req.body?.summary });
-  res.json(await store.getDoc(req.params.slug, req.params.version, { lang }));
+  await store.saveTranslation(ownerRef(req), req.params.version, lang, html, { source, summary: req.body?.summary });
+  res.json(await store.getDoc(ownerRef(req), req.params.version, { lang }));
 }));
 
 /* ---------- FAT checklist (per doc version) ---------- */
@@ -311,32 +321,32 @@ async function inlineLogo(html) {
 }
 
 /* ---------- review comments (per doc version, on the draft branch) ---------- */
-app.get('/api/modules/:slug/docs/:version/comments', wrap(async (req, res) => {
-  const r = await store.listComments(req.params.slug, req.params.version);
+app.get(docPaths('/comments'), wrap(async (req, res) => {
+  const r = await store.listComments(ownerRef(req), req.params.version);
   if (!r) return res.status(404).json({ error: 'Doc not found' });
   res.json(r.threads);
 }));
 
-app.post('/api/modules/:slug/docs/:version/comments', wrap(async (req, res) => {
-  res.json(await store.addComment(req.params.slug, req.params.version, req.body || {}));
+app.post(docPaths('/comments'), wrap(async (req, res) => {
+  res.json(await store.addComment(ownerRef(req), req.params.version, req.body || {}));
 }));
 
-app.post('/api/modules/:slug/docs/:version/comments/:id/replies', wrap(async (req, res) => {
-  res.json(await store.replyComment(req.params.slug, req.params.version, req.params.id, req.body || {}));
+app.post(docPaths('/comments/:id/replies'), wrap(async (req, res) => {
+  res.json(await store.replyComment(ownerRef(req), req.params.version, req.params.id, req.body || {}));
 }));
 
 /** body: {status: 'resolved'|'open', author?, note?, revision?} */
-app.put('/api/modules/:slug/docs/:version/comments/:id', wrap(async (req, res) => {
+app.put(docPaths('/comments/:id'), wrap(async (req, res) => {
   const { status, author, note, revision } = req.body || {};
-  res.json(await store.setCommentStatus(req.params.slug, req.params.version, req.params.id, status, { author, note, revision }));
+  res.json(await store.setCommentStatus(ownerRef(req), req.params.version, req.params.id, status, { author, note, revision }));
 }));
 
-app.delete('/api/modules/:slug/docs/:version/comments/:id', wrap(async (req, res) => {
-  res.json(await store.deleteComment(req.params.slug, req.params.version, req.params.id));
+app.delete(docPaths('/comments/:id'), wrap(async (req, res) => {
+  res.json(await store.deleteComment(ownerRef(req), req.params.version, req.params.id));
 }));
 
-app.get('/api/modules/:slug/docs/:version/checklist', wrap(async (req, res) => {
-  const r = await store.getChecklist(req.params.slug, req.params.version);
+app.get(docPaths('/checklist'), wrap(async (req, res) => {
+  const r = await store.getChecklist(ownerRef(req), req.params.version);
   if (!r) return res.status(404).json({ error: 'Doc not found' });
   const opts = await fatRenderOpts();
   res.json({
@@ -347,14 +357,14 @@ app.get('/api/modules/:slug/docs/:version/checklist', wrap(async (req, res) => {
   });
 }));
 
-app.put('/api/modules/:slug/docs/:version/checklist', wrap(async (req, res) => {
+app.put(docPaths('/checklist'), wrap(async (req, res) => {
   const { checklist, summary } = req.body;
   if (checklist !== null && typeof checklist !== 'object') throw new Error('checklist must be an object or null');
-  res.json(await store.saveChecklist(req.params.slug, req.params.version, checklist, { summary }));
+  res.json(await store.saveChecklist(ownerRef(req), req.params.version, checklist, { summary }));
 }));
 
-app.get('/api/modules/:slug/docs/:version/checklist.html', wrap(async (req, res) => {
-  const r = await store.getChecklist(req.params.slug, req.params.version);
+app.get(docPaths('/checklist.html'), wrap(async (req, res) => {
+  const r = await store.getChecklist(ownerRef(req), req.params.version);
   if (!r) return res.status(404).json({ error: 'Doc not found' });
   if (!r.checklist) return res.status(404).json({ error: 'This doc version has no FAT checklist' });
   const html = await inlineLogo(
@@ -367,20 +377,20 @@ app.get('/api/modules/:slug/docs/:version/checklist.html', wrap(async (req, res)
   res.send(html);
 }));
 
-app.post('/api/modules/:slug/docs/:version/submit-review', wrap(async (req, res) => {
-  res.json(await store.setDocStatus(req.params.slug, req.params.version, 'in-review'));
+app.post(docPaths('/submit-review'), wrap(async (req, res) => {
+  res.json(await store.setDocStatus(ownerRef(req), req.params.version, 'in-review'));
 }));
 
-app.post('/api/modules/:slug/docs/:version/back-to-draft', wrap(async (req, res) => {
-  res.json(await store.setDocStatus(req.params.slug, req.params.version, 'draft'));
+app.post(docPaths('/back-to-draft'), wrap(async (req, res) => {
+  res.json(await store.setDocStatus(ownerRef(req), req.params.version, 'draft'));
 }));
 
-app.post('/api/modules/:slug/docs/:version/release', wrap(async (req, res) => {
-  res.json(await store.releaseDoc(req.params.slug, req.params.version));
+app.post(docPaths('/release'), wrap(async (req, res) => {
+  res.json(await store.releaseDoc(ownerRef(req), req.params.version));
 }));
 
-app.post('/api/modules/:slug/docs/:version/discard', wrap(async (req, res) => {
-  await store.discardDraft(req.params.slug, req.params.version);
+app.post(docPaths('/discard'), wrap(async (req, res) => {
+  await store.discardDraft(ownerRef(req), req.params.version);
   res.json({ ok: true });
 }));
 
@@ -402,14 +412,15 @@ app.post('/api/software', wrap(async (req, res) => {
 
 /** The own manual of an existing software: an own-software module named after it, linked to it,
  *  with blank software customer + technician drafts. {fromVersion?} */
+/** The software’s own manuals: software customer + technician A1.0 drafts owned by the software. */
 app.post('/api/software/:name/own-manual', wrap(async (req, res) => {
   const { fromVersion } = req.body || {};
-  res.json(await store.createOwnSoftwareModule(req.params.name, { fromVersion: fromVersion || '' }));
+  res.json(await store.createSoftwareManuals(req.params.name, { fromVersion: fromVersion || '' }));
 }));
 
 /** Delete a module: its draft branches, its folder on main and its chapter in every manual. */
 app.delete('/api/modules/:slug', wrap(async (req, res) => {
-  res.json(await store.deleteModule(req.params.slug));
+  res.json(await store.deleteModule(ownerRef(req)));
 }));
 
 /** Repair a software known from module links only: merge it into a registered one — {into}. */
@@ -418,6 +429,11 @@ app.post('/api/software/:name/merge', wrap(async (req, res) => {
 }));
 
 /** Delete a software: unlinked from every module, dropped from the feed with its releases. */
+/** Delete only the software's own manuals; the software and its releases stay. */
+app.delete('/api/software/:name/manual', wrap(async (req, res) => {
+  res.json(await store.deleteSoftwareManuals(req.params.name));
+}));
+
 app.delete('/api/software/:name', wrap(async (req, res) => {
   res.json(await store.deleteSoftware(req.params.name));
 }));
@@ -430,7 +446,7 @@ app.delete('/api/software/:name/releases/:version', wrap(async (req, res) => {
 /** Link / unlink a software on a module: {name, fromVersion?} | {name, unlink: true} */
 app.post('/api/modules/:slug/software', wrap(async (req, res) => {
   const { name, fromVersion, unlink } = req.body || {};
-  res.json(unlink ? await store.unlinkSoftware(req.params.slug, name) : await store.linkSoftware(req.params.slug, name, fromVersion));
+  res.json(unlink ? await store.unlinkSoftware(ownerRef(req), name) : await store.linkSoftware(ownerRef(req), name, fromVersion));
 }));
 
 app.post('/api/softwares', wrap(async (req, res) => {
@@ -438,13 +454,13 @@ app.post('/api/softwares', wrap(async (req, res) => {
 }));
 
 /** Correct a released version in place: reopens its branch at the next revision. */
-app.post('/api/modules/:slug/docs/:version/hotfix', wrap(async (req, res) => {
-  res.json(await store.startHotfix(req.params.slug, req.params.version));
+app.post(docPaths('/hotfix'), wrap(async (req, res) => {
+  res.json(await store.startHotfix(ownerRef(req), req.params.version));
 }));
 
-app.post('/api/modules/:slug/docs/:version/cover', wrap(async (req, res) => {
+app.post(docPaths('/cover'), wrap(async (req, res) => {
   const { name, version: swVersion } = req.body;
-  res.json(await store.linkReleaseToDoc(req.params.slug, req.params.version, name, swVersion));
+  res.json(await store.linkReleaseToDoc(ownerRef(req), req.params.version, name, swVersion));
 }));
 
 /* ---------- assets ---------- */
@@ -472,10 +488,10 @@ const MIME = {
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
-app.get('/api/modules/:slug/assets/:file', async (req, res) => {
+app.get(ownerPaths('/assets/:file'), async (req, res) => {
   let buf;
   try {
-    buf = await store.getAsset(req.params.slug, req.params.file);
+    buf = await store.getAsset(ownerRef(req), req.params.file);
   } catch (e) {
     // A failed read must never look like the image: explicit 503 + JSON.
     console.error('asset read failed:', e.message);
@@ -508,18 +524,18 @@ app.get('/api/modules/:slug/assets/:file', async (req, res) => {
   res.send(buf);
 });
 
-app.get('/api/modules/:slug/assets', wrap(async (req, res) => {
-  res.json(await store.listAssets(req.params.slug));
+app.get(ownerPaths('/assets'), wrap(async (req, res) => {
+  res.json(await store.listAssets(ownerRef(req)));
 }));
 
-app.delete('/api/modules/:slug/docs/:version/assets/:file', wrap(async (req, res) => {
-  res.json(await store.deleteAsset(req.params.slug, req.params.version, req.params.file));
+app.delete(docPaths('/assets/:file'), wrap(async (req, res) => {
+  res.json(await store.deleteAsset(ownerRef(req), req.params.version, req.params.file));
 }));
 
 /** Version stamp of one asset: {appliesTo: [hardware ids]} and/or {verify: true} (re-stamp as current). */
-app.put('/api/modules/:slug/docs/:version/assets/:file/meta', wrap(async (req, res) => {
+app.put(docPaths('/assets/:file/meta'), wrap(async (req, res) => {
   const { appliesTo, verify } = req.body || {};
-  res.json(await store.setAssetMeta(req.params.slug, req.params.version, req.params.file, { appliesTo, verify: !!verify }));
+  res.json(await store.setAssetMeta(ownerRef(req), req.params.version, req.params.file, { appliesTo, verify: !!verify }));
 }));
 
 /* ---------- inbox: drop folder on the console machine, imported into drafts by name ---------- */
@@ -548,25 +564,25 @@ app.delete('/api/inbox/:file', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.post('/api/modules/:slug/docs/:version/assets/import', wrap(async (req, res) => {
+app.post(docPaths('/assets/import'), wrap(async (req, res) => {
   const names = req.body.names || [];
   if (!names.length) throw new Error('names is required');
-  res.json(await store.importFromInbox(req.params.slug, req.params.version, names, { keep: !!req.body.keep }));
+  res.json(await store.importFromInbox(ownerRef(req), req.params.version, names, { keep: !!req.body.keep }));
 }));
 
-app.post('/api/modules/:slug/docs/:version/assets', wrap(async (req, res) => {
+app.post(docPaths('/assets'), wrap(async (req, res) => {
   const files = (req.body.files || [])
     .map((f) => ({ name: f.name, buffer: Buffer.from(f.dataBase64 || '', 'base64') }))
     .filter((f) => f.buffer.length > 0);
   if (!files.length) throw new Error('No files provided');
   // attachments: true — keep every file as it is (the editor's paste / drop of non-image files)
-  res.json(await store.saveAssets(req.params.slug, req.params.version, files, { attachments: !!req.body.attachments }));
+  res.json(await store.saveAssets(ownerRef(req), req.params.version, files, { attachments: !!req.body.attachments }));
 }));
 
 /* ---------- photo → house-style line-art (same engine as the AI chat and MCP) ---------- */
-app.post('/api/modules/:slug/docs/:version/illustrate', wrap(async (req, res) => {
+app.post(docPaths('/illustrate'), wrap(async (req, res) => {
   const { name, dataBase64, assetName, instructions, outputName, keepSource, editOf } = req.body || {};
-  const d = await store.getDoc(req.params.slug, req.params.version);
+  const d = await store.getDoc(ownerRef(req), req.params.version);
   if (!d) throw new Error('Doc not found');
   if (!(d.doc.status === 'draft' || d.doc.status === 'in-review')) throw new Error('Illustrations are added to a Draft or In-review doc version');
   const reference = assetName
@@ -579,7 +595,7 @@ app.post('/api/modules/:slug/docs/:version/illustrate', wrap(async (req, res) =>
   if (reference?.buffer && reference.buffer.length > 20 * 1024 * 1024) throw new Error('Image is larger than 20 MB');
   res.json(
     await illustrate.convertToLineArt({
-      slug: req.params.slug,
+      slug: ownerRef(req),
       version: req.params.version,
       reference,
       instructions: instructions || '',
@@ -757,9 +773,9 @@ async function manualRenderOpts(slug, manual) {
 }
 
 app.get('/api/manuals/:slug', wrap(async (req, res) => {
-  const compiled = await store.compileManual(req.params.slug, { lang: req.query.lang || DEFAULT_LANG });
+  const compiled = await store.compileManual(ownerRef(req), { lang: req.query.lang || DEFAULT_LANG });
   if (!compiled) return res.status(404).json({ error: 'Manual not found' });
-  const opts = await manualRenderOpts(req.params.slug, compiled.manual);
+  const opts = await manualRenderOpts(ownerRef(req), compiled.manual);
   res.json({ ...compiled, hasCover: !!opts.coverUrl, hasLogo: !!opts.logoUrl, css: MANUAL_CSS, html: manualBodyHtml(compiled, opts) });
 }));
 
@@ -770,13 +786,13 @@ function sendImage(res, file) {
   res.send(file.buffer);
 }
 
-app.get('/api/manuals/:slug/cover', wrap(async (req, res) => sendImage(res, await store.getManualCover(req.params.slug))));
+app.get('/api/manuals/:slug/cover', wrap(async (req, res) => sendImage(res, await store.getManualCover(ownerRef(req)))));
 
 app.post('/api/manuals/:slug/cover', wrap(async (req, res) => {
   const buffer = Buffer.from(req.body.dataBase64 || '', 'base64');
   if (!buffer.length) throw new Error('No image data');
-  if (!(await store.getManual(req.params.slug))) throw new Error('Manual not found');
-  res.json(await store.saveManualCover(req.params.slug, req.body.name || 'cover.png', buffer));
+  if (!(await store.getManual(ownerRef(req)))) throw new Error('Manual not found');
+  res.json(await store.saveManualCover(ownerRef(req), req.body.name || 'cover.png', buffer));
 }));
 
 app.get('/api/settings/logo', wrap(async (req, res) => sendImage(res, await store.getBrandLogo())));
@@ -795,19 +811,19 @@ app.post('/api/settings/logo', wrap(async (req, res) => {
 }));
 
 app.put('/api/manuals/:slug', wrap(async (req, res) => {
-  res.json(await store.updateManual(req.params.slug, req.body));
+  res.json(await store.updateManual(ownerRef(req), req.body));
 }));
 
 app.delete('/api/manuals/:slug', wrap(async (req, res) => {
-  await store.deleteManual(req.params.slug);
+  await store.deleteManual(ownerRef(req));
   res.json({ ok: true });
 }));
 
 // Standalone HTML export with images inlined as data URIs.
 app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
-  const compiled = await store.compileManual(req.params.slug, { lang: req.query.lang || DEFAULT_LANG });
+  const compiled = await store.compileManual(ownerRef(req), { lang: req.query.lang || DEFAULT_LANG });
   if (!compiled) return res.status(404).json({ error: 'Manual not found' });
-  const opts = await manualRenderOpts(req.params.slug, compiled.manual);
+  const opts = await manualRenderOpts(ownerRef(req), compiled.manual);
   let html = manualExportHtml(compiled, opts);
   // Inline every console-served image (module assets, logo, cover) as a data URI.
   const refs = [...new Set([...html.matchAll(/\/api\/(?:modules\/[^/"']+\/assets\/[^"' >)?]+|settings\/logo|manuals\/[^/"']+\/cover)(?:\?[^"' >)]*)?/g)].map((m) => m[0]))];
@@ -837,7 +853,7 @@ app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
 
 // FAT protocol: the checklists of every module in the manual as one standalone document.
 app.get('/api/manuals/:slug/fat.html', wrap(async (req, res) => {
-  const compiled = await store.compileManual(req.params.slug);
+  const compiled = await store.compileManual(ownerRef(req));
   if (!compiled) return res.status(404).json({ error: 'Manual not found' });
   const html = await inlineLogo(
     checklistExportHtml(`FAT protocol — ${compiled.manual.name}`, fatProtocolBodyHtml(compiled, await fatRenderOpts()))

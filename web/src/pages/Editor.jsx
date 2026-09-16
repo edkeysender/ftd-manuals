@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, readFileAsBase64, timeAgo, manualType, LANGUAGES, language } from '../api.js';
+import { api, readFileAsBase64, timeAgo, manualType, LANGUAGES, language, ownerHref } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { useToast, useAuth } from '../App.jsx';
@@ -226,7 +226,11 @@ const clearSnapshot = (slug, version) => {
  * editor's Comments tab, resolves them, or asks the AI to propose the change.
  */
 export default function Editor({ review: reviewProp = false }) {
-  const { slug, version } = useParams();
+  const { slug: moduleSlug, name: softwareName, version } = useParams();
+  // A software that owns its manuals is addressed by name; a module by slug. Everything else
+  // in this page works on `slug`, which is that owner.
+  const slug = softwareName ? { software: softwareName } : moduleSlug;
+  const backHref = ownerHref(slug);
   const toast = useToast();
   const { isAdmin, canEdit } = useAuth();
   const review = reviewProp || !canEdit; // viewers always get the read-only review view
@@ -735,7 +739,7 @@ export default function Editor({ review: reviewProp = false }) {
       const meta = await api.release(slug, version);
       setDocMeta(meta);
       toast(t('{version} released — merged to main', { version }));
-      navigate(`/modules/${slug}`);
+      navigate(backHref);
     } catch (e) {
       toast(e.message, 'err');
     }
@@ -1113,7 +1117,7 @@ export default function Editor({ review: reviewProp = false }) {
     <div className="editor-layout">
       <header className="editor-head">
         <div className="editor-title">
-          <Link to={`/modules/${slug}`} className="back">←</Link>
+          <Link to={backHref} className="back">←</Link>
           <strong>{data.module.name}</strong>
           <span className={`manual-tag ${docMeta.manual || 'customer'}`} title={t(manualType(docMeta.manual).desc)}>
             {t(manualType(docMeta.manual).label)}
@@ -1130,7 +1134,7 @@ export default function Editor({ review: reviewProp = false }) {
               className="btn btn-sm"
               title={t('Copy a link reviewers use to read this draft and comment on it')}
               onClick={() => {
-                const url = `${window.location.origin}${window.location.pathname}#/modules/${slug}/docs/${version}/review`;
+                const url = `${window.location.origin}${window.location.pathname}#${backHref}/docs/${version}/review`;
                 navigator.clipboard?.writeText(url);
                 toast(t('Review link copied'));
               }}
