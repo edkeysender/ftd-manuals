@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, CATEGORIES, MANUAL_TYPES, moduleType, timeAgo } from '../api.js';
+import { api, CATEGORIES, MANUAL_TYPES, moduleType, timeAgo, hardwareModules } from '../api.js';
 import Wizard from '../components/Wizard.jsx';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
@@ -41,7 +41,7 @@ export default function ModulesList() {
   const q = query.trim().toLowerCase();
   // An own-software module is a software documented on its own, not a part of the simulator:
   // it belongs to the Software page, and listing it here would offer hardware it does not have.
-  const listed = rows === null ? null : rows.filter((m) => m.type !== 'own-software');
+  const listed = rows === null ? null : hardwareModules(rows);
   const visible =
     listed === null ? null : q ? listed.filter((m) => `${m.name} ${m.code || ''}`.toLowerCase().includes(q)) : listed;
 

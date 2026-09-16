@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, MANUAL_TYPES, manualType, timeAgo } from '../api.js';
+import { api, MANUAL_TYPES, manualType, timeAgo, hardwareModules } from '../api.js';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 import SoftwareTimeline from '../components/SoftwareTimeline.jsx';
@@ -410,7 +410,7 @@ function LinkModuleRow({ sw, reload }) {
   const [fromVersion, setFromVersion] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    api.modules().then(setModules).catch(() => setModules([]));
+    api.modules().then((all) => setModules(hardwareModules(all))).catch(() => setModules([]));
   }, [sw.modules.length]);
   const linked = new Set(sw.modules.map((m) => m.slug));
   const candidates = (modules || []).filter((m) => !linked.has(m.slug));

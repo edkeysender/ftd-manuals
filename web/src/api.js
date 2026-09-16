@@ -151,6 +151,11 @@ export const MODULE_TYPES = [
 ];
 export const moduleType = (id) => MODULE_TYPES.find((t) => t.id === id) || null;
 
+/** An own-software module is a software documented on its own — it carries that software’s manual and
+ *  is not a part of the simulator, so the lists and pickers that mean "module" leave it out. */
+export const isOwnSoftware = (m) => m?.type === 'own-software';
+export const hardwareModules = (modules) => (modules || []).filter((m) => !isOwnSoftware(m));
+
 /** Manual types — one doc stream per audience (mirrors server/docgen.js MANUAL_TYPES). */
 export const MANUAL_TYPES = [
   { id: 'customer', label: 'Customer manual', short: 'Customer', kind: 'hardware', audience: 'customer', sections: ['Description', 'Operation', 'Maintenance', 'Appendixes'], desc: 'For the operator of the simulator: what the module is, how it is used day to day, what to check and when to call service.' },

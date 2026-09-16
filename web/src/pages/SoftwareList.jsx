@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api.js';
+import { api, hardwareModules } from '../api.js';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 
@@ -136,7 +136,7 @@ function NewSoftwareModal({ onClose, onCreated }) {
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    api.modules().then(setModules).catch(() => setModules([]));
+    api.modules().then((all) => setModules(hardwareModules(all))).catch(() => setModules([]));
   }, []);
   async function create() {
     setBusy(true);
