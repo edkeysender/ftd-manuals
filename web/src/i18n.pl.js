@@ -589,6 +589,10 @@ export const PL = {
   'Its own manual': 'Własna instrukcja',
   Open: 'Otwórz',
   'From its software': 'Z oprogramowania',
+  'Stop relating this module to {software} — manuals already written keep their content':
+    'Zakończ powiązanie tego modułu z {software} — napisane instrukcje zachowują treść',
+  'Detach {software} from {module}? Manuals already written keep their content and their covered releases.':
+    'Odłączyć {software} od {module}? Napisane instrukcje zachowują treść i objęte wydania.',
   'written once by the software, compiled into this module’s manual':
     'napisane raz przez oprogramowanie, kompilowane do instrukcji tego modułu',
   'Open the manual on {software}, where it is written': 'Otwórz instrukcję w {software}, tam jest pisana',

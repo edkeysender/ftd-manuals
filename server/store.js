@@ -899,14 +899,16 @@ export async function getModule(ref) {
   };
 }
 
-/** The released manual of that audience owned by a software the module runs, with its owner. */
-function inheritedChapter(module, swType, softwareOwners) {
+/** Released manuals of that audience owned by the softwares a module runs, in link order. */
+function inheritedChapters(module, swType, softwareOwners) {
+  if (!swType) return [];
+  const out = [];
   for (const sw of module.softwares || []) {
     const entry = softwareOwners.find((o) => o.module.name === sw.name);
     const doc = entry?.docs.find((d) => d.manual === swType && d.status === 'released');
-    if (doc) return { entry, doc };
+    if (doc) out.push({ entry, doc });
   }
-  return null;
+  return out;
 }
 
 /**
@@ -2520,17 +2522,25 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
     // Released software manual of the same audience → additional chapter. The module may write it
     // itself, or inherit it from a software it runs that documents itself.
     const ownSw = swType ? docsOfType(entry.docs, swType).find((d) => d.status === 'released') : null;
-    const inherited = swType && !ownSw ? inheritedChapter(entry.module, swType, softwareOwners) : null;
-    const swDoc = ownSw || inherited?.doc || null;
-    if (swDoc) {
-      const swEntry = inherited ? inherited.entry : entry;
-      const swNames = inherited ? inherited.entry.module.name : (entry.module.softwares || []).map((s) => s.name).join(' · ');
+    if (ownSw) {
+      const swNames = (entry.module.softwares || []).map((sw) => sw.name).join(' · ');
       chapters.push(
-        await chapterOf(swEntry, swDoc, {
+        await chapterOf(entry, ownSw, {
           slug: `${mslug}--software`,
           title: swNames || `${entry.module.name} — software`,
           software: true,
-          inheritedFrom: inherited ? inherited.entry.module.name : null,
+        })
+      );
+    }
+    // Every software the module runs that documents itself adds its own chapter, in the order the
+    // module links them. A manual the module wrote itself already covers its softwares, above.
+    for (const inh of ownSw ? [] : inheritedChapters(entry.module, swType, softwareOwners)) {
+      chapters.push(
+        await chapterOf(inh.entry, inh.doc, {
+          slug: `${mslug}--sw-${inh.entry.module.slug}`,
+          title: inh.entry.module.name,
+          software: true,
+          inheritedFrom: inh.entry.module.name,
         })
       );
     }
