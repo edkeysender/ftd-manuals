@@ -318,7 +318,7 @@ function CreateManualMenu({ docs, onPick }) {
               : mt.sections.map((s) => t(s)).join(' · ');
             return (
               <button key={mt.id} className="cm-item" role="menuitem" disabled={disabled} onClick={() => { setOpen(false); onPick(mt.id); }}>
-                <span className={`manual-kind ${mt.kind}`}>{mt.kind === 'software' ? 'SW' : 'HW'}</span>
+                <span className={`manual-audience ${mt.audience}`} title={t(mt.label)}>{mt.audience === 'technician' ? t('TECH') : t('USER')}</span>
                 <span className="cm-text">
                   <strong>{t(mt.label)}</strong>
                   <span className="muted small">{why}</span>
@@ -541,7 +541,7 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
                   <td colSpan={5}>
                     <div className="group-cell">
                       <button className={`chev ${folded ? '' : 'open'}`} onClick={() => toggle(setCollapsed, mt.id)} title={folded ? t('Expand') : t('Collapse')} aria-expanded={!folded}>▸</button>
-                      <span className={`manual-kind ${mt.kind}`}>{mt.kind === 'software' ? 'SW' : 'HW'}</span>
+                      <span className={`manual-audience ${mt.audience}`} title={t(mt.label)}>{mt.audience === 'technician' ? t('TECH') : t('USER')}</span>
                       <strong>{t(mt.label)}</strong>
                       <span className="muted small">{typed.length === 1 ? t('1 version') : t('{n} versions', { n: typed.length })}</span>
                       {!open && unc.length > 0 && (

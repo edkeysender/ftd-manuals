@@ -37,10 +37,11 @@ const LANG_PROP = {
 
 /** Every doc-scoped tool addresses one manual of a module: `manual` + `version`, or a full key in `version`. */
 const SLUG_VER = {
-  slug: { type: 'string', description: 'Module slug, e.g. starting-panel' },
+  slug: { type: 'string', description:
+      'Module slug (starting-panel), or the name of a software that owns its manuals ("UI Kiosk") — both own docs. list_modules and list_software name them.' },
   manual: {
     ...MANUAL_PROP,
-    description: `Which manual of the module the call targets (default customer). ${MANUAL_PROP.description}`,
+    description: `Which manual of the module or software the call targets (default customer). ${MANUAL_PROP.description}`,
   },
   version: {
     type: 'string',
@@ -74,7 +75,7 @@ export const TOOLS = [
   {
     name: 'list_software',
     description:
-      'Software-centric view: every software linked to a module, with the modules linked to it, their software manuals (software-customer / software-technician: key, version, status), and the registered releases with which docs cover each. Use it to manage software manuals across modules and to find releases nobody documents yet. `registered: false` marks a name modules link that was never created as a software — repair it with merge_software (into a registered one) or create_software (with the version the links use).',
+      'Software-centric view: every software, the manuals it owns itself (`own: true` on its row — pass the software name as `slug` to read or edit them), the modules linked to it with their software manuals, and the registered releases with which docs cover each. Use it to manage software manuals across modules and to find releases nobody documents yet. `registered: false` marks a name modules link that was never created as a software — repair it with merge_software (into a registered one) or create_software (with the version the links use).',
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Optional software name filter' } } },
     annotations: { title: 'List software', ...RO },
   },

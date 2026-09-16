@@ -1282,6 +1282,35 @@ try {
   ok(!(ownEdit instanceof Error), 'MCP edits a software-owned manual by slug');
   ok((await call(144, 'get_doc', { slug: 'route-editor', manual: 'software-customer' })).content.includes('Written over MCP.'),
     'the edit landed on the software’s own manual');
+
+  // every manual an owner has is readable and editable over MCP — module and software alike
+  const mcpOwners = [
+    { what: 'module', slug: 'starting-panel' },
+    { what: 'software', slug: 'Route Editor' },
+  ];
+  for (const o of mcpOwners) {
+    const m = await call(145, 'get_module', { slug: o.slug });
+    ok(!(m instanceof Error) && m.docs.length > 0, `MCP get_module lists the ${o.what}’s manuals`);
+    for (const d of m.docs) {
+      const got = await call(146, 'get_doc', { slug: o.slug, version: d.key });
+      ok(!(got instanceof Error) && got.doc.key === d.key, `MCP reads ${o.what} ${d.key}`);
+    }
+    const open = m.docs.find((d) => d.status === 'draft' || d.status === 'in-review');
+    if (open) {
+      const body = await call(147, 'get_doc', { slug: o.slug, version: open.key });
+      const section = body.content.split('<h2>')[1]?.split('</h2>')[0];
+      const edit = await call(148, 'insert_into_section', {
+        slug: o.slug,
+        version: open.key,
+        section,
+        html: '<p>MCP write check.</p>',
+        summary: 'MCP write check',
+      });
+      ok(!(edit instanceof Error), `MCP edits the open ${o.what} manual ${open.key}${edit instanceof Error ? `: ${edit.message}` : ''}`);
+      ok((await call(149, 'get_doc', { slug: o.slug, version: open.key })).content.includes('MCP write check.'),
+        `the ${o.what} manual kept the MCP edit`);
+    }
+  }
   const delDocumented = await req('DELETE', '/api/software/' + encodeURIComponent('Deck Planner')).catch((e) => e);
   ok(delDocumented instanceof Error && /delete the manual first/.test(delDocumented.message),
     'a software that documents itself is not deleted out from under its manual');

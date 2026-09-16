@@ -590,6 +590,8 @@ export const PL = {
   Open: 'Otwórz',
   'From its software': 'Z oprogramowania',
   'Linked modules': 'Powiązane moduły',
+  TECH: 'TECHNIK',
+  USER: 'UŻYTK.',
   'since {version}': 'od wersji {version}',
   'since its first release': 'od pierwszego wydania',
   'No manual yet — Create manual above writes this software its own, or link a module whose manual covers it.':
