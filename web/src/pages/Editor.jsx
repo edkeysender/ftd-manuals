@@ -179,7 +179,7 @@ const reviewerName = () => {
 /* The pre-edit snapshot survives refreshes in localStorage so Accept/Discard
    still work after a reload. */
 /* AI chat history survives reloads and navigation — one conversation per doc. */
-const chatKey = (slug, version) => `ftd-chat:${slug}:${version}`;
+const chatKey = (ownerId, version) => `ftd-chat:${ownerId}:${version}`;
 const loadChat = (slug, version) => {
   try {
     const m = JSON.parse(localStorage.getItem(chatKey(slug, version)) || 'null');
@@ -201,7 +201,7 @@ const clearChat = (slug, version) => {
   } catch {}
 };
 
-const snapshotKey = (slug, version) => `ftd-pending-ai:${slug}:${version}`;
+const snapshotKey = (ownerId, version) => `ftd-pending-ai:${ownerId}:${version}`;
 const loadSnapshot = (slug, version) => {
   try {
     return JSON.parse(localStorage.getItem(snapshotKey(slug, version)) || 'null');
@@ -227,9 +227,12 @@ const clearSnapshot = (slug, version) => {
  */
 export default function Editor({ review: reviewProp = false }) {
   const { slug: moduleSlug, name: softwareName, version } = useParams();
-  // A software that owns its manuals is addressed by name; a module by slug. Everything else
-  // in this page works on `slug`, which is that owner.
-  const slug = softwareName ? { software: softwareName } : moduleSlug;
+  // A software that owns its manuals is addressed by name; a module by slug. Everything else in
+  // this page works on `slug`, which is that owner — memoised, because the effects below key on it
+  // and a fresh object every render would reload the doc forever.
+  const slug = useMemo(() => (softwareName ? { software: softwareName } : moduleSlug), [softwareName, moduleSlug]);
+  /** Stable string for per-doc browser storage (chat, pending edits). */
+  const ownerId = softwareName ? `sw:${softwareName}` : moduleSlug;
   const backHref = ownerHref(slug);
   const toast = useToast();
   const { isAdmin, canEdit } = useAuth();
@@ -423,8 +426,8 @@ export default function Editor({ review: reviewProp = false }) {
           }`,
         };
         greetingRef.current = greeting;
-        chatDocRef.current = `${slug}:${version}`;
-        const savedChat = loadChat(slug, version);
+        chatDocRef.current = `${ownerId}:${version}`;
+        const savedChat = loadChat(ownerId, version);
         // Recover a pending AI edit that was interrupted (e.g. page refresh).
         if (hasPendingMarkers(d.content)) {
           const snap = loadSnapshot(slug, lang === 'en' ? version : `${version}@${lang}`);
@@ -451,7 +454,7 @@ export default function Editor({ review: reviewProp = false }) {
 
   /* Keep the conversation across reloads and navigation — one history per doc. */
   useEffect(() => {
-    if (messages.length && chatDocRef.current === `${slug}:${version}`) saveChat(slug, version, messages);
+    if (messages.length && chatDocRef.current === `${ownerId}:${version}`) saveChat(ownerId, version, messages);
   }, [messages, slug, version]);
 
   /* ---------- language switch / translation ---------- */
@@ -1044,7 +1047,7 @@ export default function Editor({ review: reviewProp = false }) {
     setEditorHtml(clean);
     const { instruction, commentId } = pending;
     setPending(null);
-    clearSnapshot(slug, snapId);
+    clearSnapshot(ownerId, snapId);
     const meta = await commitRevision(`AI edit: ${instruction}`);
     // An accepted proposal for a reviewer comment closes the thread with a note.
     if (commentId && meta) {
@@ -1077,7 +1080,7 @@ export default function Editor({ review: reviewProp = false }) {
       setEditorHtml(removePendingBlocks(htmlRef.current));
     }
     setPending(null);
-    clearSnapshot(slug, snapId);
+    clearSnapshot(ownerId, snapId);
     setDirty(true);
     setMessages((m) => [...m, { role: 'assistant', content: t('Edit discarded.') }]);
   }
@@ -1404,7 +1407,7 @@ export default function Editor({ review: reviewProp = false }) {
                 style={{ marginLeft: 'auto' }}
                 title={t('New chat — clears this conversation (it is kept per doc across reloads)')}
                 onClick={() => {
-                  clearChat(slug, version);
+                  clearChat(ownerId, version);
                   setMessages(greetingRef.current ? [greetingRef.current] : []);
                 }}
               >

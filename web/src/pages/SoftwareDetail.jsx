@@ -412,8 +412,9 @@ function OwnManualRow({ sw }) {
           ? t('{name} linked to its existing manual', { name: sw.name })
           : t('Own manual of {name} created — opening the editor', { name: sw.name })
       );
+      // An adopted legacy module keeps its module page; manuals the software owns open on the software.
       if (r.adopted) navigate(`/modules/${r.slug}`);
-      else navigate(`/modules/${r.slug}/docs/${r.key}/edit`);
+      else navigate(`/software/${encodeURIComponent(sw.name)}/docs/${r.key}/edit`);
     } catch (e) {
       toast(e.message, 'err');
       setBusy(false);
