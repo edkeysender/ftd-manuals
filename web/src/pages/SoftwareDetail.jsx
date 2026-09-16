@@ -327,8 +327,6 @@ function SoftwareBlock({ sw, all = [], reload }) {
   );
 }
 
-/** "Write its own manual" — the software documented on its own: an own-software module named
- *  after it with blank software customer + technician drafts, opened straight in the editor. */
 /**
  * A name modules link that was never created as a software (data from before a manual had to relate
  * to a software version): create it with the version the links use, or merge it into a registered one.
@@ -422,14 +420,13 @@ function OwnManualRow({ sw }) {
   }
   return (
     <div className="pair wrap" style={{ marginBottom: 6 }}>
-      <span className="hint">{t('Own manual')}</span>
       <button
         className="btn btn-primary btn-sm"
         disabled={busy}
-        title={t('Document {name} on its own, without a hardware module: software customer + technician manuals A1.0 in the same editor. A module already written as its own manual is linked back instead.', { name: sw.name })}
+        title={t('Document {name} itself: software customer + technician manuals A1.0, owned by the software — no module', { name: sw.name })}
         onClick={create}
       >
-        {busy ? t('Creating…') : t('Write its own manual')}
+        {busy ? t('Creating…') : t('Create manual')}
       </button>
     </div>
   );
