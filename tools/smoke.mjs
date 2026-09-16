@@ -1245,6 +1245,21 @@ try {
   ok(!(ownMcp instanceof Error) && ownMcp.ownModule?.ref === 'sw:route-editor' && ownMcp.ownModule.docs.length === 2,
     'MCP create_software own_manual writes the software its manuals');
   ok(!(await req('GET', '/api/modules')).some((m) => m.slug === 'route-editor'), 'and still no module');
+  // a module that runs a documented software inherits its manuals
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Route Editor', fromVersion: 'v1.0' });
+  const inh = (await req('GET', '/api/modules/starting-panel')).inherited;
+  ok(inh.length === 2 && inh.every((d) => d.software === 'Route Editor') && inh.some((d) => d.manual === 'software-technician'),
+    'the module lists the manuals of the software it runs');
+  // released, it becomes that module’s software chapter in an assembled manual
+  await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/submit-review');
+  await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/release');
+  await req('POST', '/api/manuals', { name: 'Inherit Check', manual: 'technician', modules: ['starting-panel'] });
+  const inhManual = await req('GET', '/api/manuals/inherit-check');
+  const swChapter = inhManual.chapters.find((c) => c.software);
+  ok(swChapter && swChapter.inheritedFrom === 'Route Editor' && swChapter.doc.key === 'software-technician:A1.0',
+    'the software’s own manual compiles as the module’s software chapter');
+  await req('DELETE', '/api/manuals/inherit-check');
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Route Editor', unlink: true });
   // agents address a software the same way they address a module
   const swDoc = await call(142, 'get_doc', { slug: 'Route Editor', manual: 'software-customer' });
   ok(!(swDoc instanceof Error) && swDoc.doc.key === 'software-customer:A1.0' && swDoc.module.name === 'Route Editor',

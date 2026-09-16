@@ -895,7 +895,46 @@ export async function getModule(ref) {
       (entry.module.softwares || []).map((s) => [s.name, feed[s.name] || []])
     ),
     coverage: softwareCoverage(entry.module, entry.docs, feed),
+    inherited: await inheritedSoftwareManuals(entry.module),
   };
+}
+
+/** The released manual of that audience owned by a software the module runs, with its owner. */
+function inheritedChapter(module, swType, softwareOwners) {
+  for (const sw of module.softwares || []) {
+    const entry = softwareOwners.find((o) => o.module.name === sw.name);
+    const doc = entry?.docs.find((d) => d.manual === swType && d.status === 'released');
+    if (doc) return { entry, doc };
+  }
+  return null;
+}
+
+/**
+ * The manuals a module gets from the softwares it runs: a software that owns its manuals brings
+ * them along, so the module does not write the same thing twice. A released one of the matching
+ * audience compiles as that module’s software chapter (see compileManual).
+ * Entries: { software, manual, key, version, status, revision, updatedAt }.
+ */
+async function inheritedSoftwareManuals(module) {
+  const { softwareOwners } = await collectAll();
+  const out = [];
+  for (const sw of module.softwares || []) {
+    const owner = softwareOwners.find((o) => o.module.name === sw.name);
+    if (!owner) continue;
+    for (const d of owner.docs) {
+      out.push({
+        software: sw.name,
+        manual: d.manual,
+        key: d.key,
+        version: d.version,
+        status: d.status,
+        revision: d.revision,
+        hotfix: !!d.hotfix,
+        updatedAt: d.updatedAt,
+      });
+    }
+  }
+  return out;
 }
 
 /** Find one doc record by key ("technician:A1.0", or bare "A1.0" = customer manual).
@@ -2441,7 +2480,7 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   const type = manualTypeOf(manual.manual).id;
   manual.manual = type;
   const swType = { customer: 'software-customer', technician: 'software-technician' }[type] || null;
-  const { modules } = await collectAll();
+  const { modules, softwareOwners } = await collectAll();
   const chapters = [];
   const chapterOf = async (entry, doc, extra = {}) => {
     // An unpublished hotfix lives on a branch; the manual keeps compiling the released copy on main.
@@ -2478,11 +2517,22 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       continue;
     }
     chapters.push(await chapterOf(entry, doc));
-    // released software manual of the same audience → additional chapter
-    const swDoc = swType ? docsOfType(entry.docs, swType).find((d) => d.status === 'released') : null;
+    // Released software manual of the same audience → additional chapter. The module may write it
+    // itself, or inherit it from a software it runs that documents itself.
+    const ownSw = swType ? docsOfType(entry.docs, swType).find((d) => d.status === 'released') : null;
+    const inherited = swType && !ownSw ? inheritedChapter(entry.module, swType, softwareOwners) : null;
+    const swDoc = ownSw || inherited?.doc || null;
     if (swDoc) {
-      const swNames = (entry.module.softwares || []).map((s) => s.name).join(' · ');
-      chapters.push(await chapterOf(entry, swDoc, { slug: `${mslug}--software`, title: swNames || `${entry.module.name} — software`, software: true }));
+      const swEntry = inherited ? inherited.entry : entry;
+      const swNames = inherited ? inherited.entry.module.name : (entry.module.softwares || []).map((s) => s.name).join(' · ');
+      chapters.push(
+        await chapterOf(swEntry, swDoc, {
+          slug: `${mslug}--software`,
+          title: swNames || `${entry.module.name} — software`,
+          software: true,
+          inheritedFrom: inherited ? inherited.entry.module.name : null,
+        })
+      );
     }
   }
   return { manual, chapters, lang };
