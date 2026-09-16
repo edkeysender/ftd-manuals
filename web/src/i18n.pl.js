@@ -588,6 +588,12 @@ export const PL = {
     'Odłączyć {module} od {software}? Napisane instrukcje zachowują treść i objęte wydania.',
   '{module} detached from {software}': 'Odłączono {module} od {software}',
   '{name} linked to its existing manual': 'Powiązano {name} z istniejącą instrukcją',
+  '{n} software — open one for its modules, manuals and releases.':
+    'Oprogramowanie: {n} — otwórz, aby zobaczyć moduły, instrukcje i wydania.',
+  'Latest version': 'Najnowsza wersja',
+  'Known only from module links — open it to register or merge it':
+    'Znane tylko z powiązań modułów — otwórz, aby je zarejestrować lub scalić',
+  'no releases': 'brak wydań',
   'Document {name} on its own, without a hardware module: software customer + technician manuals A1.0 in the same editor. A module already written as its own manual is linked back instead.':
     'Opisz {name} samodzielnie, bez modułu sprzętowego: instrukcje SW użytkownika i technika A1.0 w tym samym edytorze. Moduł napisany już jako własna instrukcja zostanie ponownie powiązany.',
   'not registered': 'niezarejestrowane',
