@@ -1258,8 +1258,22 @@ try {
   const swChapter = inhManual.chapters.find((c) => c.software);
   ok(swChapter && swChapter.inheritedFrom === 'Route Editor' && swChapter.doc.key === 'software-technician:A1.0',
     'the software’s own manual compiles as the module’s software chapter');
+  // a second documented software adds its own chapter — every one the module runs is in the manual
+  await req('POST', '/api/software', { name: 'Panel Watchdog', version: 'v1.0', ownManual: {} });
+  await req('POST', '/api/software/Panel%20Watchdog/docs/software-technician:A1.0/submit-review');
+  await req('POST', '/api/software/Panel%20Watchdog/docs/software-technician:A1.0/release');
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Panel Watchdog', fromVersion: 'v1.0' });
+  const twoSw = await req('GET', '/api/manuals/inherit-check');
+  ok(twoSw.chapters.filter((c) => c.software).map((c) => c.inheritedFrom).join(', ') === 'Route Editor, Panel Watchdog',
+    'every software the module runs adds its own chapter, in link order');
+  const inhTwo = (await req('GET', '/api/modules/starting-panel')).inherited;
+  ok(new Set(inhTwo.map((d) => d.software)).size === 2 && inhTwo.length === 4,
+    'the module lists the manuals of both softwares');
   await req('DELETE', '/api/manuals/inherit-check');
   await req('POST', '/api/modules/starting-panel/software', { name: 'Route Editor', unlink: true });
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Panel Watchdog', unlink: true });
+  await req('DELETE', '/api/software/Panel%20Watchdog/manual');
+  await req('DELETE', '/api/software/Panel%20Watchdog');
   // agents address a software the same way they address a module
   const swDoc = await call(142, 'get_doc', { slug: 'Route Editor', manual: 'software-customer' });
   ok(!(swDoc instanceof Error) && swDoc.doc.key === 'software-customer:A1.0' && swDoc.module.name === 'Route Editor',

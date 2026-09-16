@@ -22,7 +22,7 @@ const rowKey = (row) => `${row.slug || ''}:${row.key}`;
  * software page the same shape arrives with rows from several modules — each carries its own `slug`
  * and `moduleName`, which the row label then names — and `head` is off because the page has its own.
  */
-export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, onDeleteRelease, busy, head = true }) {
+export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, onDeleteRelease, onDetach, busy, head = true }) {
   const releases = sw.releases; // oldest first — the columns of the grid
   const cols = releases.length;
   const colOf = (version) => {
@@ -66,6 +66,16 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, on
           <span><i className="lg lg-released" />{t('released')}</span>
           <span><i className="lg lg-draft" />{t('draft')}</span>
         </div>
+        {onDetach && (
+          <button
+            className="btn btn-sm btn-danger"
+            disabled={busy}
+            title={t('Stop relating this module to {software} — manuals already written keep their content', { software: sw.name })}
+            onClick={onDetach}
+          >
+            {t('Detach')}
+          </button>
+        )}
       </div>
 
       {head && !sw.registered && (

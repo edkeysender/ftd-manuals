@@ -90,8 +90,9 @@ The functional spec lives in this file's history and in the Modules spec provide
   modules and cannot be a chapter (`hardwareModules` in `web/src/api.js`); a software-owned manual is not
   assembled into a simulator manual on its own — it reaches one through the modules that run that software:
   a module **inherits** the manuals of a software it links to (`inheritedSoftwareManuals`, listed under its
-  Manuals tab), and a released one of the matching audience compiles as that module’s software chapter when
-  the module has not written its own (`inheritedChapter` in `compileManual`).
+  Manuals tab, grouped by software), and **every** software it runs that has a released manual of the
+  matching audience adds its own chapter, in link order, when the module has not written one itself
+  (`inheritedChapters` in `compileManual`).
 - Manual groups (`SIM` / `IOS` / `RACK`, RACK legacy) belong to an **assembled manual**, not to a module — a module
   carries none, and which manuals it compiles into follows from the chapters they list. Hardware: a shared catalog (`hardware.json` on `main`, items
   `{id, name, type: ftd|cots, version | manufacturer+model, notes}`); a module links **N** items via

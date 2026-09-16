@@ -591,26 +591,39 @@ function ManualsTab({ data, slug, act, reload }) {
           </div>
           <table className="table">
             <tbody>
-              {inherited.map((d) => (
-                <tr key={`${d.software}:${d.key}`} className="version-row">
-                  <td className="muted row-label">{d.software}</td>
-                  <td>{t(manualType(d.manual).short)}</td>
-                  <td><strong>{d.version}</strong></td>
-                  <td className="muted">r{d.revision}</td>
-                  <td><StatusBadge status={d.status} /></td>
-                  <td className="muted">{timeAgo(d.updatedAt)}</td>
-                  <td className="actions-cell">
-                    <div className="btn-row row-actions">
-                      <Link
-                        className="btn btn-sm"
-                        to={`/software/${encodeURIComponent(d.software)}/docs/${d.key}/edit`}
-                        title={t('Open the manual on {software}, where it is written', { software: d.software })}
-                      >
-                        {t('Open')}
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
+              {[...new Set(inherited.map((d) => d.software))].map((software) => (
+                <React.Fragment key={software}>
+                  <tr className="group-row">
+                    <td colSpan="6">
+                      <div className="group-cell">
+                        <Link to={`/software/${encodeURIComponent(software)}`}>{software}</Link>
+                        <span className="muted small">{plural(inherited.filter((d) => d.software === software).length, 'manual')}</span>
+                      </div>
+                    </td>
+                  </tr>
+                  {inherited
+                    .filter((d) => d.software === software)
+                    .map((d) => (
+                      <tr key={`${software}:${d.key}`} className="version-row">
+                        <td className="muted row-label">{t(manualType(d.manual).short)}</td>
+                        <td><strong>{d.version}</strong></td>
+                        <td className="muted">r{d.revision}</td>
+                        <td><StatusBadge status={d.status} /></td>
+                        <td className="muted">{timeAgo(d.updatedAt)}</td>
+                        <td className="actions-cell">
+                          <div className="btn-row row-actions">
+                            <Link
+                              className="btn btn-sm"
+                              to={`/software/${encodeURIComponent(software)}/docs/${d.key}/edit`}
+                              title={t('Open the manual on {software}, where it is written', { software })}
+                            >
+                              {t('Open')}
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -1276,6 +1289,13 @@ function SoftwareTab({ data, slug, reload }) {
       (r) => t('{doc} started from {software} {version}', { doc: `${t(manualType(row.manual).short)} ${r.version}`, software: swName, version: release })
     ).then((r) => r && navigate(`/modules/${slug}/docs/${r.key}/edit`));
 
+  /** Stop documenting this software here. Manuals already written keep their content. */
+  const detach = (swName) => {
+    if (!confirm(t('Detach {software} from {module}? Manuals already written keep their content and their covered releases.', { software: swName, module: module.name })))
+      return;
+    run(() => api.linkSoftware(slug, { name: swName, unlink: true }), () => t('{module} detached from {software}', { module: module.name, software: swName }));
+  };
+
   /** Registered by mistake, or a build that never shipped. Refused while a manual starts at it. */
   const deleteRelease = (rel, swName) => {
     if (!confirm(t('Delete release {version} of {software}? It disappears from every coverage view.', { version: rel.version, software: swName }))) return;
@@ -1301,6 +1321,7 @@ function SoftwareTab({ data, slug, reload }) {
           onConfirm={(row, release) => confirm(row, release, sw.name)}
           onNewVersion={(row, release) => newVersion(row, release, sw.name)}
           onDeleteRelease={isAdmin ? (rel) => deleteRelease(rel, sw.name) : undefined}
+          onDetach={() => detach(sw.name)}
         />
       ))}
 
