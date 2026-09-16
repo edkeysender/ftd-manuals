@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, MANUAL_TYPES, manualType, timeAgo, hardwareModules, ownerHref } from '../api.js';
+import { api, manualType, hardwareModules, ownerHref } from '../api.js';
+import { ManualsTab } from './ModuleDetail.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 import SoftwareTimeline from '../components/SoftwareTimeline.jsx';
 
-const SW_TYPES = MANUAL_TYPES.filter((mt) => mt.kind === 'software');
 const isOpenDoc = (d) => d.status === 'draft' || d.status === 'in-review';
 
 /**
@@ -51,12 +51,38 @@ export default function SoftwareDetail() {
 }
 
 function SoftwareBlock({ sw, all = [], reload }) {
-  /** Where a row of the table lives: a module of its own, or the software itself. */
-  const ownerOf = (mod) => ownerHref(mod.own ? { software: sw.name } : mod.slug);
   const toast = useToast();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [busy, setBusy] = useState(null); // "<slug>:<manual>"
+  // The manuals this software owns, read the way a module reads its own — same payload, same tab.
+  const [own, setOwn] = useState(null);
+  const documented = sw.modules.some((m) => m.own);
+  const loadOwn = useCallback(
+    () =>
+      documented
+        ? api
+            .module({ software: sw.name })
+            .then(setOwn)
+            .catch(() => setOwn(null))
+        : Promise.resolve(setOwn(null)),
+    [sw.name, documented]
+  );
+  useEffect(() => {
+    loadOwn();
+  }, [loadOwn]);
+  /** What ManualsTab calls after an action: report it, then refresh both the tab and the page. */
+  async function ownAct(fn, okMsg) {
+    try {
+      const r = await fn();
+      if (okMsg) toast(okMsg);
+      await loadOwn();
+      await reload();
+      return r;
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  }
   const [form, setForm] = useState({ version: '', manualAffecting: false, note: '' });
 
   async function act(key, fn, okMsg) {
@@ -103,13 +129,6 @@ function SoftwareBlock({ sw, all = [], reload }) {
     act('own-manual', () => api.deleteSoftwareManual(sw.name), t('{software} manual deleted', { software: sw.name }));
   }
 
-  async function createManual(mod, mt) {
-    const r = await act(`${mod.slug}:${mt.id}`, () => api.nextDocVersion(mod.slug, { manual: mt.id, start: { mode: 'blank' }, checklist: { mode: 'none' } }));
-    if (r) {
-      toast(t('{type} {version} r1 created for {module}', { type: t(mt.label), version: r.version, module: mod.name }));
-      navigate(`${ownerOf(mod)}/docs/${r.key}/edit`);
-    }
-  }
 
   async function register() {
     if (!form.version.trim()) return;
@@ -159,125 +178,46 @@ function SoftwareBlock({ sw, all = [], reload }) {
       </div>
 
       {!sw.registered && <RepairRow sw={sw} all={all} reload={reload} />}
-      {sw.registered && !sw.modules.some((m) => m.type === 'own-software') && <OwnManualRow sw={sw} />}
+      {sw.registered && !sw.modules.some((m) => m.own || m.type === 'own-software') && <OwnManualRow sw={sw} />}
       {sw.registered && <LinkModuleRow sw={sw} reload={reload} />}
 
-      {sw.modules.length === 0 ? (
-        <p className="muted small">{t('No manual yet — write its own manual above (an application without hardware), or link a module whose manual covers it.')}</p>
-      ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>{t('Module')}</th>
-              <th>{t('Linked from')}</th>
-              {SW_TYPES.map((mt) => (
-                <th key={mt.id}>{t(mt.label)}</th>
+      {sw.modules.some((m) => !m.own) && (
+        <div className="sw-modules">
+          <div className="inherited-head">{t('Linked modules')}</div>
+          <ul className="sw-module-list">
+            {sw.modules
+              .filter((m) => !m.own)
+              .map((mod) => (
+                <li key={mod.slug}>
+                  <Link to={`/modules/${mod.slug}`} className="module-name">
+                    {mod.name}
+                  </Link>
+                  <span className="muted">
+                    {mod.fromVersion
+                      ? t('since {version}', { version: mod.fromVersion })
+                      : t('since its first release')}
+                  </span>
+                  <button
+                    className="btn btn-sm btn-danger row-detach"
+                    disabled={busy === `${mod.slug}:unlink`}
+                    title={t('Stop relating {module} to {software} — its manuals keep what they documented', { module: mod.name, software: sw.name })}
+                    onClick={() => detach(mod)}
+                  >
+                    {t('Detach')}
+                  </button>
+                </li>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sw.modules.map((mod) => (
-              <tr key={mod.slug}>
-                <td>
-                  <div className="module-cell">
-                    {mod.own ? (
-                      <span className="module-name">{t('Its own manual')}</span>
-                    ) : (
-                      <Link to={`/modules/${mod.slug}`} className="module-name">{mod.name}</Link>
-                    )}
-                    <span className="module-sub">
-                      {mod.code && <code>{mod.code}</code>}
-                      {mod.type === 'own-software' && (
-                        <span className="chip" title={t('Written before a software could own its manuals — still a module')}>{t('legacy module')}</span>
-                      )}
-                      {mod.own ? (
-                        isAdmin && (
-                          <button
-                            className="btn btn-sm btn-danger row-detach"
-                            disabled={busy === 'own-manual'}
-                            title={t('Delete the manuals {software} owns — the software and its releases stay', { software: sw.name })}
-                            onClick={deleteOwnManual}
-                          >
-                            {t('Delete manual')}
-                          </button>
-                        )
-                      ) : (
-                        <button
-                          className="btn btn-sm btn-danger row-detach"
-                          disabled={busy === `${mod.slug}:unlink`}
-                          title={t('Stop relating {module} to {software} — its manuals keep what they documented', { module: mod.name, software: sw.name })}
-                          onClick={() => detach(mod)}
-                        >
-                          {t('Detach')}
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                </td>
-                <td className="muted">{mod.fromVersion || '—'}</td>
-                {SW_TYPES.map((mt) => {
-                  const typed = mod.docs.filter((d) => d.manual === mt.id);
-                  const open = typed.find(isOpenDoc);
-                  const latest = typed[0];
-                  const unc = mod.uncovered.filter((u) => u.manual === mt.id);
-                  const k = `${mod.slug}:${mt.id}`;
-                  if (!latest) {
-                    return (
-                      <td key={mt.id}>
-                        <button className="btn btn-sm" disabled={busy === k} onClick={() => createManual(mod, mt)} title={t('Start {type} A1.0 for {module}', { type: t(mt.label).toLowerCase(), module: mod.name })}>
-                          {busy === k ? t('Creating…') : t('+ Create')}
-                        </button>
-                      </td>
-                    );
-                  }
-                  return (
-                    <td key={mt.id}>
-                      <div className="sw-manual-cell">
-                        <span className="manual-pills">
-                          {typed.map((d) => (
-                            <span
-                              key={d.key}
-                              className={`manual-pill mp-${d.status} row-link`}
-                              title={`${d.key} · r${d.revision} · ${d.status} · ${d.branch || 'main'}`}
-                              onClick={() => navigate(`${ownerOf(mod)}/docs/${d.key}/edit`)}
-                            >
-                              <span className="mp-type">{d.version}</span>
-                              <span className="mp-ver">{isOpenDoc(d) ? t('draft r{n}', { n: d.revision }) : t(d.status)}</span>
-                            </span>
-                          ))}
-                        </span>
-                        <span className="btn-row">
-                          {open ? (
-                            <button className="btn btn-primary btn-sm" onClick={() => navigate(`${ownerOf(mod)}/docs/${open.key}/edit`)}>
-                              {t('Edit {version}', { version: open.version })}
-                            </button>
-                          ) : (
-                            <button
-                              className="btn btn-sm"
-                              disabled={busy === k}
-                              title={
-                                unc.length
-                                  ? t('Next version of the {type}, based on {version} — becomes the manual for {releases}', { type: t(mt.label).toLowerCase(), version: latest.version, releases: unc.map((u) => u.version).join(', ') })
-                                  : t('Next version of the {type}, based on {version}', { type: t(mt.label).toLowerCase(), version: latest.version })
-                              }
-                              onClick={() => act(k, () => api.nextDocVersion(mod.slug, { manual: mt.id, bump: 'minor' }), t('New {type} draft created for {module}', { type: t(mt.label).toLowerCase(), module: mod.name }))}
-                            >
-                              {busy === k ? t('Creating…') : t('New version')}
-                            </button>
-                          )}
-                          {unc.length > 0 && (
-                            <span className="orange-dot" title={t('Not yet covered: {releases}', { releases: unc.map((u) => u.version).join(', ') })} />
-                          )}
-                        </span>
-                        <span className="muted small">{t('updated {ago}', { ago: timeAgo(latest.updatedAt) })}</span>
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          </ul>
+        </div>
+      )}
+
+      {/* The manuals the software owns, read exactly as a module reads its own. */}
+      {own ? (
+        <ManualsTab data={own} slug={{ software: sw.name }} act={ownAct} reload={loadOwn} canCreate={false} />
+      ) : (
+        <p className="muted small">
+          {t('No manual yet — Create manual above writes this software its own, or link a module whose manual covers it.')}
+        </p>
       )}
 
       <div className="software-releases">

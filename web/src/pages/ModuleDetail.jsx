@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64 } from '../api.js';
+import { api, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64, ownerHref, ownerPath } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
@@ -339,8 +339,12 @@ function CreateManualMenu({ docs, onPick }) {
  * "New version" sits on the group row when no draft of that type is open; the types the module
  * does not have yet come from the single "+ Create manual" menu above the table.
  */
-function ManualsTab({ data, slug, act, reload }) {
+export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
   const { module, docs, uncovered, inherited = [] } = data;
+  // Where this owner's docs live: /modules/<slug>/… or /software/<name>/….
+  const base = ownerHref(slug);
+  // What this owner can have: a module writes its audiences, a software the software pair.
+  const ownTypes = module.kind === 'software' ? MANUAL_TYPES.filter((mt) => mt.kind === 'software') : MODULE_MANUALS;
   const [adding, setAdding] = useState(null); // manual type id being created
   const navigate = useNavigate();
   const toast = useToast();
@@ -363,7 +367,7 @@ function ManualsTab({ data, slug, act, reload }) {
   const toggle = (setter, id) => setter((m) => ({ ...m, [id]: !m[id] }));
 
   const rowActions = (d, mt) => {
-    const go = (view) => navigate(`/modules/${slug}/docs/${d.key}/${view}`);
+    const go = (view) => navigate(`${base}/docs/${d.key}/${view}`);
     const primary = [];
     const more = [];
     if (d.hotfix) {
@@ -415,7 +419,7 @@ function ManualsTab({ data, slug, act, reload }) {
         more.push({ label: t('Edit'), onClick: () => go('edit') });
         more.push({ label: t('Back to draft'), onClick: () => act(() => api.backToDraft(slug, d.key), t('{doc} back to draft', { doc: docLabel(d) })) });
       }
-      if (d.fat) more.push({ label: t('FAT'), hint: t('Blank FAT protocol for this doc version'), href: `/api/modules/${slug}/docs/${d.key}/checklist.html` });
+      if (d.fat) more.push({ label: t('FAT'), hint: t('Blank FAT protocol for this doc version'), href: `${ownerPath(slug)}/docs/${d.key}/checklist.html` });
       if (isAdmin) {
         more.push({
           label: t('Discard'),
@@ -445,7 +449,7 @@ function ManualsTab({ data, slug, act, reload }) {
       }
       if (d.fat) {
         primary.push(
-          <a key="fat" className="btn btn-sm" href={`/api/modules/${slug}/docs/${d.key}/checklist.html`} target="_blank" rel="noreferrer" title={t('Blank FAT protocol for this doc version')}>
+          <a key="fat" className="btn btn-sm" href={`${ownerPath(slug)}/docs/${d.key}/checklist.html`} target="_blank" rel="noreferrer" title={t('Blank FAT protocol for this doc version')}>
             {t('FAT')}
           </a>
         );
@@ -487,9 +491,9 @@ function ManualsTab({ data, slug, act, reload }) {
     <>
       <div className="manuals-head">
         <h2>
-          {t('Manuals')} <span className="muted small">{t('{n} of {total} types created', { n: created.length, total: MANUAL_TYPES.length })}</span>
+          {t('Manuals')} <span className="muted small">{t('{n} of {total} types created', { n: created.length, total: ownTypes.length })}</span>
         </h2>
-        <CreateManualMenu docs={docs} onPick={setAdding} />
+        {canCreate && <CreateManualMenu docs={docs} onPick={setAdding} />}
       </div>
       <div className="manual-filter">
         <div className="mode-toggle" role="tablist" title={t('Which manuals to show — remembered in this browser')}>
@@ -644,7 +648,7 @@ function ManualsTab({ data, slug, act, reload }) {
             toast(t('{manual} {version} r1 created on {branch}', { manual: t(manualType(r.manual).label), version: r.version, branch: r.branch }));
             if (r.aiNote) toast(r.aiNote, 'err');
             reload();
-            navigate(`/modules/${slug}/docs/${r.key}/edit`);
+            navigate(`${base}/docs/${r.key}/edit`);
           }}
         />
       )}

@@ -220,7 +220,7 @@ app.post('/api/modules', wrap(async (req, res) => {
   res.json({ ...created, aiNote: notes.length ? notes.join(' ') : null });
 }));
 
-app.get('/api/modules/:slug', wrap(async (req, res) => {
+app.get(ownerPaths(), wrap(async (req, res) => {
   const m = await store.getModule(ownerRef(req));
   if (!m) return res.status(404).json({ error: 'Module not found' });
   res.json(m);

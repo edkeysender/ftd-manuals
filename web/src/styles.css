@@ -159,6 +159,11 @@ tr:hover .row-detach, .row-detach:focus-visible { opacity: 1; }
 .tabs button.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
 
 /* ---- Software versions tab: releases across, manuals down ---- */
+.sw-modules { margin: 14px 0 18px; }
+.sw-module-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.sw-module-list li { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.sw-module-list li:first-child { border-top: none; }
+.sw-module-list .row-detach { margin-left: auto; }
 .inherited { margin-top: 18px; }
 .inherited-head { font-size: 12.5px; font-weight: 600; margin-bottom: 6px; }
 .inherited-head .muted { font-weight: 400; }
