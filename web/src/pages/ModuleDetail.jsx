@@ -113,7 +113,6 @@ export default function ModuleDetail() {
               <>
                 {module.code && <code>{module.code}</code>}
                 <span className="chip">{t(catLabel(module.category))}</span>
-                <span className="chip">{t(module.group)}</span>
               </>
             )}
             <StatusBadge status={data.status} />

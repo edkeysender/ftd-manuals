@@ -141,7 +141,6 @@ export const TOOLS = [
         },
         code: { type: 'string', description: 'Module code like SW-STP' },
         category: { type: 'string', enum: ['software', 'cockpit-hardware', 'structure', 'peripherals', 'rack'] },
-        group: { type: 'string', enum: ['SIM', 'IOS', 'RACK'], description: 'Which simulator manual it compiles into' },
         hardware: {
           type: 'array',
           description:
@@ -161,7 +160,7 @@ export const TOOLS = [
           description: 'FAT (factory acceptance test) checklist: "template" seeds one from the category template (default) on the technician manual (else the customer manual), "none" creates the module without one.',
         },
       },
-      required: ['name', 'group'],
+      required: ['name'],
     },
     annotations: { title: 'Create module', ...RW },
   },
@@ -185,7 +184,7 @@ export const TOOLS = [
   {
     name: 'update_module',
     description:
-      'Edit module metadata: name, code, category, group, hardware units, linked softwares. Only the fields given are changed. "hardware" replaces the whole assignment: an array of {id} (catalog item) or new items {name, type, version | manufacturer, model, notes}; [] unassigns all.',
+      'Edit module metadata: name, code, category, hardware units, linked softwares. Only the fields given are changed. "hardware" replaces the whole assignment: an array of {id} (catalog item) or new items {name, type, version | manufacturer, model, notes}; [] unassigns all.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -193,7 +192,6 @@ export const TOOLS = [
         name: { type: 'string' },
         code: { type: 'string' },
         category: { type: 'string', enum: ['software', 'cockpit-hardware', 'structure', 'peripherals', 'rack'] },
-        group: { type: 'string', enum: ['SIM', 'IOS', 'RACK'] },
         hardware: { type: 'array', items: { type: 'object' } },
         softwares: {
           type: 'array',
@@ -543,7 +541,6 @@ export const TOOLS = [
           items: { type: 'object', properties: { slug: { type: 'string' }, from_version: { type: 'string' } }, required: ['slug'] },
         },
         own_manual: { type: 'boolean', description: 'Also create the software\'s own manual (an own-software module named after it) — for an application without hardware' },
-        group: { type: 'string', enum: ['SIM', 'IOS'], description: 'Manual group of the own manual (default SIM)' },
       },
       required: ['name'],
     },
@@ -557,7 +554,6 @@ export const TOOLS = [
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Software name (see list_software)' },
-        group: { type: 'string', enum: ['SIM', 'IOS'], description: 'Manual group (default SIM)' },
         from_version: { type: 'string', description: 'First software version the manual covers, e.g. v1.0.0' },
       },
       required: ['name'],
@@ -842,10 +838,10 @@ async function callTool(name, args) {
         manualAffecting: !!args.manual_affecting,
         note: args.note,
         modules: (args.modules || []).map((m) => ({ slug: m.slug, fromVersion: m.from_version })),
-        ownManual: args.own_manual ? { group: args.group || 'SIM', startSummary: 'Created via MCP' } : null,
+        ownManual: args.own_manual ? { startSummary: 'Created via MCP' } : null,
       });
     case 'create_software_manual':
-      return await store.createOwnSoftwareModule(args.name, { group: args.group || 'SIM', fromVersion: args.from_version || '', startSummary: 'Created via MCP' });
+      return await store.createOwnSoftwareModule(args.name, { fromVersion: args.from_version || '', startSummary: 'Created via MCP' });
     case 'delete_module':
       return await store.deleteModule(args.slug);
     case 'delete_software':
@@ -935,7 +931,6 @@ async function callTool(name, args) {
         name: args.name,
         code: args.code || null,
         category: args.category || 'software',
-        group: args.group,
         type: mtype?.id || null,
         hardware: [...(args.hardware || []), ...(args.parts !== undefined ? parseParts(args.parts) : [])],
         softwares: args.softwares || [],

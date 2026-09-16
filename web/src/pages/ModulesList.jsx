@@ -96,7 +96,6 @@ export default function ModulesList() {
             <tr>
               <th>{t('Module')}</th>
               <th>{t('Type')}</th>
-              <th>{t('Manual group')}</th>
               <th>{t('Parts')}</th>
               <th>{t('Software relation')}</th>
               <th>{t('Manuals')}</th>
@@ -123,9 +122,6 @@ export default function ModulesList() {
                   </div>
                 </td>
                 <td>{m.type ? t(moduleType(m.type)?.label || m.type) : <span className="muted">—</span>}</td>
-                <td>
-                  <span className="chip">{m.group}</span>
-                </td>
                 <td className={m.hardware?.length ? '' : 'muted'} title={(m.hardware || []).map((h) => `${h.name}: ${h.type === 'ftd' ? `FTD.aero ${h.version || 'v1'}` : `COTS ${[h.manufacturer, h.model].filter(Boolean).join(' ')}`}`).join('\n')}>
                   {m.hardware?.length > 1 ? (
                     <>

@@ -341,13 +341,13 @@ const STRINGS = {
     categories: CATEGORY_LABELS,
     audiences: { customer: 'customer', technician: 'technician' },
     revisionRecord: 'Revision record', documentRevisions: 'Document revisions', versionInEffect: (v, d) => `Document version ${v}, released ${d}.`, revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
-    introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualGroup: 'Manual group', manualType: 'Manual type', docCode: 'Document code',
+    introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualType: 'Manual type', docCode: 'Document code',
     hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes', notHardware: 'No parts — not a hardware module',
     softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', notSoftware: 'Not software-related', andLater: 'and later',
     audienceRow: (label, audience) => `${label} — ${audience} audience`,
     introAudience: { technician: 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.', customer: 'It is intended for the operator of the simulator.' },
     introSubject: (kind, name, detail) => (kind === 'software' ? `the software of the <strong>${name}</strong> module (${detail})` : `the <strong>${name}</strong> module (${detail})`),
-    intro1: (typeLabel, subject, audience, group) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience} It is a standalone mini-manual and is compiled into the ${group} (${typeLabel}) when this document version is released.`,
+    intro1: (typeLabel, subject, audience) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience} It is a standalone mini-manual and is compiled into every simulator manual that includes this module when this document version is released.`,
     intro2: (version, draftRev) => `Document version ${version}${draftRev ? ` (draft, revision ${draftRev})` : ''}. Only released document versions are compiled into simulator manuals.`,
     // assembled manual
     tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
@@ -367,13 +367,13 @@ const STRINGS = {
     categories: { software: 'Oprogramowanie', 'cockpit-hardware': 'Sprzęt kokpitu', structure: 'Konstrukcja', peripherals: 'Urządzenia peryferyjne', rack: 'Rack' },
     audiences: { customer: 'klient', technician: 'technik' },
     revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', versionInEffect: (v, d) => `Wersja dokumentu ${v}, wydana ${d}.`, revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
-    introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualGroup: 'Grupa instrukcji', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
+    introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
     hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi', notHardware: 'Brak części — moduł bez sprzętu',
     softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', notSoftware: 'Nie dotyczy oprogramowania', andLater: 'i nowsze',
     audienceRow: (label, audience) => `${label} — odbiorca: ${audience}`,
     introAudience: { technician: 'Jest przeznaczony dla instalatora i technika serwisu i nie stanowi części dokumentacji przekazywanej operatorowi symulatora.', customer: 'Jest przeznaczony dla operatora symulatora.' },
     introSubject: (kind, name, detail) => (kind === 'software' ? `oprogramowania modułu <strong>${name}</strong> (${detail})` : `modułu <strong>${name}</strong> (${detail})`),
-    intro1: (typeLabel, subject, audience, group) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience} Jest samodzielną mini-instrukcją i po wydaniu tej wersji dokumentu wchodzi w skład dokumentu ${group} (${typeLabel}).`,
+    intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience} Jest samodzielną mini-instrukcją i po wydaniu tej wersji dokumentu wchodzi w skład każdej instrukcji symulatora zawierającej ten moduł.`,
     intro2: (version, draftRev) => `Wersja dokumentu ${version}${draftRev ? ` (robocza, rewizja ${draftRev})` : ''}. Do instrukcji symulatora kompilowane są wyłącznie wydane wersje dokumentów.`,
     tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
@@ -430,7 +430,6 @@ export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHi
     esc(module.name),
     type.kind === 'software' ? esc(softwareLabel(module.softwares)) : esc(module.code || module.slug)
   );
-  const group = esc(T.groups[module.group] || module.group);
 
   return `<section class="auto-section" data-auto="1">
 <h2>${T.revisionRecord}</h2>
@@ -446,7 +445,7 @@ ${record || `<tr><td colspan="3">${T.noRevisions}</td></tr>`}
 </section>
 <section class="auto-section" data-auto="2">
 <h2>${T.introduction}</h2>
-<p>${T.intro1(typeLower, subject, audience, group)}</p>
+<p>${T.intro1(typeLower, subject, audience)}</p>
 <p>${T.intro2(esc(doc.version), doc.status === 'released' ? '' : esc('r' + doc.revision))}</p>
 </section>
 <section class="auto-section" data-auto="3">
@@ -456,7 +455,6 @@ ${record || `<tr><td colspan="3">${T.noRevisions}</td></tr>`}
 <tr><th>${T.module}</th><td>${esc(module.name)}</td></tr>
 <tr><th>${T.code}</th><td>${esc(module.code || '—')}</td></tr>
 <tr><th>${T.category}</th><td>${esc(T.categories[module.category] || module.category || '—')}</td></tr>
-<tr><th>${T.manualGroup}</th><td>${esc(module.group)}</td></tr>
 <tr><th>${T.manualType}</th><td>${T.audienceRow(typeLabel, esc(T.audiences[type.audience]))}</td></tr>
 <tr><th>${T.docCode}</th><td>${esc(manualDocCode(module, type.id))}</td></tr>
 </tbody>

@@ -249,7 +249,7 @@ export default function RelationsSchema({ module, softwareFeed = {} }) {
               <rect width={NODE_W + 32} height={NODE_H + 18} rx="9" />
               <text x={(NODE_W + 32) / 2} y="21">{cut(module.name, 22)}</text>
               <text className="sub" x={(NODE_W + 32) / 2} y="38">
-                {[module.code, module.group].filter(Boolean).join(' · ')}
+                {module.code}
               </text>
             </g>
           </svg>

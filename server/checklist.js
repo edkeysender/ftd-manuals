@@ -127,7 +127,7 @@ const RACK = () =>
 
 const INTEGRATION = (module) =>
   P('System integration', [
-    I(`Module recognised by the ${GROUP_LABELS[module.group] || module.group} system`, 'Present in device list, no fault flag'),
+    I('Module recognised by the simulator', 'Present in device list, no fault flag'),
     I('End-to-end check with the simulation running', 'Behaviour as described in Operation', { ref: 'Operation' }),
     I('Data / network link stable for 30 min', 'No disconnects, no error counters'),
   ]);
@@ -326,7 +326,7 @@ function moduleSection(module, doc, checklist, { chapter = null } = {}) {
   }</h1>
 <p class="intro">Acceptance test of the <strong>${esc(module.name)}</strong> module (${esc(
     CATEGORY_LABELS[module.category] || module.category
-  )}, ${esc(GROUP_LABELS[module.group] || module.group)}) against the ${esc(manualTypeOf(doc.manual).label.toLowerCase())} <strong>${esc(
+  )}) against the ${esc(manualTypeOf(doc.manual).label.toLowerCase())} <strong>${esc(
     module.code || module.slug
   )} ${esc(doc.version)}</strong>${isDraft ? ` r${doc.revision}` : ''}, checklist revision r${doc.revision}. Hardware: ${esc(
     hardwareLabel(module)
