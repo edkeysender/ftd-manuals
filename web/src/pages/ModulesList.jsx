@@ -39,7 +39,11 @@ export default function ModulesList() {
   const toast = useToast();
 
   const q = query.trim().toLowerCase();
-  const visible = rows === null ? null : q ? rows.filter((m) => `${m.name} ${m.code || ''}`.toLowerCase().includes(q)) : rows;
+  // An own-software module is a software documented on its own, not a part of the simulator:
+  // it belongs to the Software page, and listing it here would offer hardware it does not have.
+  const listed = rows === null ? null : rows.filter((m) => m.type !== 'own-software');
+  const visible =
+    listed === null ? null : q ? listed.filter((m) => `${m.name} ${m.code || ''}`.toLowerCase().includes(q)) : listed;
 
   const load = () => api.modules().then(setRows).catch((e) => toast(e.message, 'err'));
   useEffect(() => {
@@ -68,7 +72,7 @@ export default function ModulesList() {
 
       {rows === null ? (
         <div className="empty">{t('Loading…')}</div>
-      ) : rows.length === 0 ? (
+      ) : listed.length === 0 ? (
         <div className="empty">
           <p>{t('No modules yet.')}</p>
           <p>

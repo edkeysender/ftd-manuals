@@ -38,6 +38,9 @@ export default function ModuleDetail() {
   if (!data) return <div className="page"><div className="empty">{t('Loading…')}</div></div>;
 
   const { module, docs, history } = data;
+  // A software documented on its own: no hardware, so the page drops the hardware chrome and
+  // points back at the software rather than at the modules list.
+  const ownSoftware = module.type === 'own-software';
   const hasSoftware = (module.softwares || []).length > 0;
 
   // The name is metadata: it is rewritten on main and on every open draft branch, and the
@@ -62,7 +65,7 @@ export default function ModuleDetail() {
   return (
     <div className="page">
       <div className="crumbs">
-        <Link to="/">{t('Modules')}</Link> / {module.name}
+        {ownSoftware ? <Link to="/software">{t('Software')}</Link> : <Link to="/">{t('Modules')}</Link>} / {module.name}
       </div>
       <div className="page-head">
         <div>
@@ -99,9 +102,20 @@ export default function ModuleDetail() {
             </h1>
           )}
           <div className="meta-chips">
-            {module.code && <code>{module.code}</code>}
-            <span className="chip">{t(catLabel(module.category))}</span>
-            <span className="chip">{t(module.group)}</span>
+            {ownSoftware ? (
+              <>
+                <span className="chip" title={t('Documented on its own — an application with no hardware')}>{t('Software')}</span>
+                <Link to="/software" className="chip">
+                  {module.softwares?.[0]?.name || module.name}
+                </Link>
+              </>
+            ) : (
+              <>
+                {module.code && <code>{module.code}</code>}
+                <span className="chip">{t(catLabel(module.category))}</span>
+                <span className="chip">{t(module.group)}</span>
+              </>
+            )}
             <StatusBadge status={data.status} />
           </div>
           <div className="meta-chips" style={{ marginTop: 8 }}>
@@ -111,7 +125,7 @@ export default function ModuleDetail() {
         <div className="btn-row">
           <button
             className="btn btn-sm btn-danger"
-            title={t('Delete the module with all its doc versions, drafts and assets')}
+            title={ownSoftware ? t('Delete this software manual with all its doc versions, drafts and assets') : t('Delete the module with all its doc versions, drafts and assets')}
             onClick={async () => {
               const open = data.docs.filter((d) => d.status === 'draft' || d.status === 'in-review');
               const msg =
@@ -130,7 +144,7 @@ export default function ModuleDetail() {
               }
             }}
           >
-            {t('Delete module')}
+            {ownSoftware ? t('Delete manual') : t('Delete module')}
           </button>
         </div>
       </div>
@@ -139,12 +153,16 @@ export default function ModuleDetail() {
         <button className={tab === 'docs' ? 'active' : ''} onClick={() => setTab('docs')}>
           {t('Manuals')}{docs.length ? ` (${Object.keys(data.manuals || {}).length})` : ''}
         </button>
-        <button className={tab === 'hardware' ? 'active' : ''} onClick={() => setTab('hardware')}>
-          {t('Parts')}{module.hardwareItems?.length ? ` (${module.hardwareItems.length})` : ''}
-        </button>
-        <button className={tab === 'schema' ? 'active' : ''} onClick={() => setTab('schema')}>
-          {t('Schema')}
-        </button>
+        {!ownSoftware && (
+          <button className={tab === 'hardware' ? 'active' : ''} onClick={() => setTab('hardware')}>
+            {t('Parts')}{module.hardwareItems?.length ? ` (${module.hardwareItems.length})` : ''}
+          </button>
+        )}
+        {!ownSoftware && (
+          <button className={tab === 'schema' ? 'active' : ''} onClick={() => setTab('schema')}>
+            {t('Schema')}
+          </button>
+        )}
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
           {t('Assets')}
           {data.staleAssets > 0 && (
@@ -164,7 +182,7 @@ export default function ModuleDetail() {
         )}
       </div>
 
-      {tab === 'docs' && <ManualsTab data={data} slug={slug} act={act} reload={load} />}
+      {(tab === 'docs' || (ownSoftware && (tab === 'hardware' || tab === 'schema'))) && <ManualsTab data={data} slug={slug} act={act} reload={load} />}
 
       {tab === 'history' && (
         <table className="table">
@@ -189,11 +207,11 @@ export default function ModuleDetail() {
         </table>
       )}
 
-      {tab === 'schema' && <RelationsSchema module={module} softwareFeed={data.softwareFeed} />}
+      {tab === 'schema' && !ownSoftware && <RelationsSchema module={module} softwareFeed={data.softwareFeed} />}
 
       {tab === 'assets' && <AssetsTab slug={slug} docs={docs} module={module} onChanged={load} />}
 
-      {tab === 'hardware' && <HardwareTab module={module} slug={slug} reload={load} />}
+      {tab === 'hardware' && !ownSoftware && <HardwareTab module={module} slug={slug} reload={load} />}
 
       {tab === 'software' && (
         <SoftwareTab data={data} slug={slug} reload={load} />
