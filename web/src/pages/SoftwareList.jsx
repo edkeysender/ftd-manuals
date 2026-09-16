@@ -58,14 +58,11 @@ export default function SoftwareList() {
           onCreated={(r) => {
             setCreating(false);
             toast(
-              r.ownModule
-                ? t('{name} created with its own manual — opening the editor', { name: r.name })
-                : r.modules.length
-                  ? t('{name} created and linked to {modules}', { name: r.name, modules: r.modules.map((m) => m.name).join(', ') })
-                  : t('{name} created', { name: r.name })
+              r.modules.length
+                ? t('{name} created and linked to {modules}', { name: r.name, modules: r.modules.map((m) => m.name).join(', ') })
+                : t('{name} created', { name: r.name })
             );
-            if (r.ownModule) navigate(`/modules/${r.ownModule.slug}/docs/${r.ownModule.key}/edit`);
-            else load();
+            load();
           }}
         />
       )}
@@ -137,7 +134,6 @@ function NewSoftwareModal({ onClose, onCreated }) {
   const [note, setNote] = useState('');
   const [modules, setModules] = useState([]);
   const [selected, setSelected] = useState([]);
-  const [ownManual, setOwnManual] = useState(true);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     api.modules().then(setModules).catch(() => setModules([]));
@@ -152,7 +148,6 @@ function NewSoftwareModal({ onClose, onCreated }) {
           manualAffecting,
           note,
           modules: selected.map((slug) => ({ slug })),
-          ownManual: ownManual ? {} : null,
         })
       );
     } catch (e) {
@@ -190,13 +185,6 @@ function NewSoftwareModal({ onClose, onCreated }) {
                 {t('first version is manual-affecting')}
               </label>
             )}
-            <div className="pair">
-              <label className="check" style={{ flex: 1 }}>
-                <input type="checkbox" checked={ownManual} onChange={(e) => setOwnManual(e.target.checked)} />
-                {t('Write its own manual — software customer + technician manuals in the editor, no hardware module')}
-              </label>
-
-            </div>
             <div className="field">
               <span className="field-label">{t('Link to modules (optional) — enables their software manuals; from-version = first version')}</span>
               <div className="picker-list" style={{ maxHeight: 220, overflow: 'auto' }}>

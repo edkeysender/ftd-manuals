@@ -872,6 +872,11 @@ try {
   ok(!(rel2 instanceof Error) && rel2['2N Access Unit'].length === 2, 'register_software_release adds a new version');
   const relink = await call(124, 'link_software', { slug: 'starting-panel', name: '2N Access Unit', from_version: 'v1.1.0' });
   ok(!(relink instanceof Error) && relink.linked === false && relink.softwares.find((s) => s.name === '2N Access Unit').fromVersion === 'v1.1.0', 'link_software updates the from-version of an existing link');
+  // a software is a software: creating one makes no module unless its own manual is asked for
+  const plainSw = await req('POST', '/api/software', { name: 'UI Kiosk', version: 'v1.0' });
+  ok(!plainSw.ownModule && !(await req('GET', '/api/modules')).some((m) => m.slug === 'ui-kiosk'),
+    'creating a software creates no module');
+  await req('DELETE', '/api/software/UI%20Kiosk');
   const emptySw = await call(125, 'create_software', { name: 'Orphan Tool' });
   ok(!(emptySw instanceof Error) && emptySw.releases.length === 0 && (await req('GET', '/api/software')).some((s) => s.name === 'Orphan Tool' && s.modules.length === 0), 'a software with no version and no module still lists on the Software page');
   const linkBadVer = await req('POST', '/api/modules/starting-panel/software', { name: 'Orphan Tool', fromVersion: 'v0.1' }).catch((e) => e);
