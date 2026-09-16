@@ -339,7 +339,7 @@ function CreateManualMenu({ docs, hasSoftware, onPick }) {
  * does not have yet come from the single "+ Create manual" menu above the table.
  */
 function ManualsTab({ data, slug, act, reload }) {
-  const { module, docs, uncovered } = data;
+  const { module, docs, uncovered, inherited = [] } = data;
   const [adding, setAdding] = useState(null); // manual type id being created
   const navigate = useNavigate();
   const toast = useToast();
@@ -582,6 +582,41 @@ function ManualsTab({ data, slug, act, reload }) {
           })}
         </tbody>
       </table>
+
+      {inherited.length > 0 && (
+        <div className="inherited">
+          <div className="inherited-head">
+            {t('From its software')}{' '}
+            <span className="muted">{t('written once by the software, compiled into this module’s manual')}</span>
+          </div>
+          <table className="table">
+            <tbody>
+              {inherited.map((d) => (
+                <tr key={`${d.software}:${d.key}`} className="version-row">
+                  <td className="muted row-label">{d.software}</td>
+                  <td>{t(manualType(d.manual).short)}</td>
+                  <td><strong>{d.version}</strong></td>
+                  <td className="muted">r{d.revision}</td>
+                  <td><StatusBadge status={d.status} /></td>
+                  <td className="muted">{timeAgo(d.updatedAt)}</td>
+                  <td className="actions-cell">
+                    <div className="btn-row row-actions">
+                      <Link
+                        className="btn btn-sm"
+                        to={`/software/${encodeURIComponent(d.software)}/docs/${d.key}/edit`}
+                        title={t('Open the manual on {software}, where it is written', { software: d.software })}
+                      >
+                        {t('Open')}
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {adding && (
         <AddManualModal
           slug={slug}

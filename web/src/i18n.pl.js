@@ -587,6 +587,11 @@ export const PL = {
   '{module} detached from {software}': 'Odłączono {module} od {software}',
   '{name} linked to its existing manual': 'Powiązano {name} z istniejącą instrukcją',
   'Its own manual': 'Własna instrukcja',
+  Open: 'Otwórz',
+  'From its software': 'Z oprogramowania',
+  'written once by the software, compiled into this module’s manual':
+    'napisane raz przez oprogramowanie, kompilowane do instrukcji tego modułu',
+  'Open the manual on {software}, where it is written': 'Otwórz instrukcję w {software}, tam jest pisana',
   'Document {name} itself: software customer + technician manuals A1.0, owned by the software — no module':
     'Opisz samo {name}: instrukcje SW użytkownika i technika A1.0, należące do oprogramowania — bez modułu',
   'legacy module': 'moduł zastany',
