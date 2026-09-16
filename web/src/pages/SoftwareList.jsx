@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, GROUPS } from '../api.js';
+import { api } from '../api.js';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 
@@ -138,7 +138,6 @@ function NewSoftwareModal({ onClose, onCreated }) {
   const [modules, setModules] = useState([]);
   const [selected, setSelected] = useState([]);
   const [ownManual, setOwnManual] = useState(true);
-  const [group, setGroup] = useState('SIM');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     api.modules().then(setModules).catch(() => setModules([]));
@@ -153,7 +152,7 @@ function NewSoftwareModal({ onClose, onCreated }) {
           manualAffecting,
           note,
           modules: selected.map((slug) => ({ slug })),
-          ownManual: ownManual ? { group } : null,
+          ownManual: ownManual ? {} : null,
         })
       );
     } catch (e) {
@@ -196,13 +195,7 @@ function NewSoftwareModal({ onClose, onCreated }) {
                 <input type="checkbox" checked={ownManual} onChange={(e) => setOwnManual(e.target.checked)} />
                 {t('Write its own manual — software customer + technician manuals in the editor, no hardware module')}
               </label>
-              {ownManual && (
-                <select value={group} onChange={(e) => setGroup(e.target.value)} title={t('Manual group')}>
-                  {GROUPS.map(([id, label]) => (
-                    <option key={id} value={id}>{t(label)}</option>
-                  ))}
-                </select>
-              )}
+
             </div>
             <div className="field">
               <span className="field-label">{t('Link to modules (optional) — enables their software manuals; from-version = first version')}</span>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, MANUAL_TYPES, GROUPS, manualType, timeAgo } from '../api.js';
+import { api, MANUAL_TYPES, manualType, timeAgo } from '../api.js';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 import SoftwareTimeline from '../components/SoftwareTimeline.jsx';
@@ -364,15 +364,16 @@ function RepairRow({ sw, all, reload }) {
   );
 }
 
+/** The software documented on its own. The module it creates is an ordinary module afterwards —
+ *  its group, code and the rest are edited on the module page, so this asks for nothing. */
 function OwnManualRow({ sw }) {
   const toast = useToast();
   const navigate = useNavigate();
-  const [group, setGroup] = useState('SIM');
   const [busy, setBusy] = useState(false);
   async function create() {
     setBusy(true);
     try {
-      const r = await api.createSoftwareManual(sw.name, { group, fromVersion: sw.releases[sw.releases.length - 1]?.version || '' });
+      const r = await api.createSoftwareManual(sw.name, { fromVersion: sw.releases[sw.releases.length - 1]?.version || '' });
       // A module written as this software’s own manual was already there, only unlinked: it is adopted, not rewritten.
       toast(
         r.adopted
@@ -389,11 +390,6 @@ function OwnManualRow({ sw }) {
   return (
     <div className="pair wrap" style={{ marginBottom: 6 }}>
       <span className="hint">{t('Own manual')}</span>
-      <select value={group} onChange={(e) => setGroup(e.target.value)} title={t('Manual group')}>
-        {GROUPS.map(([id, label]) => (
-          <option key={id} value={id}>{t(label)}</option>
-        ))}
-      </select>
       <button
         className="btn btn-primary btn-sm"
         disabled={busy}
