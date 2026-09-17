@@ -2261,6 +2261,107 @@ export async function registerSoftwareRelease({ name, version, manualAffecting, 
  * version starting at it would lose the point its coverage runs from. Released manuals keep
  * their history either way — `reviewedTo` is only a comparison point, so it survives.
  */
+/**
+ * Correct the version a release is registered under — a typo, or a build renamed after the fact.
+ * The release keeps its date, note and manual-affecting flag; everything pointing at the old
+ * version follows: module links that start there, and the `from`, `to` and `reviewedTo` of every
+ * doc that documents the software, its own manuals included. To retire a release instead, delete it.
+ */
+export async function renameSoftwareRelease(name, version, next) {
+  name = cleanSwName(name);
+  version = String(version || '').trim();
+  next = String(next || '').trim();
+  if (!name || !version || !next) throw new Error('The software, the release and its new version are required');
+  const feed = await getSoftwareFeed();
+  const releases = feed[name];
+  if (!releases) throw notRegistered(name);
+  const rel = releases.find((r) => r.version === version);
+  if (!rel) {
+    throw new Error(`${name} ${version} is not a registered release${releases.length ? ` — one of ${releases.map((r) => r.version).join(', ')}` : ''}`);
+  }
+  if (version === next) return { name, from: version, to: next, modules: [], docs: 0 };
+  if (releases.some((r) => r.version === next)) throw new Error(`${name} ${next} is already registered`);
+
+  const { modules, softwareOwners } = await collectAll();
+  const owner = softwareOwners.find((o) => o.module.name === name) || null;
+  const linked = modules.filter(({ module }) => (module.softwares || []).some((x) => x.name === name));
+  const touched = [];
+  let docsTouched = 0;
+  /** Every place a version is written on a cover of this software. */
+  const moveCover = (c) =>
+    c.name !== name
+      ? c
+      : {
+          ...c,
+          ...(c.from === version ? { from: next } : {}),
+          ...(c.to === version ? { to: next } : {}),
+          ...(c.reviewedTo === version ? { reviewedTo: next } : {}),
+        };
+
+  await mutate(async () => {
+    await repo.checkout('main');
+    const fresh = (await readJson('main', 'softwares.json')) || {};
+    fresh[name] = (fresh[name] || releases).map((r) => (r.version === version ? { ...r, version: next } : r));
+    fresh[name].sort((a, b) => compareSwVersions(a.version, b.version));
+    await repo.writeFile('softwares.json', JSON.stringify(fresh, null, 2) + '\n');
+    await repo.commitAll(`softwares: ${name} ${version} → ${next}`);
+
+    // modules that link the software from this release, and the covers of their docs
+    for (const { module, docs } of linked) {
+      const { hardwareItems, ...m } = module;
+      m.softwares = (m.softwares || []).map((x) =>
+        x.name === name && x.fromVersion === version ? { ...x, fromVersion: next } : x
+      );
+      const onMain = !!(await readJson('main', moduleFile(module.slug)));
+      const refs = [...(onMain ? ['main'] : []), ...docs.filter((d) => isOpen(d) && d.branch).map((d) => d.branch)];
+      for (const ref of refs) {
+        await repo.checkout(ref);
+        await repo.writeFile(moduleFile(module.slug), JSON.stringify(m, null, 2) + '\n');
+        for (const d of docs) {
+          if (d.ref !== ref) continue;
+          const dj = await readJson(ref, docJson(d.dir));
+          if (!dj || !(dj.covers || []).length) continue;
+          const covers = dj.covers.map(moveCover);
+          if (JSON.stringify(covers) === JSON.stringify(dj.covers)) continue;
+          dj.covers = covers;
+          await repo.writeFile(docJson(d.dir), JSON.stringify(dj, null, 2) + '\n');
+          docsTouched++;
+        }
+        await repo.commitAll(`${module.slug}: ${name} ${version} → ${next}`);
+      }
+      touched.push(module.slug);
+    }
+
+    // the manuals the software owns document it from a release too
+    if (owner) {
+      const refs = [...new Set([...owner.docs.map((d) => d.ref), 'main'])];
+      for (const ref of refs) {
+        await repo.checkout(ref);
+        const rec = await readJson(ref, softwareFile(owner.module.slug));
+        if (rec && rec.fromVersion === version) {
+          await repo.writeFile(
+            softwareFile(owner.module.slug),
+            JSON.stringify({ ...rec, fromVersion: next, updatedAt: now() }, null, 2) + '\n'
+          );
+        }
+        for (const d of owner.docs) {
+          if (d.ref !== ref) continue;
+          const dj = await readJson(ref, docJson(d.dir));
+          if (!dj || !(dj.covers || []).length) continue;
+          const covers = dj.covers.map(moveCover);
+          if (JSON.stringify(covers) === JSON.stringify(dj.covers)) continue;
+          dj.covers = covers;
+          await repo.writeFile(docJson(d.dir), JSON.stringify(dj, null, 2) + '\n');
+          docsTouched++;
+        }
+        await repo.commitAll(`${name}: ${version} → ${next}`);
+      }
+    }
+    await repo.checkout('main');
+  });
+  return { name, from: version, to: next, modules: touched, docs: docsTouched };
+}
+
 export async function deleteSoftwareRelease(name, version) {
   name = cleanSwName(name);
   version = String(version || '').trim();

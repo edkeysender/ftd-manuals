@@ -212,6 +212,9 @@ code { font-family: Consolas, 'Cascadia Mono', monospace; font-size: 0.92em; bac
 .sw-rel.affecting { border-left-color: var(--orange); }
 .sw-rel-date { font-size: 12.5px; white-space: nowrap; }
 .sw-rel-what { font-size: 12.5px; text-align: right; }
+.sw-rel-input { border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font: inherit; font-weight: 600; width: 10em; }
+.sw-rel-edit { opacity: .55; margin-left: 4px; }
+.sw-rel:hover .sw-rel-edit, .sw-rel-edit:focus-visible { opacity: 1; }
 .sw-rel-del { padding: 2px 9px; line-height: 1.2; opacity: .55; transition: opacity .12s; }
 .sw-rel:hover .sw-rel-del, .sw-rel-del:focus-visible { opacity: 1; }
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { manualType, compareSwVersions, ownerHref } from '../api.js';
 import { t, plural } from '../i18n.jsx';
@@ -22,7 +22,19 @@ const rowKey = (row) => `${row.slug || ''}:${row.key}`;
  * software page the same shape arrives with rows from several modules — each carries its own `slug`
  * and `moduleName`, which the row label then names — and `head` is off because the page has its own.
  */
-export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, onDeleteRelease, onDetach, busy, head = true }) {
+export default function SoftwareTimeline({
+  sw,
+  slug,
+  onConfirm,
+  onNewVersion,
+  onDeleteRelease,
+  onRenameRelease,
+  onDetach,
+  busy,
+  head = true,
+}) {
+  // Correcting the version a release was registered under, in place on its row.
+  const [editing, setEditing] = useState(null); // { version, next }
   const releases = sw.releases; // oldest first — the columns of the grid
   const cols = releases.length;
   const colOf = (version) => {
@@ -189,8 +201,48 @@ export default function SoftwareTimeline({ sw, slug, onConfirm, onNewVersion, on
           return (
             <div className={`sw-rel${rel.manualAffecting ? ' affecting' : ''}`} key={rel.version}>
               <div className="sw-rel-main">
-                <strong>{rel.version}</strong>
-                {rel.note && <span className="muted"> — {rel.note}</span>}
+                {editing && editing.version === rel.version ? (
+                  <span className="pair">
+                    <input
+                      autoFocus
+                      className="sw-rel-input"
+                      value={editing.next}
+                      onChange={(e) => setEditing({ ...editing, next: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && editing.next.trim()) {
+                          onRenameRelease(rel, editing.next.trim());
+                          setEditing(null);
+                        }
+                        if (e.key === 'Escape') setEditing(null);
+                      }}
+                    />
+                    <button
+                      className="btn btn-sm btn-primary"
+                      disabled={busy || !editing.next.trim()}
+                      onClick={() => {
+                        onRenameRelease(rel, editing.next.trim());
+                        setEditing(null);
+                      }}
+                    >
+                      {t('Save')}
+                    </button>
+                    <button className="btn btn-sm" onClick={() => setEditing(null)}>{t('Cancel')}</button>
+                  </span>
+                ) : (
+                  <>
+                    <strong>{rel.version}</strong>
+                    {onRenameRelease && (
+                      <button
+                        className="btn-icon sw-rel-edit"
+                        title={t('Correct the version {version} was registered under', { version: rel.version })}
+                        onClick={() => setEditing({ version: rel.version, next: rel.version })}
+                      >
+                        ✎
+                      </button>
+                    )}
+                    {rel.note && <span className="muted"> — {rel.note}</span>}
+                  </>
+                )}
               </div>
               <div className="muted sw-rel-date">{day(rel.date)}</div>
               <div>

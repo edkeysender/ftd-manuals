@@ -843,6 +843,17 @@ try {
   const linkStart = await req('DELETE', '/api/software/STP%20Core/releases/v2.0.0').catch((e) => e);
   ok(linkStart instanceof Error && /links? to the software/.test(linkStart.message),
     'a release a module links from cannot be deleted');
+  // correcting the version a release was registered under: everything pointing at it follows
+  const renRel = await req('POST', '/api/software/STP%20Core/releases/v2.1.0/rename', { version: 'v2.1.0-rc1' });
+  ok(renRel.to === 'v2.1.0-rc1' && renRel.docs > 0, `release renamed, ${renRel.docs} docs followed`);
+  ok((await req('GET', '/api/softwares'))['STP Core'].some((r) => r.version === 'v2.1.0-rc1'), 'the feed carries the new version');
+  const covAfter = (await req('GET', '/api/modules/starting-panel')).docs.find((d) => d.version === 'A1.1').covers[0];
+  ok(covAfter.from === 'v2.1.0-rc1', `the doc that starts there follows: ${JSON.stringify(covAfter)}`);
+  await req('POST', '/api/software/STP%20Core/releases/v2.1.0-rc1/rename', { version: 'v2.1.0' });
+  ok((await req('GET', '/api/modules/starting-panel')).docs.find((d) => d.version === 'A1.1').covers[0].from === 'v2.1.0',
+    'and back again');
+  const renTaken = await req('POST', '/api/software/STP%20Core/releases/v2.1.0/rename', { version: 'v2.1.1' }).catch((e) => e);
+  ok(renTaken instanceof Error && /already registered/.test(renTaken.message), 'a release cannot take a version another one has');
   const unknownRel = await req('DELETE', '/api/software/STP%20Core/releases/v0.0.1').catch((e) => e);
   ok(unknownRel instanceof Error && /not a registered release/.test(unknownRel.message), 'deleting an unknown release is refused');
   const reg = await call(111, 'register_software_release', { name: 'STP Core', version: 'v2.2.1', manual_affecting: false, note: 'hotfix' });

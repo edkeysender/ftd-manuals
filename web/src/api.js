@@ -97,6 +97,9 @@ export const api = {
   renameSoftware: (name, next) => request(`/api/software/${encodeURIComponent(name)}/rename`, { method: 'POST', body: { name: next } }),
   linkSoftware: (slug, body) => request(`${ownerPath(slug)}/software`, { method: 'POST', body }),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
+  /** Corrects the version a release is registered under; module links and doc covers follow. */
+  renameRelease: (name, version, next) =>
+    request(`/api/software/${encodeURIComponent(name)}/releases/${encodeURIComponent(version)}/rename`, { method: 'POST', body: { version: next } }),
   /** Admin only. Refused while a module link or a doc version starts at that release. */
   deleteRelease: (name, version) =>
     request(`/api/software/${encodeURIComponent(name)}/releases/${encodeURIComponent(version)}`, { method: 'DELETE' }),

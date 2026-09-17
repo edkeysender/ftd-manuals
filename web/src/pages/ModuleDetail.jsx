@@ -1319,6 +1319,13 @@ function SoftwareTab({ data, slug, reload }) {
     run(() => api.linkSoftware(slug, { name: swName, unlink: true }), () => t('{module} detached from {software}', { module: module.name, software: swName }));
   };
 
+  /** A typo in the version, or a build renamed after the fact — everything pointing at it follows. */
+  const renameRelease = (rel, next, swName) =>
+    run(
+      () => api.renameRelease(swName, rel.version, next),
+      () => t('{software} {version} is now {next}', { software: swName, version: rel.version, next })
+    );
+
   /** Registered by mistake, or a build that never shipped. Refused while a manual starts at it. */
   const deleteRelease = (rel, swName) => {
     if (!confirm(t('Delete release {version} of {software}? It disappears from every coverage view.', { version: rel.version, software: swName }))) return;
@@ -1344,6 +1351,7 @@ function SoftwareTab({ data, slug, reload }) {
           onConfirm={(row, release) => confirm(row, release, sw.name)}
           onNewVersion={(row, release) => newVersion(row, release, sw.name)}
           onDeleteRelease={isAdmin ? (rel) => deleteRelease(rel, sw.name) : undefined}
+          onRenameRelease={(rel, next) => renameRelease(rel, next, sw.name)}
           onDetach={() => detach(sw.name)}
         />
       ))}
