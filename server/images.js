@@ -135,6 +135,24 @@ export const isImageName = (name) => /\.(png|jpe?g|gif|webp|svg)$/i.test(String(
 const RASTERISABLE = new Set(['png', 'jpeg', 'gif', 'webp', 'svg']);
 
 /**
+ * A picture the image model will accept: 8-bit sRGB PNG, no alpha, EXIF rotation applied and
+ * capped in size. A phone photo can be CMYK, 16-bit, rotated only by EXIF, or simply enormous —
+ * all of which the API rejects as “invalid image file or mode”. Returns null when the bytes are
+ * not a picture we can rasterise, so the caller can send them as they are.
+ */
+export async function forImageModel(buffer, { max = 2048 } = {}) {
+  const info = sniff(buffer);
+  if (!info || !RASTERISABLE.has(info.type)) return null;
+  return await sharp(buffer, { animated: false, density: 144 })
+    .rotate()
+    .resize({ width: max, height: max, fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .toColourspace('srgb')
+    .png()
+    .toBuffer();
+}
+
+/**
  * Downscaled JPEG of an asset for the model / thumbnails. Returns
  * {buffer, mimeType, width, height, original:{type,width,height,bytes}} or null
  * when the file cannot be rasterised (PDF, unknown bytes).

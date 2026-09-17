@@ -8,6 +8,7 @@
  */
 import * as store from './store.js';
 import * as ai from './ai.js';
+import { forImageModel } from './images.js';
 
 export const STYLE_NAME = 'Technical Aviation Manual Line-Art';
 
@@ -125,7 +126,14 @@ export async function convertToLineArt({ slug, version, reference = null, instru
     editHasPhoto: !!(base && ref),
   });
   const inputs = base ? [base, ...(ref ? [ref] : []), ...exemplars] : [ref, ...exemplars];
-  const buffer = await ai.generateImage({ prompt, references: inputs });
+  // A phone photo or an exemplar may be CMYK, 16-bit, or rotated only by EXIF — the image API refuses
+  // those as “invalid image file or mode”. Send every input as a plain sRGB PNG of the same picture.
+  const sendable = [];
+  for (const r of inputs) {
+    const png = await forImageModel(r.buffer).catch(() => null);
+    sendable.push(png ? { name: r.name.replace(/[.][^.]+$/, '') + '.png', buffer: png } : r);
+  }
+  const buffer = await ai.generateImage({ prompt, references: sendable });
   const outName = name || (base ? editOf : lineArtName(ref.name));
   const [illustration] = await store.saveAssets(slug, version, [{ name: outName, buffer }]);
   return { source, illustration, prompt, exemplars: exemplars.length, editedFrom: base ? editOf : null };
