@@ -435,7 +435,8 @@ export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHi
   // A software documented on its own: it is its own subject and has no hardware to list.
   const ownedBySoftware = module.kind === 'software';
   // A table of "none" says nothing: a manual lists hardware or software only when there is some.
-  const hasHardware = !ownedBySoftware && hardwareItemsOf(module).length > 0;
+  // Parts belong to the technician: the operator is told what the module does, not what it is made of.
+  const hasHardware = !ownedBySoftware && type.audience !== 'customer' && hardwareItemsOf(module).length > 0;
   const hasSoftware = (module.softwares || []).length > 0;
   const typeLabel = esc(T.manualTypes[type.id]);
   const typeLower = lang === 'en' ? typeLabel.toLowerCase() : typeLabel.charAt(0).toLowerCase() + typeLabel.slice(1);
@@ -931,6 +932,45 @@ export function compareDocVersions(a, b) {
  *  never recomputed. */
 export function docBranchName(slug, manual, version) {
   return `draft/${slug}-${manual || DEFAULT_MANUAL}-${version.toLowerCase()}`;
+}
+
+/** Does this body still carry the AI's pending-edit wrappers? */
+export const hasPendingEdits = (html) => /class="[^"]*ai-edit-pending/.test(html || '');
+
+/**
+ * Accept every pending AI edit in a body: the `<div class="ai-edit-pending">` wrappers go, what
+ * they wrap stays. Releasing a document accepts what is in it, so a released manual never shows
+ * a reader an edit still waiting to be reviewed. Nested wrappers are counted, not guessed at.
+ */
+export function acceptPendingEdits(html) {
+  let out = String(html || '');
+  const open = /<div\b[^>]*class="[^"]*\bai-edit-pending\b[^"]*"[^>]*>/i;
+  for (let guard = 0; guard < 1000; guard++) {
+    const m = open.exec(out);
+    if (!m) break;
+    const start = m.index;
+    const inner = start + m[0].length;
+    // walk forward to this div's own closing tag
+    let depth = 1;
+    let i = inner;
+    const tag = /<\/?div\b[^>]*>/gi;
+    tag.lastIndex = inner;
+    let t;
+    while ((t = tag.exec(out))) {
+      depth += t[0][1] === '/' ? -1 : 1;
+      if (depth === 0) {
+        i = t.index;
+        break;
+      }
+    }
+    if (depth !== 0) {
+      // unbalanced: drop the opening tag alone rather than eat the rest of the document
+      out = out.slice(0, start) + out.slice(inner);
+      continue;
+    }
+    out = out.slice(0, start) + out.slice(inner, i) + out.slice(i + t[0].length);
+  }
+  return out;
 }
 
 /** Loose numeric comparison for software versions like 'v2.0.1' or '2.10'. */
