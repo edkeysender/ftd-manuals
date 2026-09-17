@@ -265,7 +265,7 @@ function ActionMenu({ items }) {
       {open && (
         <div className="create-manual-menu action-menu" role="menu" style={{ position: 'fixed', ...pos }}>
           {items.map((it) => it.href ? (
-            <a key={it.label} className="cm-item" role="menuitem" href={it.href} target="_blank" rel="noreferrer" title={it.hint || ''} onClick={() => setOpen(false)}>
+            <a key={it.label} className="cm-item" role="menuitem" href={it.href} target="_blank" rel="noreferrer" title={it.hint || ''} onClick={() => setPos(null)}>
               <span className="cm-text"><strong>{it.label}</strong>{it.hint && <span className="muted small">{it.hint}</span>}</span>
             </a>
           ) : (
@@ -275,7 +275,7 @@ function ActionMenu({ items }) {
               role="menuitem"
               disabled={!!it.disabled}
               title={it.hint || ''}
-              onClick={() => { setOpen(false); it.onClick(); }}
+              onClick={() => { setPos(null); it.onClick(); }}
             >
               <span className="cm-text">
                 <strong>{it.label}{it.count > 0 && <span className="count-pill" style={{ marginLeft: 6 }}>{it.count}</span>}</strong>
