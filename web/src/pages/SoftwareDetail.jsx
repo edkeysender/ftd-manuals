@@ -55,6 +55,7 @@ function SoftwareBlock({ sw, all = [], reload }) {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [busy, setBusy] = useState(null); // "<slug>:<manual>"
+  const [renaming, setRenaming] = useState(null);
   // The manuals this software owns, read the way a module reads its own — same payload, same tab.
   const [own, setOwn] = useState(null);
   const documented = sw.modules.some((m) => m.own);
@@ -118,6 +119,18 @@ function SoftwareBlock({ sw, all = [], reload }) {
     );
   }
 
+  /** The name is the software’s identity — the rename moves everything that carries it. */
+  async function rename() {
+    const next = (renaming || '').trim();
+    if (!next || next === sw.name) return setRenaming(null);
+    const r = await act('rename', () => api.renameSoftware(sw.name, next));
+    setRenaming(null);
+    if (r) {
+      toast(t('{from} renamed to {to}', { from: r.from, to: r.to }));
+      navigate(`/software/${encodeURIComponent(r.to)}`, { replace: true });
+    }
+  }
+
   /** Delete the manuals the software owns. The software and its releases stay. */
   function deleteOwnManual() {
     if (
@@ -155,12 +168,37 @@ function SoftwareBlock({ sw, all = [], reload }) {
   return (
     <div className="sw-block software-block">
       <div className="software-head">
-        <h2>
-          {sw.name}
-          {sw.uncoveredCount > 0 && (
-            <span className="orange-dot" title={t('{releases} not yet covered by a doc version', { releases: plural(sw.uncoveredCount, 'manual-affecting release') })} />
-          )}
-        </h2>
+        {renaming === null ? (
+          <h2>
+            {sw.name}
+            <button
+              className="btn-icon btn-rename"
+              title={t('Rename {software} everywhere it is named', { software: sw.name })}
+              onClick={() => setRenaming(sw.name)}
+            >
+              ✎
+            </button>
+            {sw.uncoveredCount > 0 && (
+              <span className="orange-dot" title={t('{releases} not yet covered by a doc version', { releases: plural(sw.uncoveredCount, 'manual-affecting release') })} />
+            )}
+          </h2>
+        ) : (
+          <h2 className="pair">
+            <input
+              autoFocus
+              value={renaming}
+              onChange={(e) => setRenaming(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') rename();
+                if (e.key === 'Escape') setRenaming(null);
+              }}
+            />
+            <button className="btn btn-primary btn-sm" disabled={!renaming.trim() || busy === 'rename'} onClick={rename}>
+              {busy === 'rename' ? t('Renaming…') : t('Save')}
+            </button>
+            <button className="btn btn-sm" onClick={() => setRenaming(null)}>{t('Cancel')}</button>
+          </h2>
+        )}
         <span className="meta-chips">
           <span className="chip">{plural(sw.modules.length, 'module')}</span>
           <span className="chip">{plural(sw.manualCount, 'software manual')}</span>

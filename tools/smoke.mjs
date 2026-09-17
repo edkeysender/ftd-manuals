@@ -929,6 +929,27 @@ try {
   ok(swAssetRes.ok && swAssetRes.headers.get('content-type') === 'image/png', 'a software manual serves its pictures');
   ok((await req('GET', '/api/software/Panel%20Tool/assets')).some((x) => x.name === 'kiosk-screen.png'),
     'and lists them');
+  // renaming moves everything that carries the name: feed, links, covers, folder, branches
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Panel Tool', fromVersion: 'v1.0' });
+  const ren = await req('POST', '/api/software/Panel%20Tool/rename', { name: 'Kiosk Shell' });
+  ok(ren.to === 'Kiosk Shell' && ren.slug === 'kiosk-shell' && ren.modules.includes('starting-panel') && ren.docs > 0,
+    `rename reports what moved: ${JSON.stringify(ren)}`);
+  const feedAfter = await req('GET', '/api/softwares');
+  ok(!!feedAfter['Kiosk Shell'] && !feedAfter['Panel Tool'], 'the release feed is keyed by the new name');
+  ok((await req('GET', '/api/modules/starting-panel')).module.softwares.some((x) => x.name === 'Kiosk Shell'),
+    'the module links the new name');
+  const renOwner = await req('GET', '/api/software/Kiosk%20Shell');
+  ok(renOwner.module.slug === 'kiosk-shell' && renOwner.docs.length === 2,
+    'its manuals moved with it and answer at the new name');
+  ok(renOwner.docs.every((d) => (d.covers || []).every((c) => c.name === 'Kiosk Shell')), 'their covered releases name it too');
+  ok(renOwner.docs.filter((d) => d.branch).every((d) => d.branch.startsWith('draft/sw/kiosk-shell-')),
+    `their draft branches were renamed: ${renOwner.docs.map((d) => d.branch).join(', ')}`);
+  const renAsset = await fetch(BASE + '/api/software/kiosk-shell/assets/kiosk-screen.png', { headers: { Cookie: cookie } });
+  ok(renAsset.ok, 'and its pictures are served from the new folder');
+  const oldGone = await req('GET', '/api/software/Panel%20Tool').catch((e) => e);
+  ok(oldGone instanceof Error, 'nothing answers at the old name');
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Kiosk Shell', unlink: true });
+  await req('POST', '/api/software/Kiosk%20Shell/rename', { name: 'Panel Tool' });
   // asking again returns what exists instead of writing a second set
   const ownAgain = await req('POST', '/api/software/Panel%20Tool/own-manual', {}).catch((e) => e);
   ok(ownAgain instanceof Error && /already has its own manual/.test(ownAgain.message), 'a software has one set of own manuals');
