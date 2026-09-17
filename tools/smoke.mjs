@@ -929,6 +929,13 @@ try {
   ok(swAssetRes.ok && swAssetRes.headers.get('content-type') === 'image/png', 'a software manual serves its pictures');
   ok((await req('GET', '/api/software/Panel%20Tool/assets')).some((x) => x.name === 'kiosk-screen.png'),
     'and lists them');
+  // put it in the body: a rename must move the picture and the link to it together
+  const swBody = await req('GET', '/api/software/Panel%20Tool/docs/software-technician:A1.0');
+  await req('PUT', '/api/software/Panel%20Tool/docs/software-technician:A1.0/content', {
+    html: swBody.content + `<figure><img src="${swAsset[0].url}" alt="kiosk"></figure>`,
+    bump: true,
+    summary: 'figure',
+  });
   // renaming moves everything that carries the name: feed, links, covers, folder, branches
   await req('POST', '/api/modules/starting-panel/software', { name: 'Panel Tool', fromVersion: 'v1.0' });
   const ren = await req('POST', '/api/software/Panel%20Tool/rename', { name: 'Kiosk Shell' });
@@ -946,6 +953,9 @@ try {
     `their draft branches were renamed: ${renOwner.docs.map((d) => d.branch).join(', ')}`);
   const renAsset = await fetch(BASE + '/api/software/kiosk-shell/assets/kiosk-screen.png', { headers: { Cookie: cookie } });
   ok(renAsset.ok, 'and its pictures are served from the new folder');
+  const renBody = await req('GET', '/api/software/Kiosk%20Shell/docs/software-technician:A1.0');
+  ok(renBody.content.includes('/api/software/kiosk-shell/assets/') && !renBody.content.includes('/api/software/panel-tool/assets/'),
+    'the body points at the pictures where they now live');
   const oldGone = await req('GET', '/api/software/Panel%20Tool').catch((e) => e);
   ok(oldGone instanceof Error, 'nothing answers at the old name');
   await req('POST', '/api/modules/starting-panel/software', { name: 'Kiosk Shell', unlink: true });
