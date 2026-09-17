@@ -92,8 +92,9 @@ export default function App() {
               <NavLink to="/" end>
                 {t('Modules')}
               </NavLink>
-              <NavLink to="/parts">{t('Parts')}</NavLink>
               <NavLink to="/software">{t('Software')}</NavLink>
+              {/* Parts is the hardware catalog behind the modules — last, after what it serves. */}
+              <NavLink to="/parts">{t('Parts')}</NavLink>
             </nav>
             <div className="sync-state">
               {status ? (
