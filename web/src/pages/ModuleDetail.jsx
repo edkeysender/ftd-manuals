@@ -357,10 +357,6 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
     setFilter(id);
     try { localStorage.setItem(MANUAL_FILTER_KEY, id); } catch { /* private mode */ }
   };
-  const shownTypes = MANUAL_TYPES.filter((mt) => {
-    const f = MANUAL_FILTERS.find((x) => x.id === filter) || MANUAL_FILTERS[0];
-    return f.match(mt);
-  });
 
   const [collapsed, setCollapsed] = useState({}); // manual type id → group folded
   const [older, setOlder] = useState({}); // manual type id → older versions shown
@@ -485,6 +481,11 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
   // Software manuals a module wrote before they belonged to the software still show and still work;
   // the filters only offer a kind the module actually has something of.
   const filters = MANUAL_FILTERS.filter((f) => f.id === 'all' || created.some(f.match));
+  // The choice is remembered across every page that shows manuals, so it can name a kind this owner
+  // has none of — a module carrying a software filter picked on a software page would read as having
+  // no manuals at all. Fall back to showing everything.
+  const active = filters.some((f) => f.id === filter) ? filter : 'all';
+  const shownTypes = MANUAL_TYPES.filter((mt) => (MANUAL_FILTERS.find((x) => x.id === active) || MANUAL_FILTERS[0]).match(mt));
   const shownGroups = shownTypes.filter((mt) => docs.some((d) => d.manual === mt.id));
 
   return (
@@ -500,7 +501,7 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
           {filters.map((f) => {
             const n = created.filter(f.match).length;
             return (
-              <button key={f.id} className={f.id === filter ? 'active' : ''} onClick={() => pickFilter(f.id)}>
+              <button key={f.id} className={f.id === active ? 'active' : ''} onClick={() => pickFilter(f.id)}>
                 {t(f.label)}{n > 0 && <span className="mf-count">{n}</span>}
               </button>
             );
