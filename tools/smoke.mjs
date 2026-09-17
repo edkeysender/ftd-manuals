@@ -229,7 +229,10 @@ try {
   ok(hwList.length === 4, `new units joined the catalog (${hwList.length} items)`);
   const camDoc = await req('GET', '/api/modules/camera/docs/A1.0');
   ok(camDoc.module.hardwareItems.length === 3 && camDoc.module.hardwareIds.length === 3, 'module.json stores hardwareIds, read resolves items');
-  ok(camDoc.generated.includes('Cockpit camera — fixed') && camDoc.generated.includes('COTS · Axis M3086'), 'section 3 lists every unit');
+  const camTechDoc = await req('GET', '/api/modules/camera/docs/technician:A1.0');
+  ok(camTechDoc.generated.includes('Cockpit camera — fixed') && camTechDoc.generated.includes('COTS · Axis M3086'),
+    'the technician manual’s section 3 lists every unit');
+  ok(!camDoc.generated.includes('Cockpit camera — fixed'), 'the customer manual of the same module lists none of them');
   ok((camDoc.content.match(/<h3>/g) || []).length >= 6, 'customer template has one subsection per unit in Description and Operation');
   ok(camDoc.content.includes('<h2>Description</h2>') && !camDoc.content.includes('<h2>Installation</h2>'), 'customer manual sections: Description, Operation, Maintenance, Appendixes');
   const camTech = await req('GET', '/api/modules/camera/docs/technician:A1.0');
@@ -261,8 +264,7 @@ try {
   ok(doc0.content.includes('<h2>Description</h2>') && doc0.content.includes('<h2>Operation</h2>'), 'blank customer template has Description and Operation sections');
   ok(doc0.generated.includes('Revision record'), 'sections 1-3 generated');
   // a table of “none” says nothing: section 3 lists parts and software only when there are some
-  ok(!doc0.generated.includes('<h3>Parts</h3>') === !(doc0.module.hardwareItems || []).length,
-    'the parts section appears exactly when the module has parts');
+  ok(!doc0.generated.includes('<h3>Parts</h3>'), 'a customer manual lists no parts — that is the technician’s section');
   ok(!doc0.generated.includes('<h3>Software relation</h3>') === !(doc0.module.softwares || []).length,
     'the software section appears exactly when the module has a software');
 

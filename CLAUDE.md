@@ -62,7 +62,9 @@ The functional spec lives in this file's history and in the Modules spec provide
   `LEP_SCRIPT` in `docgen.js`) and fills the List of Effective Pages from the real A4 pages — every section
   carries `data-lep-issue/rev/date` (A1.0 → issue 1, rev 0, release date); the web view shows the per-chapter
   effectivity table instead. Manual pages (web view, editor page, export) render in Verdana.
-- Sections 1–3 (revision record, introduction, general info) are **generated** from module data —
+- Sections 1–3 (revision record, introduction, general info) are **generated** from module data; section 3 lists
+  **Parts** only in a technician manual (the operator is told what the module does, not what it is made of) and lists
+  a table only when there is something in it —
   they are never hand-edited; the editor stores only sections 4–7 as semantic HTML.
 - Module types (`MODULE_TYPES` in `server/docgen.js`, mirrored in `web/src/api.js`): what a module IS decides
   which manuals are drafted on creation — `own-module` / `third-party-kit` → customer + technician,
