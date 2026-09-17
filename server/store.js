@@ -901,13 +901,23 @@ export async function getModule(ref) {
   };
 }
 
-/** Released manuals of that audience owned by the softwares a module runs, in link order. */
+/**
+ * The version of a manual type a compiled manual shows: the released one, else the newest there is,
+ * which the chapter then carries as a draft. A manual being assembled while its modules are still
+ * being written shows what exists, flagged — and its software chapters follow the same rule.
+ */
+function chapterDoc(docs, manual) {
+  const typed = docsOfType(docs, manual);
+  return typed.find((d) => d.status === 'released') || typed[0] || null;
+}
+
+/** Manuals of that audience owned by the softwares a module runs, in link order. */
 function inheritedChapters(module, swType, softwareOwners) {
   if (!swType) return [];
   const out = [];
   for (const sw of module.softwares || []) {
     const entry = softwareOwners.find((o) => o.module.name === sw.name);
-    const doc = entry?.docs.find((d) => d.manual === swType && d.status === 'released');
+    const doc = entry ? chapterDoc(entry.docs, swType) : null;
     if (doc) out.push({ entry, doc });
   }
   return out;
@@ -2516,8 +2526,7 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       chapters.push({ slug: mslug, missing: true });
       continue;
     }
-    const typed = docsOfType(entry.docs, type);
-    const doc = typed.find((d) => d.status === 'released') || typed[0] || null;
+    const doc = chapterDoc(entry.docs, type);
     if (!doc) {
       chapters.push({ slug: mslug, module: entry.module, missing: true, reason: `no ${MANUAL_TYPES[type].label.toLowerCase()}` });
       continue;
@@ -2525,7 +2534,7 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
     chapters.push(await chapterOf(entry, doc));
     // Released software manual of the same audience → additional chapter. The module may write it
     // itself, or inherit it from a software it runs that documents itself.
-    const ownSw = swType ? docsOfType(entry.docs, swType).find((d) => d.status === 'released') : null;
+    const ownSw = swType ? chapterDoc(entry.docs, swType) : null;
     if (ownSw) {
       const swNames = (entry.module.softwares || []).map((sw) => sw.name).join(' · ');
       chapters.push(

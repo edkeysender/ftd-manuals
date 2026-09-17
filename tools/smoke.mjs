@@ -1264,10 +1264,14 @@ try {
   const inh = (await req('GET', '/api/modules/starting-panel')).inherited;
   ok(inh.length === 2 && inh.every((d) => d.software === 'Route Editor') && inh.some((d) => d.manual === 'software-technician'),
     'the module lists the manuals of the software it runs');
-  // released, it becomes that module’s software chapter in an assembled manual
+  // a manual assembled while the software manual is still a draft shows it, flagged — like any chapter
+  await req('POST', '/api/manuals', { name: 'Inherit Check', manual: 'technician', modules: ['starting-panel'] });
+  const draftInh = (await req('GET', '/api/manuals/inherit-check')).chapters.find((c) => c.software);
+  ok(draftInh && draftInh.inheritedFrom === 'Route Editor' && draftInh.isDraft === true,
+    'a software manual still in draft compiles as a flagged chapter');
+  // released, it is the same chapter without the flag
   await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/submit-review');
   await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/release');
-  await req('POST', '/api/manuals', { name: 'Inherit Check', manual: 'technician', modules: ['starting-panel'] });
   const inhManual = await req('GET', '/api/manuals/inherit-check');
   const swChapter = inhManual.chapters.find((c) => c.software);
   ok(swChapter && swChapter.inheritedFrom === 'Route Editor' && swChapter.doc.key === 'software-technician:A1.0',
