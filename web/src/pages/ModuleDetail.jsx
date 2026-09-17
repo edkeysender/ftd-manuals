@@ -269,7 +269,14 @@ function ActionMenu({ items }) {
               <span className="cm-text"><strong>{it.label}</strong>{it.hint && <span className="muted small">{it.hint}</span>}</span>
             </a>
           ) : (
-            <button key={it.label} className={`cm-item ${it.danger ? 'danger' : ''}`} role="menuitem" title={it.hint || ''} onClick={() => { setOpen(false); it.onClick(); }}>
+            <button
+              key={it.label}
+              className={`cm-item ${it.danger ? 'danger' : ''}`}
+              role="menuitem"
+              disabled={!!it.disabled}
+              title={it.hint || ''}
+              onClick={() => { setOpen(false); it.onClick(); }}
+            >
               <span className="cm-text">
                 <strong>{it.label}{it.count > 0 && <span className="count-pill" style={{ marginLeft: 6 }}>{it.count}</span>}</strong>
                 {it.hint && <span className="muted small">{it.hint}</span>}
@@ -432,10 +439,18 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
       }
     } else {
       primary.push(<button key="view" className="btn btn-primary btn-sm" onClick={() => go('edit')}>{t('View')}</button>);
-      if (d.status === 'released' && !docs.some((o) => o.manual === d.manual && (isOpenDoc(o) || o.hotfix))) {
+      if (d.status === 'released') {
+        // Only one version of a manual type is written at a time: an open draft, or a hotfix of the
+        // released one. The item stays, saying which, so the absence is never a mystery.
+        const busyWith = docs.find((o) => o.manual === d.manual && (isOpenDoc(o) || o.hotfix));
         more.push({
           label: t('Hotfix'),
-          hint: t('Correct this released version in place — same version, next revision'),
+          disabled: !!busyWith,
+          hint: busyWith
+            ? busyWith.hotfix
+              ? t('{version} is already being hotfixed — publish or discard it first', { version: busyWith.version })
+              : t('{version} is open ({status}) — release or discard it first', { version: busyWith.version, status: t(busyWith.status) })
+            : t('Correct this released version in place — same version, next revision'),
           onClick: () =>
             act(
               () => api.startHotfix(slug, d.key),
