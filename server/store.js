@@ -85,6 +85,8 @@ const softwareFile = (slug) => `software/${slug}/software.json`;
 const ownerFileOf = (ref) => (isSwRef(ref) ? softwareFile(refSlug(ref)) : moduleFile(refSlug(ref)));
 /** draft/<slug>-<manual>-a1.0, and draft/sw/<slug>-… for a software (a ref cannot carry the colon). */
 const ownerBranch = (ref, manual, version) => docBranchName(isSwRef(ref) ? `sw/${refSlug(ref)}` : refSlug(ref), manual, version);
+/** Prefix every draft branch of one owner shares — how its branches are found among all of them. */
+const ownerBranchPrefix = (ref) => `draft/${isSwRef(ref) ? `sw/${refSlug(ref)}` : refSlug(ref)}-`;
 
 /**
  * A software that owns its manuals, shaped like the module records the rest of the store reads:
@@ -1890,7 +1892,7 @@ export async function getAsset(slug, name) {
   const key = `${slug}/${name}`;
   if (assetCache.has(key)) return assetCache.get(key);
   const branches = await repo.branches();
-  const refs = [...branches.filter((b) => b.startsWith(`draft/${slug}-`)), 'main'];
+  const refs = [...branches.filter((b) => b.startsWith(ownerBranchPrefix(slug))), 'main'];
   for (const ref of refs) {
     const buf = await repo.showBinary(ref, assetFile(slug, name));
     if (buf && buf.length) {
@@ -1905,7 +1907,7 @@ export async function getAsset(slug, name) {
  *  stamping) and `stale`: reasons it may be out of date (see assetStaleness). */
 export async function listAssets(slug) {
   const branches = await repo.branches();
-  const drafts = branches.filter((b) => b.startsWith(`draft/${slug}-`));
+  const drafts = branches.filter((b) => b.startsWith(ownerBranchPrefix(slug)));
   const names = new Set();
   for (const ref of [...drafts, 'main']) {
     for (const f of await repo.lsFiles(ref, `${ownerRoot(slug)}/assets`)) {
