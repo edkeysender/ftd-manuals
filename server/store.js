@@ -918,6 +918,8 @@ function inheritedChapters(module, swType, softwareOwners) {
  * Entries: { software, manual, key, version, status, revision, updatedAt }.
  */
 async function inheritedSoftwareManuals(module) {
+  // A software documents itself: what it owns is its own, never inherited.
+  if (module.kind === 'software') return [];
   const { softwareOwners } = await collectAll();
   const out = [];
   for (const sw of module.softwares || []) {

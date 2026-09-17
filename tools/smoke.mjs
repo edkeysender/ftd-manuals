@@ -915,6 +915,9 @@ try {
     'the Software page lists the software itself as the owner of its manuals');
   ok(ownRowSw.coverage.manuals.some((r) => r.own && r.key === 'software-customer:A1.0' && r.open),
     'its manuals are on the coverage timeline');
+  const ownOwner = await req('GET', '/api/software/Panel%20Tool');
+  ok(ownOwner.module.kind === 'software' && ownOwner.docs.length === 2 && ownOwner.inherited.length === 0,
+    'the software page reads its own manuals, and inherits nothing from itself');
   // asking again returns what exists instead of writing a second set
   const ownAgain = await req('POST', '/api/software/Panel%20Tool/own-manual', {}).catch((e) => e);
   ok(ownAgain instanceof Error && /already has its own manual/.test(ownAgain.message), 'a software has one set of own manuals');
