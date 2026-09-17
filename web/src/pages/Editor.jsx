@@ -704,10 +704,14 @@ export default function Editor({ review: reviewProp = false }) {
   ];
 
   /* ---------- revisions & workflow ---------- */
-  async function commitRevision(summary) {
+  /**
+   * Commit the body as a revision. `body` is for a caller that has just replaced the content:
+   * htmlRef follows a render, so reading it in the same tick would save the text being replaced.
+   */
+  async function commitRevision(summary, body) {
     try {
       setSaving(true);
-      const meta = await api.saveContent(slug, version, htmlRef.current, true, summary, lang);
+      const meta = await api.saveContent(slug, version, body ?? htmlRef.current, true, summary, lang);
       setDocMeta(meta);
       noteLanguageSaved(meta);
       setSavedAt(new Date().toISOString());
@@ -1045,10 +1049,11 @@ export default function Editor({ review: reviewProp = false }) {
   async function acceptAI() {
     const clean = stripPending(htmlRef.current);
     setEditorHtml(clean);
+    htmlRef.current = clean; // an autosave in flight must not put the markers back
     const { instruction, commentId } = pending;
     setPending(null);
     clearSnapshot(ownerId, snapId);
-    const meta = await commitRevision(`AI edit: ${instruction}`);
+    const meta = await commitRevision(`AI edit: ${instruction}`, clean);
     // An accepted proposal for a reviewer comment closes the thread with a note.
     if (commentId && meta) {
       try {
@@ -1068,6 +1073,7 @@ export default function Editor({ review: reviewProp = false }) {
   function discardAI() {
     if (pending.original != null) {
       setEditorHtml(pending.original);
+      htmlRef.current = pending.original;
     } else {
       // Recovered edit with no snapshot: the only safe option is to drop the
       // highlighted blocks (they were inserted or modified by the AI).
@@ -1077,7 +1083,9 @@ export default function Editor({ review: reviewProp = false }) {
         )
       )
         return;
-      setEditorHtml(removePendingBlocks(htmlRef.current));
+      const stripped = removePendingBlocks(htmlRef.current);
+      setEditorHtml(stripped);
+      htmlRef.current = stripped;
     }
     setPending(null);
     clearSnapshot(ownerId, snapId);
