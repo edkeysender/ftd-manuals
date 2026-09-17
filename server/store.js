@@ -780,6 +780,9 @@ export async function renameSoftware(oldName, newName) {
       const oldSlug = owner.module.slug;
       const oldRoot = `software/${oldSlug}`;
       const newRoot = `software/${newSlug}`;
+      const oldAssets = assetUrl(swRef(oldSlug), '').slice(0, -1); // /api/software/<slug>/assets
+      const newAssets = assetUrl(swRef(newSlug), '').slice(0, -1);
+      const bodies = {}; // ref:dir → the html files of that doc, listed before anything moves
       const refs = [...new Set([...owner.docs.map((d) => d.ref), 'main'])];
       for (const ref of refs) {
         await repo.checkout(ref);
@@ -789,6 +792,7 @@ export async function renameSoftware(oldName, newName) {
         for (const d of owner.docs) {
           if (d.ref !== ref) continue;
           here.push({ d, meta: await readJson(ref, docJson(d.dir)) });
+          bodies[`${ref}:${d.dir}`] = (await repo.lsFiles(ref, d.dir)).filter((f) => f.endsWith('.html'));
         }
         if (newSlug !== oldSlug && (await repo.lsFiles(ref, oldRoot)).length) await repo.movePath(oldRoot, newRoot);
         if (rec) {
@@ -804,6 +808,16 @@ export async function renameSoftware(oldName, newName) {
           if (meta.branch) meta.branch = ownerBranch(swRef(newSlug), meta.manual || d.manual, meta.version || d.version);
           await repo.writeFile(docJson(d.dir.replace(oldRoot, newRoot)), JSON.stringify(meta, null, 2) + '\n');
           docsTouched++;
+        }
+        // and the bodies embed those assets by URL, which is built from the owner
+        if (newSlug !== oldSlug) {
+          for (const { d } of here) {
+            for (const f of bodies[`${ref}:${d.dir}`] || []) {
+              const html = await repo.show(ref, f);
+              if (!html || !html.includes(oldAssets)) continue;
+              await repo.writeFile(f.replace(oldRoot, newRoot), html.split(oldAssets).join(newAssets));
+            }
+          }
         }
         await repo.commitAll(`${newName}: rename from ${oldName}`);
       }
