@@ -342,8 +342,8 @@ const STRINGS = {
     audiences: { customer: 'customer', technician: 'technician' },
     revisionRecord: 'Revision record', documentRevisions: 'Document revisions', versionInEffect: (v, d) => `Document version ${v}, released ${d}.`, revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
     introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualType: 'Manual type', docCode: 'Document code',
-    hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes', notHardware: 'No parts — not a hardware module',
-    softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', notSoftware: 'Not software-related', andLater: 'and later',
+    hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes',
+    softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', andLater: 'and later',
     audienceRow: (label, audience) => `${label} — ${audience} audience`,
     introAudience: { technician: 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.', customer: 'It is intended for the operator of the simulator.' },
     introSubject: (kind, name, detail, standalone) =>
@@ -373,8 +373,8 @@ const STRINGS = {
     audiences: { customer: 'klient', technician: 'technik' },
     revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', versionInEffect: (v, d) => `Wersja dokumentu ${v}, wydana ${d}.`, revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
     introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
-    hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi', notHardware: 'Brak części — moduł bez sprzętu',
-    softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', notSoftware: 'Nie dotyczy oprogramowania', andLater: 'i nowsze',
+    hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi',
+    softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', andLater: 'i nowsze',
     audienceRow: (label, audience) => `${label} — odbiorca: ${audience}`,
     introAudience: { technician: 'Jest przeznaczony dla instalatora i technika serwisu i nie stanowi części dokumentacji przekazywanej operatorowi symulatora.', customer: 'Jest przeznaczony dla operatora symulatora.' },
     introSubject: (kind, name, detail, standalone) =>
@@ -421,7 +421,7 @@ export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHi
         const range = cov ? (cov.to ? (cov.to === cov.from ? cov.from : `${cov.from} – ${cov.to}`) : `${cov.from} ${T.andLater}`) : s.fromVersion;
         return `<tr><td>${esc(s.name)}</td><td>${esc(range || '—')}</td></tr>`;
       })
-      .join('\n') || `<tr><td colspan="2">${T.notSoftware}</td></tr>`;
+      .join('\n');
 
   const hwRows =
     hardwareItemsOf(module)
@@ -429,11 +429,14 @@ export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHi
         (h) =>
           `<tr><td>${esc(hardwareItemLabel(h))}</td><td>${esc(hardwareDetail(h))}</td><td>${esc(h.notes || '')}</td></tr>`
       )
-      .join('\n') || `<tr><td colspan="3">${T.notHardware}</td></tr>`;
+      .join('\n');
 
   const type = manualTypeOf(doc.manual);
   // A software documented on its own: it is its own subject and has no hardware to list.
   const ownedBySoftware = module.kind === 'software';
+  // A table of "none" says nothing: a manual lists hardware or software only when there is some.
+  const hasHardware = !ownedBySoftware && hardwareItemsOf(module).length > 0;
+  const hasSoftware = (module.softwares || []).length > 0;
   const typeLabel = esc(T.manualTypes[type.id]);
   const typeLower = lang === 'en' ? typeLabel.toLowerCase() : typeLabel.charAt(0).toLowerCase() + typeLabel.slice(1);
   const audience = T.introAudience[type.audience];
@@ -472,20 +475,20 @@ ${ownedBySoftware ? '' : `<tr><th>${T.category}</th><td>${esc(T.categories[modul
 <tr><th>${T.docCode}</th><td>${esc(manualDocCode(module, type.id))}</td></tr>
 </tbody>
 </table>
-${ownedBySoftware ? '' : `<h3>${T.hardware}</h3>
+${!hasHardware ? '' : `<h3>${T.hardware}</h3>
 <table>
 <thead><tr><th>${T.unit}</th><th>${T.relation}</th><th>${T.notes}</th></tr></thead>
 <tbody>
 ${hwRows}
 </tbody>
 </table>`}
-<h3>${T.softwareRelation}</h3>
+${!hasSoftware ? '' : `<h3>${T.softwareRelation}</h3>
 <table>
 <thead><tr><th>${T.software}</th><th>${T.coveredReleases}</th></tr></thead>
 <tbody>
 ${swRows}
 </tbody>
-</table>
+</table>`}
 </section>
 `;
 }
