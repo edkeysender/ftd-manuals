@@ -21,9 +21,13 @@ export default function ManualsList() {
     <div className="page">
       <div className="page-head">
         <h1>{t('Manuals')}</h1>
-        <button className="btn" onClick={() => setImporting(true)}>
-          {t('Import config')}
-        </button>
+        {/* Import config is hidden for now — the importer and its endpoint stay, so bringing the
+            button back is this line. */}
+        {false && (
+          <button className="btn" onClick={() => setImporting(true)}>
+            {t('Import config')}
+          </button>
+        )}
         <button className="btn btn-primary" onClick={() => setOpen(true)}>
           {t('+ Create manual')}
         </button>
