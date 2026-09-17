@@ -708,6 +708,120 @@ export async function ensureSoftware(name) {
  * range is renamed; a from-version that is not a release of the target is cleared. The target's
  * releases are untouched — register the versions the docs cover afterwards.
  */
+/**
+ * Rename a software, everywhere it is named: the release feed, every module that links it, the
+ * covered-releases of every doc that documents it (released ones included — a manual regenerates its
+ * section 3 from them), and, when the software owns its manuals, its folder `software/<slug>` and the
+ * draft branches named after it. Nothing keeps the old name.
+ */
+export async function renameSoftware(oldName, newName) {
+  oldName = cleanSwName(oldName);
+  newName = cleanSwName(newName);
+  if (!oldName || !newName) throw new Error('The software and its new name are required');
+  if (oldName === newName) return { from: oldName, to: newName, modules: [], docs: 0, moved: false };
+  const feed = await getSoftwareFeed();
+  const { modules, softwareOwners } = await collectAll();
+  const owner = softwareOwners.find((o) => o.module.name === oldName) || null;
+  if (!feed[oldName] && !owner && !modules.some(({ module }) => (module.softwares || []).some((x) => x.name === oldName))) {
+    throw new Error(`Software "${oldName}" not found`);
+  }
+  if (feed[newName]) throw new Error(`Software "${newName}" already exists — merge into it instead of renaming`);
+  if (softwareOwners.some((o) => o.module.name === newName)) throw new Error(`Software "${newName}" already exists`);
+  const newSlug = slugify(newName);
+  if (!newSlug) throw new Error('The new name must contain a letter or a digit');
+  if (owner && newSlug !== owner.module.slug && softwareOwners.some((o) => o.module.slug === newSlug)) {
+    throw new Error(`Another software already owns manuals at "${newSlug}"`);
+  }
+
+  const linked = modules.filter(({ module }) => (module.softwares || []).some((x) => x.name === oldName));
+  const renamed = [];
+  let docsTouched = 0;
+
+  /** Rewrite covers naming the software on one ref; the caller commits. */
+  const renameCovers = async (ref, docs) => {
+    for (const d of docs) {
+      if (d.ref !== ref) continue;
+      const dj = await readJson(ref, docJson(d.dir));
+      if (!dj || !(dj.covers || []).some((c) => c.name === oldName)) continue;
+      dj.covers = dj.covers.map((c) => (c.name === oldName ? { ...c, name: newName } : c));
+      await repo.writeFile(docJson(d.dir), JSON.stringify(dj, null, 2) + '\n');
+      docsTouched++;
+    }
+  };
+
+  await mutate(async () => {
+    // 1. the feed: the name is its key
+    if (feed[oldName]) {
+      await repo.checkout('main');
+      const fresh = (await readJson('main', 'softwares.json')) || {};
+      fresh[newName] = fresh[oldName] || feed[oldName];
+      delete fresh[oldName];
+      await repo.writeFile('softwares.json', JSON.stringify(fresh, null, 2) + '\n');
+      await repo.commitAll(`softwares: rename ${oldName} → ${newName}`);
+    }
+
+    // 2. every module that links it, and the covers of its docs — on main and on open branches
+    for (const { module, docs } of linked) {
+      const { hardwareItems, ...m } = module;
+      m.softwares = (m.softwares || []).map((x) => (x.name === oldName ? { ...x, name: newName } : x));
+      const onMain = !!(await readJson('main', moduleFile(module.slug)));
+      const refs = [...(onMain ? ['main'] : []), ...docs.filter((d) => isOpen(d) && d.branch).map((d) => d.branch)];
+      for (const ref of refs) {
+        await repo.checkout(ref);
+        await repo.writeFile(moduleFile(module.slug), JSON.stringify(m, null, 2) + '\n');
+        await renameCovers(ref, docs);
+        await repo.commitAll(`${module.slug}: software ${oldName} → ${newName}`);
+      }
+      renamed.push(module.slug);
+    }
+
+    // 3. the manuals it owns: the folder is named after it, and so are their branches
+    if (owner) {
+      const oldSlug = owner.module.slug;
+      const oldRoot = `software/${oldSlug}`;
+      const newRoot = `software/${newSlug}`;
+      const refs = [...new Set([...owner.docs.map((d) => d.ref), 'main'])];
+      for (const ref of refs) {
+        await repo.checkout(ref);
+        // Read from the committed paths before anything moves: readJson reads the ref, not the tree.
+        const rec = await readJson(ref, `${oldRoot}/software.json`);
+        const here = [];
+        for (const d of owner.docs) {
+          if (d.ref !== ref) continue;
+          here.push({ d, meta: await readJson(ref, docJson(d.dir)) });
+        }
+        if (newSlug !== oldSlug && (await repo.lsFiles(ref, oldRoot)).length) await repo.movePath(oldRoot, newRoot);
+        if (rec) {
+          await repo.writeFile(
+            `${newRoot}/software.json`,
+            JSON.stringify({ ...rec, slug: newSlug, name: newName, updatedAt: now() }, null, 2) + '\n'
+          );
+        }
+        // doc.json: its covers name the software, and its branch is named after it
+        for (const { d, meta } of here) {
+          if (!meta) continue;
+          meta.covers = (meta.covers || []).map((c) => (c.name === oldName ? { ...c, name: newName } : c));
+          if (meta.branch) meta.branch = ownerBranch(swRef(newSlug), meta.manual || d.manual, meta.version || d.version);
+          await repo.writeFile(docJson(d.dir.replace(oldRoot, newRoot)), JSON.stringify(meta, null, 2) + '\n');
+          docsTouched++;
+        }
+        await repo.commitAll(`${newName}: rename from ${oldName}`);
+      }
+      await repo.checkout('main');
+      // The branch a doc lives on is named after the software too; its doc.json now says the new name.
+      if (newSlug !== oldSlug) {
+        const prefix = ownerBranchPrefix(swRef(oldSlug));
+        for (const b of await repo.branches()) {
+          if (!b.startsWith(prefix)) continue;
+          await repo.renameBranch(b, `${ownerBranchPrefix(swRef(newSlug))}${b.slice(prefix.length)}`);
+        }
+      }
+    }
+    await repo.checkout('main');
+  });
+  return { from: oldName, to: newName, slug: newSlug, modules: renamed, docs: docsTouched, moved: !!owner };
+}
+
 export async function mergeSoftware(oldName, newName) {
   oldName = cleanSwName(oldName);
   newName = cleanSwName(newName);

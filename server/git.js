@@ -269,6 +269,16 @@ export class GitRepo {
     await this.raw(['branch', '-D', branch]);
   }
 
+  async renameBranch(from, to) {
+    await this.raw(['branch', '-m', from, to]);
+  }
+
+  /** Move a tracked path on the checked-out branch (staged, not committed). */
+  async movePath(from, to) {
+    await fs.mkdir(path.dirname(path.join(this.dir, to)), { recursive: true });
+    await this.raw(['mv', '--', from, to]);
+  }
+
   async removePath(relPath) {
     await this.raw(['rm', '-r', '-q', '--', relPath]);
   }

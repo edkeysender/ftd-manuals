@@ -93,6 +93,8 @@ export const api = {
   deleteSoftwareManual: (name) => request(`/api/software/${encodeURIComponent(name)}/manual`, { method: 'DELETE' }),
   /** Repair: a name modules link that was never created as a software → merged into a registered one. */
   mergeSoftware: (name, into) => request(`/api/software/${encodeURIComponent(name)}/merge`, { method: 'POST', body: { into } }),
+  /** Renames the software everywhere it is named: feed, module links, doc covers, its own manuals. */
+  renameSoftware: (name, next) => request(`/api/software/${encodeURIComponent(name)}/rename`, { method: 'POST', body: { name: next } }),
   linkSoftware: (slug, body) => request(`${ownerPath(slug)}/software`, { method: 'POST', body }),
   registerRelease: (body) => request('/api/softwares', { method: 'POST', body }),
   /** Admin only. Refused while a module link or a doc version starts at that release. */

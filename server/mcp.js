@@ -626,6 +626,20 @@ export const TOOLS = [
     annotations: { title: 'Merge software', ...RW },
   },
   {
+    name: 'rename_software',
+    description:
+      'Rename a software everywhere it is named: the release feed, every module that links it, the covered releases of every doc that documents it, and — when the software owns its manuals — their folder and draft branches. Use it for a spelling or a product rename; to fold one name into another that already exists, use merge_software.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Software to rename, as listed by list_software' },
+        new_name: { type: 'string', description: 'The name it takes' },
+      },
+      required: ['name', 'new_name'],
+    },
+    annotations: { title: 'Rename software', ...RW },
+  },
+  {
     name: 'cover_release',
     description:
       'Make a doc the manual for a software release: widens a Released doc\'s covered range (non-manual-affecting release) or assigns the release to an open Draft/In-review doc (a manual-affecting release that got its own doc version). Each manual type covers releases on its own — call it once per manual (customer, technician, software-customer, …) that documents the software.',
@@ -853,6 +867,8 @@ async function callTool(name, args) {
       return args.unlink ? await store.unlinkSoftware(args.slug, args.name) : await store.linkSoftware(args.slug, args.name, args.from_version);
     case 'merge_software':
       return await store.mergeSoftware(args.name, args.into);
+    case 'rename_software':
+      return await store.renameSoftware(args.name, args.new_name);
     case 'register_software_release':
       return await store.registerSoftwareRelease({ name: args.name, version: args.version, manualAffecting: !!args.manual_affecting, note: args.note });
     case 'cover_release':

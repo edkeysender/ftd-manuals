@@ -428,6 +428,11 @@ app.post('/api/software/:name/merge', wrap(async (req, res) => {
   res.json(await store.mergeSoftware(req.params.name, (req.body || {}).into));
 }));
 
+/** Rename a software everywhere it is named: feed, module links, doc covers, its own manuals. */
+app.post('/api/software/:name/rename', wrap(async (req, res) => {
+  res.json(await store.renameSoftware(req.params.name, (req.body || {}).name));
+}));
+
 /** Delete a software: unlinked from every module, dropped from the feed with its releases. */
 /** Delete only the software's own manuals; the software and its releases stay. */
 app.delete('/api/software/:name/manual', wrap(async (req, res) => {

@@ -84,7 +84,10 @@ The functional spec lives in this file's history and in the Modules spec provide
   at `/api/software/<name>/docs/<key>` and `/#/software/<name>/docs/<key>/edit` (`ownerPath`/`ownerHref`
   in `web/src/api.js`, `docPaths`/`ownerPaths` in `index.js`), and over MCP by naming the software as
   `slug` (`resolveOwnerRef`). Deleting a software is refused while it owns manuals —
-  `DELETE /api/software/:name/manual` removes those first. Softwares written as own-software **modules**
+  `DELETE /api/software/:name/manual` removes those first. A software is renamed with `renameSoftware`
+  (pencil on its page, `POST /api/software/:name/rename`, MCP `rename_software`): the feed key, every module link,
+  every doc’s `covers`, and its own folder and draft branches all move — `mergeSoftware` still folds one name into
+  another that exists. Softwares written as own-software **modules**
   before this are never migrated: they keep working, and writing the manual again adopts one
   (`adoptOwnSoftwareModule`) instead of starting a second set. An own-software module is not listed among
   modules and cannot be a chapter (`hardwareModules` in `web/src/api.js`); a software-owned manual is not
