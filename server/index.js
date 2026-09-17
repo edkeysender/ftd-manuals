@@ -443,6 +443,11 @@ app.delete('/api/software/:name', wrap(async (req, res) => {
   res.json(await store.deleteSoftware(req.params.name));
 }));
 
+/** Correct the version a release is registered under; everything pointing at it follows. */
+app.post('/api/software/:name/releases/:version/rename', wrap(async (req, res) => {
+  res.json(await store.renameSoftwareRelease(req.params.name, req.params.version, (req.body || {}).version));
+}));
+
 /** Drop one release from the feed — refused while a module link or a doc version starts at it. */
 app.delete('/api/software/:name/releases/:version', wrap(async (req, res) => {
   res.json(await store.deleteSoftwareRelease(req.params.name, req.params.version));

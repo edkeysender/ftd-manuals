@@ -723,6 +723,21 @@ export const TOOLS = [
     annotations: { title: 'Delete software release', ...RW, destructiveHint: true },
   },
   {
+    name: 'rename_software_release',
+    description:
+      'Correct the version a release is registered under (a typo, or a build renamed after the fact). It keeps its date, note and manual-affecting flag, and everything pointing at the old version follows: module links that start there and the covered ranges of every doc that documents the software.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Software name as listed by list_software' },
+        version: { type: 'string', description: 'The release as registered now' },
+        new_version: { type: 'string', description: 'The version it should be' },
+      },
+      required: ['name', 'version', 'new_version'],
+    },
+    annotations: { title: 'Rename software release', ...RW },
+  },
+  {
     name: 'start_hotfix',
     description:
       'Correct a RELEASED doc version in place: reopens its draft branch at the next revision (A1.0 r1 → r2), so the edit tools work on it as on a draft. The manual on main stays the released one until release_doc publishes the hotfix; discard_doc drops it. Use it for a correction to the document (a wrong pin number, a missing warning) — a new software release that changes the manual gets its own version via create_doc_version instead.',
@@ -1185,6 +1200,8 @@ async function callTool(name, args) {
       return await store.startHotfix(args.slug, args.version);
     case 'delete_software_release':
       return await store.deleteSoftwareRelease(args.name, args.version);
+    case 'rename_software_release':
+      return await store.renameSoftwareRelease(args.name, args.version, args.new_version);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

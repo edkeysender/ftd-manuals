@@ -278,6 +278,13 @@ function SoftwareBlock({ sw, all = [], reload }) {
                 t('New {type} version started from {software} {version}', { type: t(manualType(row.manual).label).toLowerCase(), software: sw.name, version: release })
               ).then((r) => r && navigate(`${ownerHref(row.own ? { software: sw.name } : row.slug)}/docs/${r.key}/edit`))
             }
+            onRenameRelease={(rel, next) =>
+              act(
+                'release',
+                () => api.renameRelease(sw.name, rel.version, next),
+                t('{software} {version} is now {next}', { software: sw.name, version: rel.version, next })
+              )
+            }
             onDeleteRelease={
               isAdmin
                 ? (rel) => {
