@@ -918,6 +918,17 @@ try {
   const ownOwner = await req('GET', '/api/software/Panel%20Tool');
   ok(ownOwner.module.kind === 'software' && ownOwner.docs.length === 2 && ownOwner.inherited.length === 0,
     'the software page reads its own manuals, and inherits nothing from itself');
+  // pictures of a software manual live on its own draft branch and are served from there
+  const swShot =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const swAsset = await req('POST', '/api/software/Panel%20Tool/docs/software-technician:A1.0/assets', {
+    files: [{ name: 'Kiosk Screen.PNG', dataBase64: swShot }],
+  });
+  ok(swAsset[0].url === '/api/software/panel-tool/assets/kiosk-screen.png', `software asset url: ${swAsset[0].url}`);
+  const swAssetRes = await fetch(BASE + swAsset[0].url, { headers: { Cookie: cookie } });
+  ok(swAssetRes.ok && swAssetRes.headers.get('content-type') === 'image/png', 'a software manual serves its pictures');
+  ok((await req('GET', '/api/software/Panel%20Tool/assets')).some((x) => x.name === 'kiosk-screen.png'),
+    'and lists them');
   // asking again returns what exists instead of writing a second set
   const ownAgain = await req('POST', '/api/software/Panel%20Tool/own-manual', {}).catch((e) => e);
   ok(ownAgain instanceof Error && /already has its own manual/.test(ownAgain.message), 'a software has one set of own manuals');
