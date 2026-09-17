@@ -590,6 +590,10 @@ export const PL = {
   Open: 'Otwórz',
   'From its software': 'Z oprogramowania',
   'Linked modules': 'Powiązane moduły',
+  '{version} is open ({status}) — release or discard it first':
+    '{version} jest otwarta ({status}) — najpierw ją wydaj lub odrzuć',
+  '{version} is already being hotfixed — publish or discard it first':
+    '{version} ma już otwartą poprawkę — najpierw ją opublikuj lub odrzuć',
   'Rename {software} everywhere it is named': 'Zmień nazwę {software} wszędzie, gdzie występuje',
   'Renaming…': 'Zmienianie nazwy…',
   '{from} renamed to {to}': 'Zmieniono nazwę {from} na {to}',
