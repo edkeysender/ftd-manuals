@@ -107,7 +107,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   `hardwareIds` — pick existing or create new (wizard step 3, module → Hardware tab, MCP `list_hardware` /
   `create_hardware` / `update_hardware`, `hardware: [{id}|{name,type,…}]` on create/update). One manual may
   cover several unit types (three camera models): each gets its own `<h3>` in Installation/Operation, a row
-  in section 3 and in the FAT header. Old modules with an inline `hardware` object still resolve on read. Software links: N rows of name + from-version.
+  in section 3 and in the FAT header. Old modules with an inline `hardware` object still resolve on read.
+  A software owns no hardware, but its **technician** manual still has to say which units run it: `relatedHardware()`
+  (`store.js`) collects the `hardwareItems` of every module that links the software, deduped by catalog id and
+  carrying the modules each part sits in — returned on the doc as `relatedHardware` and printed in section 3 as
+  *Related hardware* (`T.relatedHardware` / `T.runsIn`), never in a customer manual. Software links: N rows of name + from-version.
   A manual type documents a software as a **chain of doc versions**: each starts at one release (`covers[].from`)
   and documents everything after it until the next version of that type takes over, so the newest is always open
   (`2.0.1 → latest`) — `softwareCoverage()` in `store.js` derives end, `closedBy` and the whole Software versions

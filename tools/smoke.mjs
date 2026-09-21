@@ -1300,6 +1300,19 @@ try {
     'Software page row shows the own manual with its from-version');
   const deckDoc = await req('GET', '/api/software/' + encodeURIComponent('Deck Planner') + '/docs/software-customer:A1.0');
   ok(deckDoc.content.includes('<h2>Overview</h2>') && deckDoc.content.includes('Deck Planner') && deckDoc.doc.status === 'draft', 'own manual opens in the editor as a draft');
+  // a software owns no parts, but its technician manual still names the units that run it
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Deck Planner', fromVersion: 'v3.0.0' });
+  const deckPath = '/api/software/' + encodeURIComponent('Deck Planner') + '/docs/';
+  const deckTech = await req('GET', deckPath + 'software-technician:A1.0');
+  ok(deckTech.relatedHardware.length === 1 && deckTech.relatedHardware[0].modules[0].slug === 'starting-panel',
+    'the software manual resolves the hardware of the modules that run it');
+  ok(deckTech.generated.includes('Related hardware') && deckTech.generated.includes('Starting Panel'),
+    'and section 3 of the technician manual lists it, with the module it sits in');
+  ok(!(await req('GET', deckPath + 'software-customer:A1.0')).generated.includes('Related hardware'),
+    'the operator manual does not — parts belong to the technician');
+  await req('POST', '/api/modules/starting-panel/software', { name: 'Deck Planner', unlink: true });
+  ok((await req('GET', deckPath + 'software-technician:A1.0')).relatedHardware.length === 0,
+    'unlinking the software takes the hardware out of its manual again');
   const ownDup = await req('POST', '/api/software/' + encodeURIComponent('Deck Planner') + '/own-manual', {}).catch((e) => e);
   ok(ownDup instanceof Error && /already has its own manual/.test(ownDup.message), 'a software writes its own manuals once');
   const ownUnknown = await req('POST', '/api/software/Nope/own-manual', {}).catch((e) => e);

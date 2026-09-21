@@ -6,6 +6,7 @@ import {
   generatedSections,
   hardwareLabel,
   hardwareItemsOf,
+  hardwareItemLabel,
   softwareLabel,
   parseDocVersion,
   compareDocVersions,
@@ -1081,6 +1082,28 @@ async function inheritedSoftwareManuals(module) {
   return out;
 }
 
+/**
+ * The hardware a software manual applies to. A software owns no hardware of its own, but the
+ * technician still has to know which units run it — those are the parts of every module that
+ * links the software. Deduped by catalog id, each item carrying the modules it came from.
+ * Entries: hardware item + { modules: [{slug, name}] }.
+ */
+async function relatedHardware(module) {
+  // A module lists its own parts; only a software has to borrow them from elsewhere.
+  if (module.kind !== 'software') return [];
+  const { modules } = await collectAll();
+  const out = new Map();
+  for (const { module: m } of modules) {
+    if (!(m.softwares || []).some((s) => s.name === module.name)) continue;
+    for (const h of hardwareItemsOf(m)) {
+      const item = out.get(h.id) || { ...h, modules: [] };
+      if (!item.modules.some((x) => x.slug === m.slug)) item.modules.push({ slug: m.slug, name: m.name });
+      out.set(h.id, item);
+    }
+  }
+  return [...out.values()].sort((a, b) => hardwareItemLabel(a).localeCompare(hardwareItemLabel(b)));
+}
+
 /** Find one doc record by key ("technician:A1.0", or bare "A1.0" = customer manual).
  *  Returns { entry, doc } or null. */
 async function findDoc(ref, key) {
@@ -1124,13 +1147,15 @@ export async function getDoc(slug, key, { lang = DEFAULT_LANG } = {}) {
   const enContent = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
   const content = lang === DEFAULT_LANG ? enContent : (await repo.show(doc.ref, contentLangIn(doc.dir, lang))) || '';
   const checklist = doc.fat ? await readJson(doc.ref, checklistIn(doc.dir)) : null;
+  const hardware = await relatedHardware(entry.module);
   return {
     module: entry.module,
     doc,
     lang,
     languages: languageStatus(doc, contentHash(enContent)),
     content,
-    generated: generatedSections(entry.module, doc, lang),
+    generated: generatedSections(entry.module, doc, lang, { relatedHardware: hardware }),
+    relatedHardware: hardware,
     checklist,
   };
 }
@@ -2741,7 +2766,10 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       doc,
       // An assembled manual has one consolidated revision record in chapter 1, so the
       // per-chapter history is dropped — the chapter states only the version in effect.
-      generated: generatedSections(entry.module, doc, lang, { revisionHistory: false }),
+      generated: generatedSections(entry.module, doc, lang, {
+        revisionHistory: false,
+        relatedHardware: await relatedHardware(entry.module),
+      }),
       content,
       checklist,
       isDraft: doc.status !== 'released',

@@ -343,6 +343,7 @@ const STRINGS = {
     revisionRecord: 'Revision record', documentRevisions: 'Document revisions', versionInEffect: (v, d) => `Document version ${v}, released ${d}.`, revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
     introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualType: 'Manual type', docCode: 'Document code',
     hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes',
+    relatedHardware: 'Related hardware', runsIn: 'Runs in',
     softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', andLater: 'and later',
     audienceRow: (label, audience) => `${label} — ${audience} audience`,
     introAudience: { technician: 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.', customer: 'It is intended for the operator of the simulator.' },
@@ -374,6 +375,7 @@ const STRINGS = {
     revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', versionInEffect: (v, d) => `Wersja dokumentu ${v}, wydana ${d}.`, revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
     introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
     hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi',
+    relatedHardware: 'Powiązany sprzęt', runsIn: 'Pracuje w',
     softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', andLater: 'i nowsze',
     audienceRow: (label, audience) => `${label} — odbiorca: ${audience}`,
     introAudience: { technician: 'Jest przeznaczony dla instalatora i technika serwisu i nie stanowi części dokumentacji przekazywanej operatorowi symulatora.', customer: 'Jest przeznaczony dla operatora symulatora.' },
@@ -403,7 +405,12 @@ export const manualTypeLabel = (id, lang = DEFAULT_LANG) => strings(lang).manual
 export const groupLabel = (g, lang = DEFAULT_LANG) => strings(lang).groups[g] || GROUP_LABELS[g] || g;
 
 /** Sections 1–3 as read-only HTML, generated from module + doc metadata, in `lang`. */
-export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHistory = true } = {}) {
+export function generatedSections(
+  module,
+  doc,
+  lang = DEFAULT_LANG,
+  { revisionHistory = true, relatedHardware = [] } = {}
+) {
   const T = strings(lang);
   const record = (doc.revisionRecord || [])
     .map(
@@ -437,6 +444,17 @@ export function generatedSections(module, doc, lang = DEFAULT_LANG, { revisionHi
   // A table of "none" says nothing: a manual lists hardware or software only when there is some.
   // Parts belong to the technician: the operator is told what the module does, not what it is made of.
   const hasHardware = !ownedBySoftware && type.audience !== 'customer' && hardwareItemsOf(module).length > 0;
+  // A software has no parts of its own, but the technician still has to know which units run it:
+  // the parts of the modules that link this software, named with the module they sit in.
+  const hasRelated = ownedBySoftware && type.audience !== 'customer' && relatedHardware.length > 0;
+  const relRows = relatedHardware
+    .map(
+      (h) =>
+        `<tr><td>${esc(hardwareItemLabel(h))}</td><td>${esc(hardwareDetail(h))}</td><td>${esc(
+          (h.modules || []).map((m) => m.name).join(', ') || '—'
+        )}</td></tr>`
+    )
+    .join('\n');
   const hasSoftware = (module.softwares || []).length > 0;
   const typeLabel = esc(T.manualTypes[type.id]);
   const typeLower = lang === 'en' ? typeLabel.toLowerCase() : typeLabel.charAt(0).toLowerCase() + typeLabel.slice(1);
@@ -481,6 +499,13 @@ ${!hasHardware ? '' : `<h3>${T.hardware}</h3>
 <thead><tr><th>${T.unit}</th><th>${T.relation}</th><th>${T.notes}</th></tr></thead>
 <tbody>
 ${hwRows}
+</tbody>
+</table>`}
+${!hasRelated ? '' : `<h3>${T.relatedHardware}</h3>
+<table>
+<thead><tr><th>${T.unit}</th><th>${T.relation}</th><th>${T.runsIn}</th></tr></thead>
+<tbody>
+${relRows}
 </tbody>
 </table>`}
 ${!hasSoftware ? '' : `<h3>${T.softwareRelation}</h3>
