@@ -21,7 +21,7 @@ export default function Wizard({ onClose, onCreated }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [category, setCategory] = useState('cockpit-hardware');
+  const [category, setCategory] = useState('misc');
   const [type, setType] = useState('own-module');
   const [software, setSoftware] = useState('');
   const [softwareList, setSoftwareList] = useState([]);

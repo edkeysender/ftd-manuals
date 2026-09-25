@@ -10,13 +10,18 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+/** What a module is, for the modules list and section 3. The first three are what a new module
+ *  picks from; the rest are older values existing modules keep — they are never migrated. */
 export const CATEGORY_LABELS = {
+  ios: 'IOS',
+  cockpit: 'Cockpit',
+  misc: 'MISC',
   'cockpit-hardware': 'Cockpit hardware',
   peripherals: 'Peripherals',
   structure: 'Structure',
   'instructor-station': 'Instructor station',
   software: 'Software',
-  rack: 'Rack', // legacy — existing modules keep it; no longer offered for new ones
+  rack: 'Rack',
 };
 
 /* ------------------------------------------------------------------ */
@@ -371,7 +376,7 @@ const STRINGS = {
   pl: {
     manualTypes: { customer: 'Instrukcja użytkownika', technician: 'Instrukcja techniczna', 'software-customer': 'Instrukcja użytkownika oprogramowania', 'software-technician': 'Instrukcja techniczna oprogramowania' },
     groups: { SIM: 'Instrukcja symulatora', IOS: 'Instrukcja IOS', RACK: 'Instrukcja szaf RACK' },
-    categories: { software: 'Oprogramowanie', 'cockpit-hardware': 'Sprzęt kokpitu', structure: 'Konstrukcja', peripherals: 'Urządzenia peryferyjne', rack: 'Rack' },
+    categories: { ios: 'IOS', cockpit: 'Kokpit', misc: 'Różne', software: 'Oprogramowanie', 'cockpit-hardware': 'Sprzęt kokpitu', structure: 'Konstrukcja', peripherals: 'Urządzenia peryferyjne', 'instructor-station': 'Stanowisko instruktora', rack: 'Rack' },
     audiences: { customer: 'klient', technician: 'technik' },
     revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', versionInEffect: (v, d) => `Wersja dokumentu ${v}, wydana ${d}.`, revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
     introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',

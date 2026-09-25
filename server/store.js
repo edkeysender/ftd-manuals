@@ -1270,7 +1270,7 @@ export async function createModuleDoc(input, manuals) {
     slug,
     name: input.name,
     code: input.code || null,
-    category: input.category || 'software',
+    category: input.category || 'misc',
     type: input.type || null, // own-module | third-party-kit | own-software | module-software
     hardwareIds: hw.ids,
     softwares: input.softwares || [],
