@@ -395,6 +395,8 @@ export const PL = {
   '{doc} submitted for review': '{doc} przekazano do przeglądu',
   'Submit for review': 'Przekaż do przeglądu',
   '{doc} released — merged to main': '{doc} wydano — scalono do main',
+  '{reason} Release anyway?': '{reason} Wydać mimo to?',
+  'Release cancelled': 'Wydanie anulowane',
   'Approve & release': 'Zatwierdź i wydaj',
   Hotfix: 'Poprawka',
   'Edit hotfix': 'Edytuj poprawkę',

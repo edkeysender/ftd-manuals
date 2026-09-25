@@ -37,6 +37,21 @@ export const ownerHref = (owner) =>
     ? `/software/${encodeURIComponent(owner.software)}`
     : `/modules/${owner}`;
 
+/**
+ * Release a doc version, asking the author once when the only thing in the way is a TODO they left
+ * themselves. An AI edit nobody accepted is not offered here: it has to be accepted or discarded in
+ * the editor first, so no reader is ever shown a change that is still under review.
+ */
+export async function releaseDoc(slug, key) {
+  try {
+    return await api.release(slug, key);
+  } catch (e) {
+    if (e.code !== 'todo') throw e;
+    if (!confirm(t('{reason} Release anyway?', { reason: e.message }))) throw new Error(t('Release cancelled'));
+    return await api.release(slug, key, { force: true });
+  }
+}
+
 export const api = {
   /* login & users */
   me: () => request('/api/auth/me'),
@@ -77,7 +92,8 @@ export const api = {
   translate: (slug, version, lang, html) => request(`${ownerPath(slug)}/docs/${version}/translate`, { method: 'POST', body: { lang, html } }),
   submitReview: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/submit-review`, { method: 'POST' }),
   backToDraft: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/back-to-draft`, { method: 'POST' }),
-  release: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/release`, { method: 'POST' }),
+  release: (slug, version, { force = false } = {}) =>
+    request(`${ownerPath(slug)}/docs/${version}/release`, { method: 'POST', body: { force } }),
   discard: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/discard`, { method: 'POST' }),
   /** Reopen a released version to correct it in place; `release` publishes it back at the new revision. */
   startHotfix: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/hotfix`, { method: 'POST' }),

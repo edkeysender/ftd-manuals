@@ -704,8 +704,12 @@ export const TOOLS = [
   {
     name: 'release_doc',
     description:
-      'Release an In-review doc version: merges the draft branch to main, freezes the revision counter and supersedes older released versions of the same manual type. On a doc opened with start_hotfix it publishes the correction instead: same version, the revision it was edited to, nothing superseded.',
-    inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
+      'Release an In-review doc version: merges the draft branch to main, freezes the revision counter and supersedes older released versions of the same manual type. On a doc opened with start_hotfix it publishes the correction instead: same version, the revision it was edited to, nothing superseded. Refused while a body still carries an AI edit nobody accepted, or a TODO marker (force: true releases with the TODOs).',
+    inputSchema: {
+      type: 'object',
+      properties: { ...SLUG_VER, force: { type: 'boolean', description: 'Release although TODO markers are left in the body' } },
+      required: ['slug'],
+    },
     annotations: { title: 'Release doc', ...RW, idempotentHint: true },
   },
   {
@@ -1195,7 +1199,7 @@ async function callTool(name, args) {
     case 'submit_for_review':
       return await store.setDocStatus(args.slug, args.version, 'in-review');
     case 'release_doc':
-      return await store.releaseDoc(args.slug, args.version);
+      return await store.releaseDoc(args.slug, args.version, { force: !!args.force });
     case 'start_hotfix':
       return await store.startHotfix(args.slug, args.version);
     case 'delete_software_release':
