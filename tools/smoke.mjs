@@ -1206,10 +1206,10 @@ try {
     'manual compiles the released A1.1 as chapter 1');
   ok(compiled.html.includes('class="chapter"') && compiled.html.includes('Table of contents') && compiled.html.includes('Grounding check added'),
     'compiled html has chapter, TOC and module content');
-  ok(compiled.html.includes('id="ch-general"') && compiled.html.includes('General Info') && compiled.html.includes('office@ftd.aero') && compiled.html.includes('List of Effective Pages'),
-    'manual opens with the General chapter: General Info, manufacturer address, List of Effective Pages');
+  ok(compiled.html.includes('id="ch-general"') && compiled.html.includes('List of Effective Pages') && !compiled.html.includes('office@ftd.aero'),
+    'General chapter is what the manual says about itself; the company text is a module chapter now');
   ok(compiled.html.indexOf('id="ch-general"') < compiled.html.indexOf('id="revision-record"') && compiled.html.indexOf('id="revision-record"') < compiled.html.indexOf('id="toc"') && compiled.html.indexOf('id="toc"') < compiled.html.indexOf('id="lep"'),
-    'General chapter order: 1.1 General Info, 1.2 Revision record, 1.3 Table of contents, 1.4 List of Effective Pages');
+    'General chapter order: 1.1 Revision record, 1.2 Table of contents, 1.3 List of Effective Pages');
   // a released software manual of the same audience joins the bundle as its own chapter
   const swcNew = await req('POST', '/api/modules/starting-panel/docs', { manual: 'software-customer' });
   await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`, { force: true });
@@ -1222,7 +1222,7 @@ try {
   const fatHtml = await fatRes.text();
   ok(fatRes.status === 200 && fatHtml.includes('Factory Acceptance Test protocol') && fatHtml.includes('id="fat-starting-panel"') && fatHtml.includes('Modules under test'),
     'manual FAT protocol compiles the module checklists');
-  ok(compiled.html.includes('href="#c2-s4"') && compiled.html.includes('id="c2-s4"') && compiled.html.includes('href="#ch-starting-panel"') && compiled.html.includes('href="#general-info"'),
+  ok(compiled.html.includes('href="#c2-s4"') && compiled.html.includes('id="c2-s4"') && compiled.html.includes('href="#ch-starting-panel"') && compiled.html.includes('href="#revision-record"'),
     'TOC links point at anchored headings; General is chapter 1, module chapters number from 2');
   ok(compiled.html.includes('proprietary material protected by international law') && compiled.html.includes('class="head-box"'),
     'manual has header box and proprietary footer');

@@ -364,11 +364,7 @@ const STRINGS = {
     tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
     draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', draft: 'draft',
     // chapter 1 — General (FTD manual template)
-    general: 'General', generalIntro: 'In this section the overall information about the document itself is provided.', generalInfoHeading: 'General Info',
-    generalText1: (title) => `This document contains ${title} for Flight and Navigation Procedures Trainer (FNPT).`,
-    generalText2: 'Any changes or modification in this document are not allowed if not introduced by FNPT Manufacturer and approved by CAA.',
-    generalText3: 'If this document is found in unauthorized place, please contact FNPT Manufacturer:',
-    manufacturer: ['FTD.AERO Sp. z o.o.', 'Wąska 33', '62-052 Komorniki', 'Poland', 'www.FTD.aero', 'office@ftd.aero', 'tel. +48 519 737 800'],
+    general: 'General', generalIntro: 'In this section the overall information about the document itself is provided.',
     lep: 'List of Effective Pages', page: 'Page', issue: 'Issue', rev: 'Rev.', effectiveDate: 'Effective date',
     headPage: 'Page', headVersion: 'Version', headRevision: 'Revision', headDate: 'Date',
     lepNote: 'Page numbers are assigned when the manual is opened for print or exported; the table below lists the effectivity of every chapter.',
@@ -395,11 +391,7 @@ const STRINGS = {
     intro2: (version, draftRev) => `Wersja dokumentu ${version}${draftRev ? ` (robocza, rewizja ${draftRev})` : ''}. Do instrukcji symulatora kompilowane są wyłącznie wydane wersje dokumentów.`,
     tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
-    general: 'Ogólne', generalIntro: 'W tej sekcji podano ogólne informacje o samym dokumencie.', generalInfoHeading: 'Informacje ogólne',
-    generalText1: (title) => `Niniejszy dokument zawiera ${title} dla urządzenia FNPT (Flight and Navigation Procedures Trainer).`,
-    generalText2: 'Wszelkie zmiany lub modyfikacje niniejszego dokumentu są niedozwolone, jeżeli nie zostały wprowadzone przez producenta FNPT i zatwierdzone przez CAA.',
-    generalText3: 'W przypadku znalezienia tego dokumentu w nieuprawnionym miejscu prosimy o kontakt z producentem FNPT:',
-    manufacturer: ['FTD.AERO Sp. z o.o.', 'Wąska 33', '62-052 Komorniki', 'Polska', 'www.FTD.aero', 'office@ftd.aero', 'tel. +48 519 737 800'],
+    general: 'Ogólne', generalIntro: 'W tej sekcji podano ogólne informacje o samym dokumencie.',
     lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', effectiveDate: 'Data obowiązywania',
     headPage: 'Strona', headVersion: 'Wersja', headRevision: 'Rewizja', headDate: 'Data',
     lepNote: 'Numery stron są nadawane przy otwarciu instrukcji do druku lub eksporcie; poniższa tabela podaje obowiązującą wersję każdego rozdziału.',
@@ -566,7 +558,6 @@ export const MANUAL_CSS = `
 .manual-doc .cover { text-align: center; padding: 10px 0 40px; }
 .manual-doc .cover-image img { max-width: 92%; max-height: 560px; margin: 26px auto 10px; display: block; }
 .manual-doc .cover-placeholder { margin: 40px auto; width: 70%; height: 240px; border: 1px dashed #c8d1db; border-radius: 8px; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 14px; }
-.manual-doc .manufacturer { line-height: 1.7; margin: 8px 0 0 24px; }
 .manual-doc .lep-note { color: #64748b; font-size: 12px; }
 .manual-doc .lep-pages { display: none; }
 .manual-doc .lep-pages th, .manual-doc .lep-pages td { text-align: center; }
@@ -690,9 +681,10 @@ function headerBox(manual, logoHtml, T, head = {}) {
 }
 
 /**
- * Body HTML of an assembled manual: cover, chapter 1 "General" (1.1 General Info
- * with the manufacturer's address, 1.2 revision record, 1.3 clickable TOC,
- * 1.4 List of Effective Pages), module chapters numbered from 2 with anchored
+ * Body HTML of an assembled manual: cover, chapter 1 "General" (1.1 revision
+ * record, 1.2 clickable TOC, 1.3 List of Effective Pages — what the manual says
+ * about itself; the company and safety text is written as a module chapter),
+ * module chapters numbered from 2 with anchored
  * headings, proprietary footer. Every section carries data-lep-* (issue / rev /
  * effective date of the doc it comes from) so the export can fill the List of
  * Effective Pages per printed page; the web view shows the per-chapter table.
@@ -736,7 +728,6 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
     .join('\n');
 
   const generalItems = [
-    ['general-info', T.generalInfoHeading],
     ['revision-record', T.revisionRecord],
     ['toc', T.tableOfContents],
     ['lep', T.lep],
@@ -772,11 +763,6 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
   const general = `<section class="chapter general" id="ch-general"${lepAttrs(frontLep)}>
 <h1>${esc(T.general)}</h1>
 <p>${T.generalIntro}</p>
-<h2 id="general-info">${esc(T.generalInfoHeading)}</h2>
-<p>${T.generalText1(`<strong>${esc(manual.name)}</strong>`)}</p>
-<p>${T.generalText2}</p>
-<p>${T.generalText3}</p>
-<p class="manufacturer">${T.manufacturer.map(esc).join('<br>')}</p>
 <h2 id="revision-record">${T.revisionRecord}</h2>
 <table>
   <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.code}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
