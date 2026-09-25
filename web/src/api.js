@@ -55,7 +55,9 @@ export const api = {
   modules: () => request('/api/modules'),
   createModule: (input) => request('/api/modules', { method: 'POST', body: input }),
   module: (slug) => request(`${ownerPath(slug)}`),
-  /** Module metadata patch: name, code, category, group, softwares, hardware ([{id}] and/or new items). */
+  /** One category on many modules at once. Returns {updated, failed}. */
+  setModulesCategory: (slugs, category) => request('/api/modules/category', { method: 'POST', body: { slugs, category } }),
+  /** Module metadata patch: name, code, category, softwares, hardware ([{id}] and/or new items). */
   updateModule: (slug, patch) => request(`${ownerPath(slug)}`, { method: 'PATCH', body: patch }),
   hardware: () => request('/api/hardware'),
   createHardware: (item) => request('/api/hardware', { method: 'POST', body: item }),
