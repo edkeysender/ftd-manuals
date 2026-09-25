@@ -419,14 +419,16 @@ export function generatedSections(
   { revisionHistory = true, relatedHardware = [] } = {}
 ) {
   const T = strings(lang);
-  // The revision column carries the date under the revision: two narrow lines instead of a third
-  // column, so the description keeps the width it needs.
+  // The revision column carries the date under the revision: short lines in one narrow column
+  // instead of a third column, so the description keeps the width it needs. Each line is a block
+  // element, so the cell stacks even where the stylesheet has not arrived yet, and the
+  // "(inherited)" note sits on its own line where it is free to wrap.
   const record = (doc.revisionRecord || [])
     .map(
       (r) =>
-        `<tr><td class="rev-cell">${esc(doc.version)} ${esc(r.rev)}${
-          r.inherited ? ` <em>(${T.inherited})</em>` : ''
-        }<span class="rev-date">${fmtDate(r.date)}</span></td><td>${esc(r.summary)}</td></tr>`
+        `<tr><td class="rev-cell"><div class="rev-id">${esc(doc.version)} ${esc(r.rev)}</div><div class="rev-date">${fmtDate(
+          r.date
+        )}</div>${r.inherited ? `<div class="rev-note"><em>(${T.inherited})</em></div>` : ''}</td><td>${esc(r.summary)}</td></tr>`
     )
     .join('\n');
 
@@ -480,7 +482,7 @@ export function generatedSections(
 ${revisionHistory
   ? `<h3>${T.documentRevisions}</h3>
 <table class="revisions">
-<thead><tr><th>${T.revision}</th><th>${T.change}</th></tr></thead>
+<thead><tr><th class="rev-cell">${T.revision}</th><th>${T.change}</th></tr></thead>
 <tbody>
 ${record || `<tr><td colspan="2">${T.noRevisions}</td></tr>`}
 </tbody>
@@ -607,8 +609,11 @@ export const MANUAL_CSS = `
 .manual-doc .admonition.note { background: #eff6ff; border-color: #0b5fff; }
 .manual-doc .admonition.note .admonition-title { color: #0b5fff; }
 .manual-doc .auto-section { background: #fafbfc; padding: 0 12px 6px; border-radius: 6px; }
-.manual-doc table.revisions td.rev-cell { width: 26mm; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.manual-doc table.revisions .rev-date { display: block; color: #64748b; font-size: 11.5px; }
+/* Table cells break words anywhere; the revision column must not, or "Revision" reads "Revi sion". */
+.manual-doc table.revisions .rev-cell { width: 27mm; }
+.manual-doc table.revisions th.rev-cell, .manual-doc table.revisions .rev-id, .manual-doc table.revisions .rev-date { white-space: nowrap; overflow-wrap: normal; word-break: keep-all; hyphens: none; }
+.manual-doc table.revisions .rev-id { font-variant-numeric: tabular-nums; }
+.manual-doc table.revisions .rev-date, .manual-doc table.revisions .rev-note { color: #64748b; font-size: 11.5px; }
 .manual-doc .ai-edit-pending { outline: 2px dashed #f97316; outline-offset: 3px; }
 .manual-doc .missing { color: #dc2626; }
 .manual-doc .doc-footer { margin-top: 70px; padding-top: 12px; border-top: 1px solid #c8d1db; font-size: 11px; color: #64748b; text-align: center; line-height: 1.5; }
