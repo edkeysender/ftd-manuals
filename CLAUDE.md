@@ -61,7 +61,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   module chapters number from 2. The HTML export paginates itself with **paged.js** (inlined; `PAGED_CSS` +
   `LEP_SCRIPT` in `docgen.js`) and fills the List of Effective Pages from the real A4 pages — every section
   carries `data-lep-issue/rev/date` (A1.0 → issue 1, rev 0, release date); the web view shows the per-chapter
-  effectivity table instead. Manual pages (web view, editor page, export) render in Verdana.
+  effectivity table instead. Manual pages (web view, editor page, export) render in Verdana. The page header is
+  the company template `public data/Dla SERWISU/Dok firmowy wzór.docx` to the millimetre (`headerBox` in `docgen.js`):
+  one 190 mm table centred on the page, 0.5 pt black rules, columns 26.6 · 19 · 19 · 19 · 19 · 20 · 67.5 mm — the
+  21 mm logo spanning three rows, title and subtitle in Verdana 6 pt bold, the page field in Arial 10 pt (label
+  regular, number bold, filled by paged.js in the export), and Wersja / Rewizja / Data in Verdana 6 pt.
 - Sections 1–3 (revision record, introduction, general info) are **generated** from module data; section 3 lists
   **Parts** only in a technician manual (the operator is told what the module does, not what it is made of) and lists
   a table only when there is something in it —
