@@ -1007,6 +1007,18 @@ export function docBranchName(slug, manual, version) {
 }
 
 /** Does this body still carry the AI's pending-edit wrappers? */
+/**
+ * Characters a manual body must not keep. Text copied out of a PDF arrives with its typographic
+ * quotes and dashes truncated to control codes (U+201C becomes U+001C), which the reader sees as
+ * a box; the rest of the C0 range is damage nobody can see at all. Everything else is left alone.
+ */
+const CONTROL_FIXES = { '\u0013': '\u2013', '\u0014': '\u2014', '\u0018': '\u2018', '\u0019': '\u2019', '\u001a': '\u201a', '\u001b': '\u201b', '\u001c': '\u201c', '\u001d': '\u201d', '\u001e': '\u201e' };
+export const cleanBodyHtml = (html) =>
+  String(html ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, (c) => CONTROL_FIXES[c] || '');
+
+/** A marker the author left for themselves: TODO(author): … */
+export const TODO_MARKER_RE = /\bTODO(?:\([^)]*\))?\s*:/i;
+
 export const hasPendingEdits = (html) => /class="[^"]*ai-edit-pending/.test(html || '');
 
 /**

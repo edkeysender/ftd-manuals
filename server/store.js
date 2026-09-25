@@ -24,6 +24,9 @@ import {
   LANGUAGES,
   DEFAULT_LANG,
   langOf,
+  cleanBodyHtml,
+  hasPendingEdits,
+  TODO_MARKER_RE,
 } from './docgen.js';
 import { normalizeChecklist } from './checklist.js';
 import { validateAsset, isImageName } from './images.js';
@@ -1411,6 +1414,7 @@ async function loadDraftDoc(slug, key) {
  */
 export async function saveDraftContent(slug, key, html, { bump = false, summary = '', lang = DEFAULT_LANG } = {}) {
   lang = langOf(lang);
+  html = cleanBodyHtml(html);
   const { branch, dir, meta } = await loadDraftDoc(slug, key);
   if (!isEditable(meta)) throw new Error(`Doc ${meta.version} is ${meta.status} — not editable`);
   const version = meta.version;
@@ -1615,8 +1619,39 @@ export async function setDocStatus(slug, key, status) {
  *  supersede older released versions of the same manual type, delete the branch.
  *  On a hotfix branch it publishes the correction instead: same version, the revision it was
  *  edited to, nothing superseded. */
-export async function releaseDoc(ref, key) {
+/**
+ * What the author still has to look at before a version goes out, language by language: an AI edit
+ * nobody accepted, and the TODO markers they left for themselves. Releasing a pending edit would
+ * put an unreviewed change in front of a reader, so it is a hard stop; a TODO the author knows
+ * about can be overruled with `force`.
+ */
+async function releaseBlockers(branch, dir, meta) {
+  const pending = [];
+  const todos = [];
+  for (const code of Object.keys(LANGUAGES)) {
+    if (code !== DEFAULT_LANG && !meta.languages?.[code]) continue;
+    const body = (await repo.show(branch, contentLangIn(dir, code))) || '';
+    if (hasPendingEdits(body)) pending.push(LANGUAGES[code].short);
+    if (TODO_MARKER_RE.test(body)) todos.push(LANGUAGES[code].short);
+  }
+  return { pending, todos };
+}
+
+export async function releaseDoc(ref, key, { force = false } = {}) {
   const { branch, dir, meta, manual } = await loadDraftDoc(ref, key);
+  const blockers = await releaseBlockers(branch, dir, meta);
+  if (blockers.pending.length)
+    throw Object.assign(
+      new Error(
+        `The ${blockers.pending.join(' and ')} body still has an AI edit waiting for you — open the manual in that language and Accept or Discard it, then release.`
+      ),
+      { code: 'pending-edits' }
+    );
+  if (blockers.todos.length && !force)
+    throw Object.assign(
+      new Error(`The ${blockers.todos.join(' and ')} body still has TODO markers waiting for the author.`),
+      { code: 'todo' }
+    );
   const entry = await ownerOf(ref);
   const feed = await getSoftwareFeed();
   const version = meta.version;

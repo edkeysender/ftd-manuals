@@ -674,7 +674,26 @@ try {
   list = await req('GET', '/api/modules');
   ok(list[0].status === 'in-review', 'submit for review -> In review');
 
-  await req('POST', '/api/modules/starting-panel/docs/A1.0/release');
+  // the gate: nothing goes out that the author has not finished reviewing
+  const cleanBody = (await req('GET', '/api/modules/starting-panel/docs/A1.0')).content;
+  await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
+    html: `${cleanBody}<div class="ai-edit-pending" data-ai-source="smoke"><p>A proposed \u001cstep\u001d.</p></div><p>TODO(author): name the connector</p>`,
+  });
+  const storedBody = (await req('GET', '/api/modules/starting-panel/docs/A1.0')).content;
+  ok(
+    !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(storedBody) && storedBody.includes('\u201cstep\u201d'),
+    'control characters pasted out of a PDF are repaired on save'
+  );
+  const blockedByEdit = await req('POST', '/api/modules/starting-panel/docs/A1.0/release').catch((e) => e);
+  ok(blockedByEdit instanceof Error && /AI edit waiting/.test(blockedByEdit.message), 'release refused while an AI edit waits to be accepted');
+  await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', {
+    html: `${cleanBody}<p>TODO(author): name the connector</p>`,
+  });
+  const blockedByTodo = await req('POST', '/api/modules/starting-panel/docs/A1.0/release').catch((e) => e);
+  ok(blockedByTodo instanceof Error && /TODO/.test(blockedByTodo.message), 'release refused while a TODO is left in the body');
+  await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', { html: cleanBody });
+
+  await req('POST', '/api/modules/starting-panel/docs/A1.0/release', { force: true });
   list = await req('GET', '/api/modules');
   ok(list[0].status === 'released' && list[0].latestDoc === 'A1.0', 'release -> Released A1.0 on main');
   const status = await req('GET', '/api/status');
@@ -732,7 +751,7 @@ try {
   ok(badSw instanceof Error && /not linked to this module/.test(badSw.message), 'cannot cover a software the module is not linked to');
 
   await req('POST', '/api/modules/starting-panel/docs/A1.1/submit-review');
-  await req('POST', '/api/modules/starting-panel/docs/A1.1/release');
+  await req('POST', '/api/modules/starting-panel/docs/A1.1/release', { force: true });
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.docs.find((d) => d.version === 'A1.0').status === 'superseded', 'A1.0 superseded by A1.1');
   ok(detail.docs.find((d) => d.version === 'A1.1').status === 'released', 'A1.1 released');
@@ -764,7 +783,7 @@ try {
   ok(hfDoc.content.includes('1.2 Nm') && hfDoc.doc.revision === hf.revision + 1, 'the hotfix edits like a draft');
   const mainCopy = await req('GET', '/api/manuals');
   ok(Array.isArray(mainCopy), 'manuals list still reads while a hotfix is open');
-  await req('POST', '/api/modules/starting-panel/docs/A1.1/release');
+  await req('POST', '/api/modules/starting-panel/docs/A1.1/release', { force: true });
   const published = await req('GET', '/api/modules/starting-panel/docs/A1.1');
   ok(published.doc.status === 'released' && !published.doc.hotfix && !published.doc.branch && published.content.includes('1.2 Nm'),
     'publishing the hotfix merges it into the released version');
@@ -940,7 +959,7 @@ try {
   const ownEdited = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
   ok(ownEdited.content.includes('desktop shortcut') && ownEdited.doc.revision === 2, 'a software manual edits like any other draft');
   await req('POST', '/api/software/Panel%20Tool/docs/software-customer:A1.0/submit-review');
-  await req('POST', '/api/software/Panel%20Tool/docs/software-customer:A1.0/release');
+  await req('POST', '/api/software/Panel%20Tool/docs/software-customer:A1.0/release', { force: true });
   const releasedOwn = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
   ok(releasedOwn.doc.status === 'released' && !releasedOwn.doc.branch, 'a software manual releases like any other doc');
   // it shows on the Software page as the software documenting itself
@@ -1102,7 +1121,7 @@ try {
     'the released version is closed by the version that took over');
   // release the technician manual; assemble a technician manual from it
   await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/submit-review');
-  await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/release');
+  await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/release', { force: true });
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.manuals.technician.status === 'released' && detail.manuals.customer.status === 'draft' && detail.docs.find((d) => d.key === 'customer:A1.1').status === 'released',
     'releasing the technician manual supersedes nothing in the customer stream');
@@ -1193,7 +1212,7 @@ try {
     'General chapter order: 1.1 General Info, 1.2 Revision record, 1.3 Table of contents, 1.4 List of Effective Pages');
   // a released software manual of the same audience joins the bundle as its own chapter
   const swcNew = await req('POST', '/api/modules/starting-panel/docs', { manual: 'software-customer' });
-  await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`);
+  await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`, { force: true });
   const withSw = await req('GET', '/api/manuals/b737-simulator-manual');
   ok(withSw.chapters.length === 2 && withSw.chapters[1].slug === 'starting-panel--software' && withSw.chapters[1].software === true && withSw.chapters[1].doc.key === 'software-customer:A1.0',
     'released software customer manual compiles as a second chapter of its module');
@@ -1356,7 +1375,7 @@ try {
     'a software manual still in draft compiles as a flagged chapter');
   // released, it is the same chapter without the flag
   await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/submit-review');
-  await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/release');
+  await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/release', { force: true });
   const inhManual = await req('GET', '/api/manuals/inherit-check');
   const swChapter = inhManual.chapters.find((c) => c.software);
   ok(swChapter && swChapter.inheritedFrom === 'Route Editor' && swChapter.doc.key === 'software-technician:A1.0',
@@ -1364,7 +1383,7 @@ try {
   // a second documented software adds its own chapter — every one the module runs is in the manual
   await req('POST', '/api/software', { name: 'Panel Watchdog', version: 'v1.0', ownManual: {} });
   await req('POST', '/api/software/Panel%20Watchdog/docs/software-technician:A1.0/submit-review');
-  await req('POST', '/api/software/Panel%20Watchdog/docs/software-technician:A1.0/release');
+  await req('POST', '/api/software/Panel%20Watchdog/docs/software-technician:A1.0/release', { force: true });
   await req('POST', '/api/modules/starting-panel/software', { name: 'Panel Watchdog', fromVersion: 'v1.0' });
   const twoSw = await req('GET', '/api/manuals/inherit-check');
   ok(twoSw.chapters.filter((c) => c.software).map((c) => c.inheritedFrom).join(', ') === 'Route Editor, Panel Watchdog',
@@ -1432,7 +1451,7 @@ try {
   // module delete: a released module with an open draft — folder on main and the draft branch go
   const before = (await req('GET', '/api/modules')).length;
   const tmpMod = await req('POST', '/api/modules', { name: 'Tmp Module', group: 'SIM', category: 'cockpit', hardware: { type: 'none' }, softwares: [], start: { mode: 'blank' }, checklist: { mode: 'none' } });
-  await req('POST', `/api/modules/${tmpMod.slug}/docs/${tmpMod.key}/release`);
+  await req('POST', `/api/modules/${tmpMod.slug}/docs/${tmpMod.key}/release`, { force: true });
   const tmpNext = await req('POST', `/api/modules/${tmpMod.slug}/docs`, { manual: 'customer', bump: 'minor' });
   const delMod = await req('DELETE', `/api/modules/${tmpMod.slug}`);
   ok(delMod.slug === tmpMod.slug && delMod.docs === 2 && delMod.branchesDeleted.length === 1 && delMod.branchesDeleted[0] === tmpNext.branch, `delete_module reports ${delMod.docs} docs, branch ${delMod.branchesDeleted[0]}`);

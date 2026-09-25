@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, readFileAsBase64, timeAgo, manualType, LANGUAGES, language, ownerHref } from '../api.js';
+import { api, releaseDoc, readFileAsBase64, timeAgo, manualType, LANGUAGES, language, ownerHref } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { useToast, useAuth } from '../App.jsx';
@@ -430,7 +430,7 @@ export default function Editor({ review: reviewProp = false }) {
         const savedChat = loadChat(ownerId, version);
         // Recover a pending AI edit that was interrupted (e.g. page refresh).
         if (hasPendingMarkers(d.content)) {
-          const snap = loadSnapshot(slug, lang === 'en' ? version : `${version}@${lang}`);
+          const snap = loadSnapshot(ownerId, lang === 'en' ? version : `${version}@${lang}`);
           setPending({
             original: snap?.original ?? null,
             instruction: snap?.instruction ?? t('recovered AI edit'),
@@ -743,7 +743,7 @@ export default function Editor({ review: reviewProp = false }) {
 
   async function release() {
     try {
-      const meta = await api.release(slug, version);
+      const meta = await releaseDoc(slug, version);
       setDocMeta(meta);
       toast(t('{version} released — merged to main', { version }));
       navigate(backHref);
@@ -1033,7 +1033,7 @@ export default function Editor({ review: reviewProp = false }) {
       }
       if (res.html) {
         const instruction = text || t('use {files}', { files: sent.map((a) => a.name).join(', ') });
-        saveSnapshot(slug, snapId, { original: htmlRef.current, instruction, commentId });
+        saveSnapshot(ownerId, snapId, { original: htmlRef.current, instruction, commentId });
         setPending({ original: htmlRef.current, instruction, commentId });
         setEditorHtml(res.html);
         setDirty(true); // autosave the marked content so a refresh can recover it
@@ -1047,13 +1047,24 @@ export default function Editor({ review: reviewProp = false }) {
   }
 
   async function acceptAI() {
-    const clean = stripPending(htmlRef.current);
+    const marked = htmlRef.current;
+    const clean = stripPending(marked);
     setEditorHtml(clean);
     htmlRef.current = clean; // an autosave in flight must not put the markers back
-    const { instruction, commentId } = pending;
+    const snap = pending;
+    const { instruction, commentId } = snap;
     setPending(null);
     clearSnapshot(ownerId, snapId);
     const meta = await commitRevision(`AI edit: ${instruction}`, clean);
+    if (!meta) {
+      // The save was refused (the version was released meanwhile, the session expired). Put the
+      // edit back rather than let the author believe it was accepted — a reload would anyway.
+      setEditorHtml(marked);
+      htmlRef.current = marked;
+      saveSnapshot(ownerId, snapId, { original: snap.original, instruction, commentId });
+      setPending({ ...snap });
+      return;
+    }
     // An accepted proposal for a reviewer comment closes the thread with a note.
     if (commentId && meta) {
       try {

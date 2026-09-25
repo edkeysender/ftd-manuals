@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64, ownerHref, ownerPath } from '../api.js';
+import { api, releaseDoc, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64, ownerHref, ownerPath } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
@@ -385,7 +385,7 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
           key="publish"
           className="btn btn-sm"
           title={t('Merge the correction into the released {version}', { version: d.version })}
-          onClick={() => act(() => api.release(slug, d.key), t('{doc} r{rev} published', { doc: docLabel(d), rev: d.revision }))}
+          onClick={() => act(() => releaseDoc(slug, d.key), t('{doc} r{rev} published', { doc: docLabel(d), rev: d.revision }))}
         >
           {t('Publish hotfix')}
         </button>
@@ -415,7 +415,7 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
           </button>
         );
         primary.push(
-          <button key="release" className="btn btn-sm" onClick={() => act(() => api.release(slug, d.key), t('{doc} released — merged to main', { doc: docLabel(d) }))}>
+          <button key="release" className="btn btn-sm" onClick={() => act(() => releaseDoc(slug, d.key), t('{doc} released — merged to main', { doc: docLabel(d) }))}>
             {t('Approve & release')}
           </button>
         );

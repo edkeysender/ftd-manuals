@@ -37,7 +37,7 @@ const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((e) => {
     console.error(e);
     if (e instanceof GitTransientError) res.set('Retry-After', '1');
-    res.status(e instanceof GitTransientError ? 503 : 400).json({ error: e.message || String(e) });
+    res.status(e instanceof GitTransientError ? 503 : 400).json({ error: e.message || String(e), ...(e.code ? { code: e.code } : {}) });
   });
 
 /* ---------- login ----------
@@ -392,7 +392,7 @@ app.post(docPaths('/back-to-draft'), wrap(async (req, res) => {
 }));
 
 app.post(docPaths('/release'), wrap(async (req, res) => {
-  res.json(await store.releaseDoc(ownerRef(req), req.params.version));
+  res.json(await store.releaseDoc(ownerRef(req), req.params.version, { force: !!req.body?.force }));
 }));
 
 app.post(docPaths('/discard'), wrap(async (req, res) => {
