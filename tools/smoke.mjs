@@ -186,6 +186,14 @@ try {
     checklist: { mode: 'template' },
   });
   ok(created.slug === 'starting-panel' && created.version === 'A1.0', 'wizard creates starting-panel A1.0');
+  ok((await req('GET', '/api/modules/starting-panel')).module.category === 'software', 'a module carries what it is');
+  const catMod = await req('POST', '/api/modules', { name: 'Cat Probe', category: 'cockpit', manuals: ['customer'], start: { mode: 'blank' }, checklist: { mode: 'template' } });
+  const catDoc = await req('GET', `/api/modules/cat-probe/docs/${catMod.key}`);
+  ok(catDoc.module.category === 'cockpit', 'a new module takes one of IOS / Cockpit / MISC');
+  const catDflt = await req('POST', '/api/modules', { name: 'Cat Default', manuals: ['customer'], start: { mode: 'blank' } });
+  ok((await req('GET', '/api/modules/cat-default')).module.category === 'misc', 'and defaults to MISC');
+  await req('DELETE', '/api/modules/cat-probe');
+  await req('DELETE', '/api/modules/cat-default');
   ok(!('group' in (await req('GET', '/api/modules/starting-panel')).module), 'a module is created without a manual group');
   ok(created.fat === true, 'wizard seeds a FAT checklist from the template');
   ok(created.branch === 'draft/starting-panel-customer-a1.0' && created.key === 'customer:A1.0' && created.docs.length === 1,
@@ -216,7 +224,7 @@ try {
   const cam = await req('POST', '/api/modules', {
     name: 'Camera',
     group: 'SIM',
-    category: 'peripherals',
+    category: 'cockpit',
     hardware: [{ id: cam1.id }, { name: 'Cockpit camera — fixed', type: 'cots', manufacturer: 'Axis', model: 'M3086' }, { name: 'Camera bracket', type: 'ftd', version: 'v3' }],
     manuals: ['customer', 'technician'],
     start: { mode: 'blank' },
@@ -1260,7 +1268,7 @@ try {
   ok((await req('GET', '/api/manuals')).length === 0, 'imported manuals cleaned up');
 
   // module types: what the module is decides which manuals are drafted
-  const mst = await req('POST', '/api/modules', { name: 'Starter Kit', code: 'SK', category: 'instructor-station', group: 'IOS', type: 'module-software', software: 'STP Core', parts: 'Płyta czołowa v1\nEncoder', checklist: { mode: 'template' } });
+  const mst = await req('POST', '/api/modules', { name: 'Starter Kit', code: 'SK', category: 'ios', group: 'IOS', type: 'module-software', software: 'STP Core', parts: 'Płyta czołowa v1\nEncoder', checklist: { mode: 'template' } });
   ok(mst.docs.length === 4 && mst.docs.map((d) => d.manual).join(',') === 'customer,technician,software-customer,software-technician', 'module-software drafts all four manuals');
   const mstMod = await req('GET', '/api/modules/starter-kit');
   ok(mstMod.module.type === 'module-software' && mstMod.module.softwares[0].name === 'STP Core', 'module type stored, selected software linked');
@@ -1272,7 +1280,7 @@ try {
   ok((await req('GET', '/api/modules')).find((m) => m.slug === 'starter-kit').type === 'module-software', 'list row carries the module type');
   const badType = await req('POST', '/api/modules', { name: 'Bad', group: 'SIM', type: 'kit' }).catch((e) => e);
   ok(badType instanceof Error && /Unknown module type/.test(badType.message), 'unknown module type rejected');
-  const tpk = await req('POST', '/api/modules', { name: 'Smoke Detector', code: 'ST-622', group: 'IOS', category: 'peripherals', type: 'third-party-kit' });
+  const tpk = await req('POST', '/api/modules', { name: 'Smoke Detector', code: 'ST-622', group: 'IOS', category: 'cockpit', type: 'third-party-kit' });
   ok(tpk.docs.length === 2, 'third-party-kit drafts customer + technician');
   const tpkMod = await req('GET', '/api/modules/smoke-detector');
   ok(tpkMod.module.hardwareItems.length === 1 && tpkMod.module.hardwareItems[0].name === 'Smoke Detector' && tpkMod.module.hardwareItems[0].type === 'cots' && tpkMod.module.hardwareItems[0].model === 'ST-622',
@@ -1415,7 +1423,7 @@ try {
 
   // module delete: a released module with an open draft — folder on main and the draft branch go
   const before = (await req('GET', '/api/modules')).length;
-  const tmpMod = await req('POST', '/api/modules', { name: 'Tmp Module', group: 'SIM', category: 'peripherals', hardware: { type: 'none' }, softwares: [], start: { mode: 'blank' }, checklist: { mode: 'none' } });
+  const tmpMod = await req('POST', '/api/modules', { name: 'Tmp Module', group: 'SIM', category: 'cockpit', hardware: { type: 'none' }, softwares: [], start: { mode: 'blank' }, checklist: { mode: 'none' } });
   await req('POST', `/api/modules/${tmpMod.slug}/docs/${tmpMod.key}/release`);
   const tmpNext = await req('POST', `/api/modules/${tmpMod.slug}/docs`, { manual: 'customer', bump: 'minor' });
   const delMod = await req('DELETE', `/api/modules/${tmpMod.slug}`);

@@ -147,6 +147,13 @@ export function templateChecklist(module) {
     case 'software':
       phases.push(SOFTWARE(module), INTEGRATION(module));
       break;
+    case 'ios':
+      // An instructor station is a machine and its software: no moving parts to exercise.
+      phases.push(VISUAL(), ELECTRICAL(), FUNCTIONAL());
+      if (module.softwares?.length) phases.push(SOFTWARE(module));
+      phases.push(INTEGRATION(module));
+      break;
+    case 'cockpit':
     case 'cockpit-hardware':
     case 'peripherals':
       phases.push(VISUAL(), MECHANICAL(), ELECTRICAL(), FUNCTIONAL());

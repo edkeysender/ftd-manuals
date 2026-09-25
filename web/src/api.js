@@ -149,12 +149,12 @@ export const api = {
     request(`${ownerPath(slug)}/docs/${version}/checklist`, { method: 'PUT', body: { checklist, summary } }),
 };
 
+/** What a module is. Older modules carry values from before this list and keep them (docgen.js
+ *  CATEGORY_LABELS still names them); these three are what the console offers. */
 export const CATEGORIES = [
-  ['cockpit-hardware', 'Cockpit hardware'],
-  ['peripherals', 'Peripherals'],
-  ['structure', 'Structure'],
-  ['instructor-station', 'Instructor station'],
-  ['software', 'Software'],
+  ['ios', 'IOS'],
+  ['cockpit', 'Cockpit'],
+  ['misc', 'MISC'],
 ];
 
 /** Groups of an assembled manual — a simulator manual or an IOS manual (RACK is legacy data). */

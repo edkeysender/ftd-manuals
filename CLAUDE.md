@@ -70,6 +70,10 @@ The functional spec lives in this file's history and in the Modules spec provide
   **Parts** only in a technician manual (the operator is told what the module does, not what it is made of) and lists
   a table only when there is something in it —
   they are never hand-edited; the editor stores only sections 4–7 as semantic HTML.
+- A module’s **category** is `ios` / `cockpit` / `misc` (`CATEGORIES` in `web/src/api.js`, labelled by
+  `CATEGORY_LABELS` in `docgen.js`, which still names the older values existing modules carry — never migrated);
+  it defaults to `misc`, shows on the modules list and in section 3, and picks the FAT template’s phases
+  (`templateChecklist` in `checklist.js`).
 - Module types (`MODULE_TYPES` in `server/docgen.js`, mirrored in `web/src/api.js`): what a module IS decides
   which manuals are drafted on creation — `own-module` / `third-party-kit` → customer + technician,
   `own-software` → the software pair (a software named after the module is auto-created when none is picked),

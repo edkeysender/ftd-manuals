@@ -590,6 +590,8 @@ export const PL = {
   Open: 'Otwórz',
   'From its software': 'Z oprogramowania',
   'Linked modules': 'Powiązane moduły',
+  Cockpit: 'Kokpit',
+  MISC: 'Różne',
   'Correct the version {version} was registered under': 'Popraw numer wersji, pod którym zarejestrowano {version}',
   '{software} {version} is now {next}': '{software} {version} to teraz {next}',
   '{version} is open ({status}) — release or discard it first':

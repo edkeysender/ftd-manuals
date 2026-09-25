@@ -141,7 +141,7 @@ export const TOOLS = [
           description: `Explicit manual list — overrides \`type\`; default ["customer"] when neither is given. ${MANUAL_HELP}.`,
         },
         code: { type: 'string', description: 'Module code like SW-STP' },
-        category: { type: 'string', enum: ['software', 'cockpit-hardware', 'structure', 'peripherals', 'rack'] },
+        category: { type: 'string', enum: ['ios', 'cockpit', 'misc'], description: 'What the module is (default misc). Older modules carry earlier values and keep them.' },
         hardware: {
           type: 'array',
           description:
@@ -192,7 +192,7 @@ export const TOOLS = [
         slug: SLUG_VER.slug,
         name: { type: 'string' },
         code: { type: 'string' },
-        category: { type: 'string', enum: ['software', 'cockpit-hardware', 'structure', 'peripherals', 'rack'] },
+        category: { type: 'string', enum: ['ios', 'cockpit', 'misc'], description: 'What the module is (default misc). Older modules carry earlier values and keep them.' },
         hardware: { type: 'array', items: { type: 'object' } },
         softwares: {
           type: 'array',
@@ -964,7 +964,7 @@ async function callTool(name, args) {
       const input = {
         name: args.name,
         code: args.code || null,
-        category: args.category || 'software',
+        category: args.category || 'misc',
         type: mtype?.id || null,
         hardware: [...(args.hardware || []), ...(args.parts !== undefined ? parseParts(args.parts) : [])],
         softwares: args.softwares || [],
