@@ -1104,6 +1104,13 @@ try {
   await req('POST', `/api/modules/starting-panel/docs/${techNext.key}/discard`);
   ok(techCompiled.chapters[0].doc.key === 'technician:A1.0' && !techCompiled.chapters[0].isDraft && techCompiled.html.includes('Set the static IP.') && techCompiled.html.includes('Technician manual'),
     'technician manual compiles the released technician docs');
+  // the header of the company template: logo, title, subtitle, page field, version/revision/date
+  const headBox = techCompiled.html.slice(techCompiled.html.indexOf('<table class="head-box"'));
+  ok(/c-logo[\s\S]*c-date/.test(headBox) && headBox.includes('hb-page') && headBox.includes('hb-lbl'),
+    'the manual header is the template box: logo, title, page field, version row');
+  ok(headBox.includes('Version:') && headBox.includes('Revision:') && headBox.includes('Date:'), 'header fields in English');
+  ok(techPl.html.includes('Wersja:') && techPl.html.includes('Rewizja:') && techPl.html.includes('Strona'),
+    'and in Polish, as the template writes them');
   ok((await req('GET', '/api/manuals')).find((m) => m.slug === 'b737-technician-manual').unreleased === 0, 'readiness counts the manual type being assembled');
   // a module that has no manual of the assembled type is a missing chapter
   await req('POST', '/api/modules', { name: 'Overhead Light', group: 'SIM', manuals: ['customer'], start: { mode: 'blank' } });

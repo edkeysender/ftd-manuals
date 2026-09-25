@@ -364,6 +364,7 @@ const STRINGS = {
     generalText3: 'If this document is found in unauthorized place, please contact FNPT Manufacturer:',
     manufacturer: ['FTD.AERO Sp. z o.o.', 'Wąska 33', '62-052 Komorniki', 'Poland', 'www.FTD.aero', 'office@ftd.aero', 'tel. +48 519 737 800'],
     lep: 'List of Effective Pages', page: 'Page', issue: 'Issue', rev: 'Rev.', effectiveDate: 'Effective date',
+    headPage: 'Page', headVersion: 'Version', headRevision: 'Revision', headDate: 'Date',
     lepNote: 'Page numbers are assigned when the manual is opened for print or exported; the table below lists the effectivity of every chapter.',
   },
   pl: {
@@ -393,6 +394,7 @@ const STRINGS = {
     generalText3: 'W przypadku znalezienia tego dokumentu w nieuprawnionym miejscu prosimy o kontakt z producentem FNPT:',
     manufacturer: ['FTD.AERO Sp. z o.o.', 'Wąska 33', '62-052 Komorniki', 'Polska', 'www.FTD.aero', 'office@ftd.aero', 'tel. +48 519 737 800'],
     lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', effectiveDate: 'Data obowiązywania',
+    headPage: 'Strona', headVersion: 'Wersja', headRevision: 'Rewizja', headDate: 'Data',
     lepNote: 'Numery stron są nadawane przy otwarciu instrukcji do druku lub eksporcie; poniższa tabela podaje obowiązującą wersję każdego rozdziału.',
   },
 };
@@ -515,13 +517,18 @@ export const MANUAL_CSS = `
 /* Verdana matches the FTD Word template; the same stylesheet drives the web view and the export */
 .manual-doc { font-family: Verdana, Tahoma, 'DejaVu Sans', Geneva, sans-serif; font-size: 13px; color: #1c2733; background: #fff; }
 .manual-doc .manual { max-width: 900px; margin: 0 auto; padding: 40px 56px 60px; counter-reset: chap; }
-.manual-doc .head-box { width: 100%; border-collapse: collapse; border: 2px solid #1c2733; margin: 0 0 28px; }
-.manual-doc .head-box td { border: 2px solid #1c2733; padding: 14px 18px; vertical-align: middle; }
-.manual-doc .head-title { text-align: center; width: 62%; }
-.manual-doc .head-code { font-size: 28px; font-weight: 700; line-height: 1.1; }
-.manual-doc .head-name { font-size: 19px; font-weight: 700; margin-top: 4px; }
-.manual-doc .head-logo { text-align: center; }
-.manual-doc .head-logo img, .manual-doc .head-logo svg { height: 60px; max-width: 230px; display: inline-block; }
+/* The header of the company template, to the millimetre — see headerBox(). */
+.manual-doc .head-box { width: 190mm; max-width: 100%; table-layout: fixed; border-collapse: collapse; margin: 0 auto 6mm; color: #000; }
+.manual-doc .head-box td { border: 0.5pt solid #000; padding: 0.4mm 1.2mm; vertical-align: middle; }
+.manual-doc .head-box .c-logo { width: 26.6mm; }
+.manual-doc .head-box .c-lbl { width: 19mm; }
+.manual-doc .head-box .c-val { width: 19mm; }
+.manual-doc .head-box .c-date { width: 67.5mm; }
+.manual-doc .hb-logo { text-align: center; }
+.manual-doc .hb-logo img, .manual-doc .hb-logo svg { width: 21mm; height: auto; display: inline-block; }
+.manual-doc .hb-title, .manual-doc .hb-sub { font-size: 6pt; font-weight: 700; text-align: justify; line-height: 1.3; }
+.manual-doc .hb-page { font-family: Arial, Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
+.manual-doc .hb-lbl, .manual-doc .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
 .manual-doc .cover { text-align: center; padding: 10px 0 40px; }
 .manual-doc .cover-image img { max-width: 92%; max-height: 560px; margin: 26px auto 10px; display: block; }
 .manual-doc .cover-placeholder { margin: 40px auto; width: 70%; height: 240px; border: 1px dashed #c8d1db; border-radius: 8px; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 14px; }
@@ -614,14 +621,33 @@ function numberHeadings(html, ch) {
   return { html: out, items };
 }
 
-/** Header box (title cell + logo cell) as in the FTD manual layout. */
-function headerBox(manual, logoHtml) {
-  const code = manual.code ? esc(manual.code) : esc(manual.name);
-  const name = manual.code ? esc(manual.name) : esc(GROUP_LABELS[manual.group] || manual.group || 'Assembled manual');
-  return `<table class="head-box"><tr>
-<td class="head-title"><div class="head-code">${code}</div><div class="head-name">${name}</div></td>
-<td class="head-logo">${logoHtml}</td>
-</tr></table>`;
+/**
+ * Header box, copied from the company template `Dok firmowy wzór.docx`: one 190 mm table,
+ * centred, 0.5 pt black rules, in three rows — the logo spanning them on the left (21 mm wide),
+ * the document title and its subtitle in Verdana 6 pt bold, the page counter on the right in
+ * Arial 10 pt (label regular, number bold), and the version / revision / date row in Verdana 6 pt.
+ * Column widths are the template’s, in millimetres: 26.6 · 19 · 19 · 19 · 19 · 20 · 67.5.
+ */
+function headerBox(manual, logoHtml, T, head = {}) {
+  const title = esc(head.title || manual.name || "");
+  const sub = esc(head.subtitle || manual.code || GROUP_LABELS[manual.group] || manual.group || '');
+  const version = esc(head.version || '');
+  const revision = esc(head.revision || '');
+  const date = esc(head.date || '');
+  return `<table class="head-box">
+<colgroup><col class="c-logo"><col class="c-lbl"><col class="c-val"><col class="c-lbl"><col class="c-val"><col class="c-lbl"><col class="c-date"></colgroup>
+<tr>
+<td class="hb-logo" rowspan="3">${logoHtml}</td>
+<td class="hb-title" colspan="4">${title}</td>
+<td class="hb-page" colspan="2" rowspan="2">${T.headPage}: <b class="pg"></b></td>
+</tr>
+<tr><td class="hb-sub" colspan="4">${sub}</td></tr>
+<tr>
+<td class="hb-lbl">${T.headVersion}:</td><td class="hb-val">${version}</td>
+<td class="hb-lbl">${T.headRevision}:</td><td class="hb-val">${revision}</td>
+<td class="hb-lbl">${T.headDate}:</td><td class="hb-val">${date}</td>
+</tr>
+</table>`;
 }
 
 /**
@@ -640,6 +666,16 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
   const logoHtml = logoUrl ? `<img class="logo" src="${esc(logoUrl)}" alt="FTD.aero">` : LOGO_SVG;
   const frontLep = { issue: '—', rev: '—', date: fmtDots(date) };
   const lepAttrs = (l) => ` data-lep-issue="${esc(l.issue)}" data-lep-rev="${esc(l.rev)}" data-lep-date="${esc(l.date)}"`;
+
+  // What the template’s header fields say about this document. An assembled manual has no version of
+  // its own — the General chapter says the same with an em dash — so the header repeats that.
+  const head = {
+    title: manual.name,
+    subtitle: manual.code || GROUP_LABELS[manual.group] || manual.group || '',
+    version: frontLep.issue,
+    revision: frontLep.rev,
+    date: frontLep.date,
+  };
 
   // chapter 1 is General — module chapters are numbered from 2
   const processed = chapters.map((c, i) => {
@@ -744,11 +780,11 @@ ${c.html}
     : `<div class="cover-placeholder">Cover illustration — set one via Edit manual</div>`;
 
   return `<div class="manual-doc" lang="${esc(lang)}">
-<div class="print-header">${headerBox(manual, logoHtml)}</div>
+<div class="print-header">${headerBox(manual, logoHtml, T, head)}</div>
 <div class="print-footer">${esc(footerText)}</div>
 <div class="manual">
 <section class="cover" id="cover"${lepAttrs(frontLep)}>
-  ${headerBox(manual, logoHtml)}
+  ${headerBox(manual, logoHtml, T, head)}
   ${cover}
 </section>
 ${general}
@@ -783,13 +819,19 @@ body { font-family: ${FONT}; }
 .manual-doc .print-header { position: running(pageHeader); display: block; }
 .manual-doc .print-footer { position: running(pageFooter); display: block; }
 .pagedjs_margin-content .print-footer { font-size: 8.5px; color: #64748b; text-align: center; border-top: 1px solid #c8d1db; padding-top: 4px; line-height: 1.4; }
-.pagedjs_margin-content .head-box { width: 100%; border-collapse: collapse; border: 2px solid #1c2733; margin: 0 0 3mm; }
-.pagedjs_margin-content .head-box td { border: 2px solid #1c2733; padding: 5px 10px; vertical-align: middle; }
-.pagedjs_margin-content .head-title { text-align: center; width: 62%; }
-.pagedjs_margin-content .head-code { font-size: 15px; font-weight: 700; line-height: 1.1; }
-.pagedjs_margin-content .head-name { font-size: 11px; font-weight: 700; margin-top: 2px; }
-.pagedjs_margin-content .head-logo { text-align: center; }
-.pagedjs_margin-content .head-logo img, .pagedjs_margin-content .head-logo svg { height: 28px; max-width: 120px; display: inline-block; }
+.pagedjs_margin-content .head-box { width: 190mm; table-layout: fixed; border-collapse: collapse; margin: 0 auto; color: #000; }
+.pagedjs_margin-content .head-box td { border: 0.5pt solid #000; padding: 0.4mm 1.2mm; vertical-align: middle; }
+.pagedjs_margin-content .head-box .c-logo { width: 26.6mm; }
+.pagedjs_margin-content .head-box .c-lbl { width: 19mm; }
+.pagedjs_margin-content .head-box .c-val { width: 19mm; }
+.pagedjs_margin-content .head-box .c-date { width: 67.5mm; }
+.pagedjs_margin-content .hb-logo { text-align: center; }
+.pagedjs_margin-content .hb-logo img, .pagedjs_margin-content .hb-logo svg { width: 21mm; height: auto; display: inline-block; }
+.pagedjs_margin-content .hb-title, .pagedjs_margin-content .hb-sub { font-size: 6pt; font-weight: 700; text-align: justify; line-height: 1.3; }
+.pagedjs_margin-content .hb-page { font-family: Arial, Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
+.pagedjs_margin-content .hb-lbl, .pagedjs_margin-content .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
+/* the PAGE field of the template: printed pages know their number, the web view does not */
+.pagedjs_margin-content .hb-page .pg::after { content: counter(page) "/" counter(pages); }
 .manual-doc .manual { max-width: none; padding: 0; margin: 0; }
 .manual-doc .cover { break-after: page; padding-top: 30mm; }
 .manual-doc .cover .head-box { display: none; }
