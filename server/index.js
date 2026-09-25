@@ -226,6 +226,12 @@ app.get(ownerPaths(), wrap(async (req, res) => {
   res.json(m);
 }));
 
+/** The same category on several modules: {slugs: [], category}. */
+app.post('/api/modules/category', wrap(async (req, res) => {
+  const { slugs, category } = req.body || {};
+  res.json(await store.setModulesCategory(slugs, category));
+}));
+
 /** Module metadata: name, code, category, softwares, hardware (catalog ids and/or new items). */
 app.patch('/api/modules/:slug', wrap(async (req, res) => {
   const patch = req.body || {};

@@ -192,6 +192,14 @@ try {
   ok(catDoc.module.category === 'cockpit', 'a new module takes one of IOS / Cockpit / MISC');
   const catDflt = await req('POST', '/api/modules', { name: 'Cat Default', manuals: ['customer'], start: { mode: 'blank' } });
   ok((await req('GET', '/api/modules/cat-default')).module.category === 'misc', 'and defaults to MISC');
+  // one category on several modules at once, reporting each
+  const bulk = await req('POST', '/api/modules/category', { slugs: ['cat-probe', 'cat-default', 'no-such-module'], category: 'ios' });
+  ok(bulk.updated.length === 2 && bulk.failed.length === 1 && bulk.failed[0].slug === 'no-such-module',
+    `bulk category: ${bulk.updated.length} set, ${bulk.failed.length} refused`);
+  ok((await req('GET', '/api/modules/cat-probe')).module.category === 'ios' && (await req('GET', '/api/modules/cat-default')).module.category === 'ios',
+    'both modules carry the new category');
+  const bulkNone = await req('POST', '/api/modules/category', { slugs: [], category: 'ios' }).catch((e) => e);
+  ok(bulkNone instanceof Error && /at least one module/.test(bulkNone.message), 'the bulk action needs a module');
   await req('DELETE', '/api/modules/cat-probe');
   await req('DELETE', '/api/modules/cat-default');
   ok(!('group' in (await req('GET', '/api/modules/starting-panel')).module), 'a module is created without a manual group');

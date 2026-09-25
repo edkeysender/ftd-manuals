@@ -2927,6 +2927,28 @@ export const saveManualCover = (slug, name, buffer) =>
 /** Update module.json fields. Written identically on main (when the module is
  *  released there) and on every open draft branch — each manual type has its own
  *  branch, and identical changes on both sides keep every later merge clean. */
+/**
+ * Set the category on several modules at once. Each is an ordinary metadata edit — its own commit,
+ * written on main and on every open draft branch — so one failing module does not undo the others;
+ * the caller is told which went through. Returns { category, updated: [slug], failed: [{slug, error}] }.
+ */
+export async function setModulesCategory(slugs, category) {
+  category = String(category || '').trim();
+  if (!category) throw new Error('A category is required');
+  if (!Array.isArray(slugs) || !slugs.length) throw new Error('Pick at least one module');
+  const updated = [];
+  const failed = [];
+  for (const slug of [...new Set(slugs)]) {
+    try {
+      await updateModule(slug, { category });
+      updated.push(slug);
+    } catch (e) {
+      failed.push({ slug, error: e.message });
+    }
+  }
+  return { category, updated, failed };
+}
+
 export async function updateModule(slug, patch) {
   const { modules } = await collectAll();
   const entry = modules.find((m) => m.module.slug === slug);

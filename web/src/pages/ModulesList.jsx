@@ -38,12 +38,39 @@ export default function ModulesList() {
   const navigate = useNavigate();
   const toast = useToast();
 
+  // Picking several modules to set their category in one go.
+  const [picked, setPicked] = useState([]);
+  const [bulkCat, setBulkCat] = useState(CATEGORIES[0][0]);
+  const [applying, setApplying] = useState(false);
+  const toggle = (slug) => setPicked((p) => (p.includes(slug) ? p.filter((x) => x !== slug) : [...p, slug]));
+
   const q = query.trim().toLowerCase();
   // An own-software module is a software documented on its own, not a part of the simulator:
   // it belongs to the Software page, and listing it here would offer hardware it does not have.
   const listed = rows === null ? null : hardwareModules(rows);
   const visible =
     listed === null ? null : q ? listed.filter((m) => `${m.name} ${m.code || ''}`.toLowerCase().includes(q)) : listed;
+
+  /** Set the picked modules to one category — each is its own commit; the toast says what happened. */
+  async function applyCategory() {
+    setApplying(true);
+    try {
+      const r = await api.setModulesCategory(picked, bulkCat);
+      const label = t((CATEGORIES.find(([id]) => id === bulkCat) || [, bulkCat])[1]);
+      toast(
+        r.failed.length
+          ? t('{n} set to {category}; {failed} could not be changed', { n: r.updated.length, category: label, failed: r.failed.map((f) => f.slug).join(', ') })
+          : t('{n} set to {category}', { n: r.updated.length, category: label })
+        , r.failed.length ? 'err' : undefined
+      );
+      setPicked([]);
+      await load();
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setApplying(false);
+    }
+  }
 
   const load = () => api.modules().then(setRows).catch((e) => toast(e.message, 'err'));
   useEffect(() => {
@@ -91,9 +118,32 @@ export default function ModulesList() {
           <p>{t('No modules match “{query}”.', { query: query.trim() })}</p>
         </div>
       ) : (
+        <>
+        {picked.length > 0 && (
+          <div className="bulk-bar">
+            <span>{t('{n} selected', { n: picked.length })}</span>
+            <select value={bulkCat} onChange={(e) => setBulkCat(e.target.value)}>
+              {CATEGORIES.map(([id, label]) => (
+                <option key={id} value={id}>{t(label)}</option>
+              ))}
+            </select>
+            <button className="btn btn-primary btn-sm" disabled={applying} onClick={applyCategory}>
+              {applying ? t('Applying…') : t('Set category')}
+            </button>
+            <button className="btn btn-sm" onClick={() => setPicked([])}>{t('Clear')}</button>
+          </div>
+        )}
         <table className="table modules-table">
           <thead>
             <tr>
+              <th className="pick-col">
+                <input
+                  type="checkbox"
+                  title={t('Select every module shown')}
+                  checked={visible.length > 0 && picked.length === visible.length}
+                  onChange={(e) => setPicked(e.target.checked ? visible.map((m) => m.slug) : [])}
+                />
+              </th>
               <th>{t('Module')}</th>
               <th>{t('Type')}</th>
               <th>{t('Parts')}</th>
@@ -105,6 +155,9 @@ export default function ModulesList() {
           <tbody>
             {visible.map((m) => (
               <tr key={m.slug} className="row-link" onClick={() => navigate(`/modules/${m.slug}`)}>
+                <td className="pick-col" onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={picked.includes(m.slug)} onChange={() => toggle(m.slug)} />
+                </td>
                 <td>
                   <div className="module-cell">
                     <span className="module-name">
@@ -145,6 +198,7 @@ export default function ModulesList() {
             ))}
           </tbody>
         </table>
+        </>
       )}
 
       {wizardOpen && (
