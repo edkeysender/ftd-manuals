@@ -787,6 +787,9 @@ export async function renameSoftware(oldName, newName) {
       const oldAssets = assetUrl(swRef(oldSlug), '').slice(0, -1); // /api/software/<slug>/assets
       const newAssets = assetUrl(swRef(newSlug), '').slice(0, -1);
       const bodies = {}; // ref:dir → the html files of that doc, listed before anything moves
+      // one stamp for every ref: the record must be the same file on main and on each draft branch,
+      // or merging a branch back later meets two different files added at the same path
+      const stamp = now();
       const refs = [...new Set([...owner.docs.map((d) => d.ref), 'main'])];
       for (const ref of refs) {
         await repo.checkout(ref);
@@ -802,7 +805,7 @@ export async function renameSoftware(oldName, newName) {
         if (rec) {
           await repo.writeFile(
             `${newRoot}/software.json`,
-            JSON.stringify({ ...rec, slug: newSlug, name: newName, updatedAt: now() }, null, 2) + '\n'
+            JSON.stringify({ ...rec, slug: newSlug, name: newName, updatedAt: stamp }, null, 2) + '\n'
           );
         }
         // doc.json: its covers name the software, and its branch is named after it
@@ -1656,9 +1659,10 @@ export async function releaseDoc(ref, key, { force = false } = {}) {
   const feed = await getSoftwareFeed();
   const version = meta.version;
   const ts = now();
-  if (meta.hotfix) return await publishHotfix({ slug: entry.module.slug, branch, dir, meta, manual, version, ts });
+  if (meta.hotfix) return await publishHotfix({ slug: entry.module.slug, branch, dir, meta, manual, version, ts, recordFile: ownerRecordFile(entry.module) });
 
   await mutate(async () => {
+    await alignOwnerRecord(ownerRecordFile(entry.module), branch);
     await repo.checkout('main');
     await repo.merge(branch, `Merge ${branch}: release ${entry.module.slug} ${MANUAL_TYPES[manual].label.toLowerCase()} ${version}`);
 
@@ -1689,9 +1693,27 @@ export async function releaseDoc(ref, key, { force = false } = {}) {
   return meta;
 }
 
+/**
+ * The owner's record (module.json / software.json) is main's; a draft branch only carries a copy.
+ * Before a branch is merged its copy is made main's, so a copy that drifted can never stop a
+ * release with a merge conflict — a software rename used to stamp each branch's copy a few
+ * milliseconds apart, and git sees two different files added at the same path. Runs in mutate().
+ */
+async function alignOwnerRecord(file, branch) {
+  const onMain = await repo.show('main', file);
+  if (!onMain || (await repo.show(branch, file)) === onMain) return;
+  await repo.checkout(branch);
+  await repo.writeFile(file, onMain);
+  await repo.commitAll(`${file}: take the record from main before merging`);
+  await repo.checkout('main');
+}
+
+/** Where an owner's own record lives: software.json for a software, module.json for a module. */
+const ownerRecordFile = (module) => (module.kind === 'software' ? softwareFile(module.slug) : moduleFile(module.slug));
+
 /** Merge a hotfix back into the version it corrects: main takes the corrected content at the new
  *  revision, the version stays Released, the branch goes. */
-async function publishHotfix({ slug, branch, dir, meta, manual, version, ts }) {
+async function publishHotfix({ slug, branch, dir, meta, manual, version, ts, recordFile }) {
   const rev = `r${meta.revision}`;
   const last = meta.revisionRecord[meta.revisionRecord.length - 1];
   if (last && last.rev === rev && last.summary === 'Hotfix (draft)') last.summary = 'Hotfix';
@@ -1699,6 +1721,7 @@ async function publishHotfix({ slug, branch, dir, meta, manual, version, ts }) {
   meta.branch = null;
   meta.updatedAt = ts;
   await mutate(async () => {
+    await alignOwnerRecord(recordFile, branch);
     await repo.checkout('main');
     await repo.merge(branch, `Merge ${branch}: hotfix ${slug} ${MANUAL_TYPES[manual].label.toLowerCase()} ${version} ${rev}`);
     await repo.writeFile(docJson(dir), JSON.stringify(meta, null, 2) + '\n');
@@ -2394,6 +2417,7 @@ export async function renameSoftwareRelease(name, version, next) {
 
     // the manuals the software owns document it from a release too
     if (owner) {
+      const stamp = now(); // the same record on every ref, so the branches still merge
       const refs = [...new Set([...owner.docs.map((d) => d.ref), 'main'])];
       for (const ref of refs) {
         await repo.checkout(ref);
@@ -2401,7 +2425,7 @@ export async function renameSoftwareRelease(name, version, next) {
         if (rec && rec.fromVersion === version) {
           await repo.writeFile(
             softwareFile(owner.module.slug),
-            JSON.stringify({ ...rec, fromVersion: next, updatedAt: now() }, null, 2) + '\n'
+            JSON.stringify({ ...rec, fromVersion: next, updatedAt: stamp }, null, 2) + '\n'
           );
         }
         for (const d of owner.docs) {
