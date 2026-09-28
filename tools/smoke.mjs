@@ -1238,9 +1238,32 @@ try {
       gapCompiled.css.includes('table:has(> colgroup)'),
     'column widths dragged in the editor are saved and laid out fixed in the manual'
   );
+  const gapRelease = await req('POST', `/api/manuals/${gapManual.slug}/release`, {}).catch((e) => e);
+  ok(
+    gapRelease instanceof Error && /compiled from a draft/.test(gapRelease.message) && /picture is missing/.test(gapRelease.message),
+    `a manual is not released while a chapter is a draft or a picture is missing: ${gapRelease.message}`
+  );
   await req('DELETE', `/api/manuals/${gapManual.slug}`);
   await req('DELETE', `/api/modules/${gapMod.slug}`);
 
+  // the manual itself is released: Issue 1 Rev 0 first, and its header carries that stamp
+  ok(
+    compiled.state.released === null && compiled.state.next.issue === 1 && compiled.state.next.revision === 0 && compiled.state.blockers.length === 0,
+    `a new manual is unreleased and nothing stands in the way of Issue 1 Rev 0: ${JSON.stringify(compiled.state.blockers)}`
+  );
+  ok(compiled.html.includes('data-lep-rev="0 (draft)"'), 'until it is released its pages print Rev 0 as a draft');
+  const firstRelease = await req('POST', '/api/manuals/b737-simulator-manual/release', { note: 'First issue of the manual' });
+  ok(firstRelease.released.issue === 1 && firstRelease.released.revision === 0, 'the first release is Issue 1 Rev 0');
+  const releasedManual = await req('GET', '/api/manuals/b737-simulator-manual');
+  ok(
+    releasedManual.state.released?.issue === 1 && !releasedManual.state.changed &&
+      releasedManual.html.includes('data-lep-issue="1" data-lep-rev="0"') && !releasedManual.html.includes('(draft)') &&
+      releasedManual.html.includes('First issue of the manual'),
+    'released: the pages carry Issue 1 Rev 0 and the revision record lists the release'
+  );
+  const releaseAgain = await req('POST', '/api/manuals/b737-simulator-manual/release', {}).catch((e) => e);
+  ok(releaseAgain instanceof Error && /Nothing changed/.test(releaseAgain.message), 'releasing again with nothing changed is refused');
+  ok((await req('GET', '/api/manuals')).find((m) => m.slug === 'b737-simulator-manual').released?.revision === 0, 'the manuals list shows the stamp');
   // a released software manual of the same audience joins the bundle as its own chapter
   const swcNew = await req('POST', '/api/modules/starting-panel/docs', { manual: 'software-customer' });
   await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`, { force: true });
@@ -1249,6 +1272,12 @@ try {
     'released software customer manual compiles as a second chapter of its module');
   ok(withSw.chapters[1].title.includes('STP Core') && withSw.html.includes('id="ch-starting-panel--software"'),
     `software chapter titled after the linked software: ${withSw.chapters[1].title}`);
+  ok(
+    withSw.state.changed && withSw.state.next.revision === 1 && withSw.html.includes('data-lep-rev="1 (draft)"'),
+    'a chapter added after the release puts Rev 1 on the pages, as a draft'
+  );
+  const newIssue = await req('POST', '/api/manuals/b737-simulator-manual/release', { newIssue: true, note: 'Software chapter' });
+  ok(newIssue.released.issue === 2 && newIssue.released.revision === 0, 'a new issue starts again at Rev 0');
   const fatRes = await fetch(BASE + '/api/manuals/b737-simulator-manual/fat.html');
   const fatHtml = await fatRes.text();
   ok(fatRes.status === 200 && fatHtml.includes('Factory Acceptance Test protocol') && fatHtml.includes('id="fat-starting-panel"') && fatHtml.includes('Modules under test'),

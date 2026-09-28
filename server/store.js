@@ -2890,7 +2890,88 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       if (!assetNames.get(ref).has(name)) missingAssets.push({ chapter: c.slug, title: c.title || c.module?.name || c.slug, name, url });
     }
   }
-  return { manual, chapters, lang, missingAssets };
+  return { manual, chapters, lang, missingAssets, state: manualState(manual, chapters, missingAssets) };
+}
+
+/* ------------------------------------------------------------------ */
+/* Releasing an assembled manual: its own issue and revision            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * What went into a manual: every chapter by the doc it compiles and that doc's revision. Two
+ * compiles with the same signature print the same text, so a release is out of date as soon as the
+ * signature moves — a chapter revised or translated (both bump the doc's revision), added, dropped,
+ * or still compiled from a draft.
+ */
+function manualSignature(chapters) {
+  return chapters
+    .map((c) => (c.missing ? `${c.slug}:none` : `${c.slug}:${c.doc.key}:r${c.doc.revision}${c.isDraft ? ':draft' : ''}`))
+    .join('|');
+}
+
+/**
+ * Where a manual stands. `released` is its last release (issue, revision, date); `changed` says the
+ * chapters moved since, and `next` is what releasing now would make it. The first release is
+ * Issue 1 Rev 0, like a doc's A1.0; each later one is the next revision, or Issue n+1 Rev 0 when the
+ * author starts a new issue. `blockers` are why it cannot be released yet: a manual is released only
+ * when every chapter it prints is a released doc and every picture is there.
+ */
+function manualState(manual, chapters, missingAssets = []) {
+  const releases = manual.releases || [];
+  const last = releases[releases.length - 1] || null;
+  const blockers = [];
+  if (!chapters.length) blockers.push('it has no chapters');
+  for (const c of chapters) {
+    const title = c.title || c.module?.name || c.slug;
+    if (c.missing) blockers.push(`${title} has no ${c.reason ? c.reason.replace(/^no /, '') : 'doc'}`);
+    else if (c.isDraft) blockers.push(`${title} is compiled from a draft (${c.doc.version} r${c.doc.revision})`);
+  }
+  if (missingAssets.length) blockers.push(`${missingAssets.length} picture${missingAssets.length === 1 ? ' is' : 's are'} missing`);
+  return {
+    released: last ? { issue: last.issue, revision: last.revision, date: last.date, note: last.note || '' } : null,
+    changed: !last || last.signature !== manualSignature(chapters),
+    next: last ? { issue: last.issue, revision: last.revision + 1 } : { issue: 1, revision: 0 },
+    nextIssue: { issue: (last?.issue || 0) + 1, revision: 0 },
+    blockers,
+    releases: releases.map(({ signature, chapters: _c, ...r }) => r),
+  };
+}
+
+/**
+ * Release an assembled manual: stamp the next revision (or a new issue) with today's date, and
+ * record what went into it. Refused while a chapter is a draft or has no doc, while a picture is
+ * missing, or when nothing has changed since the last release.
+ */
+export async function releaseManual(slug, { newIssue = false, note = '', by = null } = {}) {
+  const compiled = await compileManual(slug);
+  if (!compiled) throw new Error(`Manual "${slug}" not found`);
+  const { manual, chapters, state } = compiled;
+  if (state.blockers.length) {
+    throw Object.assign(new Error(`${manual.name} cannot be released yet: ${state.blockers.join('; ')}.`), { code: 'manual-blocked' });
+  }
+  if (!state.changed) {
+    const r = state.released;
+    throw new Error(`Nothing changed since Issue ${r.issue} Rev ${r.revision} — that is the release in effect.`);
+  }
+  const stamp = newIssue ? state.nextIssue : state.next;
+  const ts = now();
+  const record = {
+    ...stamp,
+    date: ts,
+    note: String(note || '').trim(),
+    ...(by ? { by } : {}),
+    chapters: chapters.map((c) => ({ slug: c.slug, key: c.doc?.key || null, revision: c.doc?.revision ?? null })),
+    signature: manualSignature(chapters),
+  };
+  let saved = null;
+  await mutate(async () => {
+    await repo.checkout('main');
+    const fresh = (await readJson('main', manualFile(slug))) || manual;
+    saved = { ...fresh, releases: [...(fresh.releases || []), record], updatedAt: ts };
+    await repo.writeFile(manualFile(slug), JSON.stringify(saved, null, 2) + '\n');
+    await repo.commitAll(`manuals: release ${slug} issue ${stamp.issue} rev ${stamp.revision}`);
+  });
+  return { manual: saved, released: { issue: stamp.issue, revision: stamp.revision, date: ts, note: record.note } };
 }
 
 /* ------------------------------------------------------------------ */

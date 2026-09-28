@@ -61,6 +61,14 @@ The functional spec lives in this file's history and in the Modules spec provide
   `lep*` in `docgen.js`). It carries **no chapter number** and nothing about the company: the address, the CAA
   note and the safety text are written as an ordinary module ("General and safety information"), edited and
   reviewed like any other chapter. Module chapters are the chapters — they number from 1.
+  **A manual is released on its own** (`releaseManual` in `store.js`, `POST /api/manuals/:slug/release
+  {newIssue, note}`, *Release…* on the manual page): Issue 1 Rev 0 first, then the next revision — or Issue n+1
+  Rev 0 — stored as `manual.json` `releases[]` with the chapters that went in and their signature (each chapter's
+  doc key + revision). `compileManual` returns `state` (`released`, `changed`, `next`, `blockers`); it is refused
+  while a chapter is a draft or has no doc, a picture is missing, or nothing changed. The header's Version / Revision
+  / Date and the front matter's LEP carry that stamp — and while the chapters have moved since, the next revision
+  marked `(draft)` with today's date, so a page never claims a release for text nobody released. The revision
+  record lists the manual's releases above its chapters.
   **Export**: `export.html` is the standalone document (pictures inlined) and `export.pdf` / `fat.pdf` print it
   with the browser on the machine (`server/pdf.js`: chromium/Chrome/Edge, `FTD_CHROME` to override, `pdf` on
   `GET /api/status`) — driven over the DevTools protocol and taken only once the page reports `data-pages`,

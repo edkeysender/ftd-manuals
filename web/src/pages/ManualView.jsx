@@ -11,7 +11,8 @@ export default function ManualView() {
   const [editing, setEditing] = useState(false);
   const [lang, setLang] = useState(() => (LANGUAGES.some((L) => L.code === locale()) ? locale() : 'en')); // follows the console language
   const toast = useToast();
-  const { isAdmin } = useAuth();
+  const { isAdmin, canEdit } = useAuth();
+  const [releasing, setReleasing] = useState(false);
   const navigate = useNavigate();
 
   const load = useCallback(() => api.manual(slug, lang).then(setData).catch((e) => toast(e.message, 'err')), [slug, lang]);
@@ -55,7 +56,7 @@ export default function ManualView() {
   };
 
   if (!data) return <div className="page"><div className="empty">{t('Loading…')}</div></div>;
-  const { manual, chapters } = data;
+  const { manual, chapters, state } = data;
   const drafts = chapters.filter((c) => c.isDraft).length;
   const missing = chapters.filter((c) => c.missing).length;
   const untranslated = chapters.filter((c) => c.langFallback).length;
@@ -79,6 +80,25 @@ export default function ManualView() {
               {t(manualType(manual.manual).label)}
             </span>
             <span className="chip">{plural(chapters.length, 'chapter')}</span>
+            {state &&
+              (state.released && !state.changed ? (
+                <span className="badge badge-released" title={state.released.note || ''}>
+                  {t('Issue {issue} · Rev {revision}', { issue: state.released.issue, revision: state.released.revision })} · {dots(state.released.date)}
+                </span>
+              ) : state.released ? (
+                <span
+                  className="badge badge-in-review"
+                  title={t('The chapters changed since Issue {issue} Rev {revision} — the pages print Rev {next} as a draft until it is released', {
+                    issue: state.released.issue,
+                    revision: state.released.revision,
+                    next: state.next.revision,
+                  })}
+                >
+                  {t('Rev {next} not released', { next: state.next.revision })}
+                </span>
+              ) : (
+                <span className="badge badge-draft">{t('Never released')}</span>
+              ))}
             {drafts > 0 && <span className="badge badge-in-review">{t('{n} from draft', { n: drafts })}</span>}
             {missing > 0 && <span className="badge badge-missing">{t('{n} without doc', { n: missing })}</span>}
             {missingPictures.length > 0 && (
@@ -106,6 +126,7 @@ export default function ManualView() {
             ))}
           </div>
           <button className="btn" onClick={() => setEditing(true)}>{t('Edit manual')}</button>
+          {canEdit && state && <button className="btn" onClick={() => setReleasing(true)}>{t('Release…')}</button>}
           <a className="btn" href={`/api/manuals/${slug}/export.html${q}`} target="_blank" rel="noreferrer" title={t("Opens the standalone document — use the browser's Print for PDF")}>
             {t('Open / print')}
           </a>
@@ -142,6 +163,18 @@ export default function ManualView() {
         </div>
       )}
 
+      {releasing && (
+        <ReleaseManual
+          manual={manual}
+          state={state}
+          onClose={() => setReleasing(false)}
+          onReleased={(r) => {
+            setReleasing(false);
+            toast(t('Released as Issue {issue} Rev {revision}', { issue: r.issue, revision: r.revision }));
+            load();
+          }}
+        />
+      )}
       {editing && (
         <EditManual
           manual={manual}
@@ -154,6 +187,95 @@ export default function ManualView() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** 2026-09-28T… → 28.09.2026, as the header prints it. */
+const dots = (iso) => String(iso || '').slice(0, 10).split('-').reverse().join('.');
+
+/**
+ * Release the assembled manual: the next revision of its issue, or a new issue. The server refuses
+ * while a chapter is a draft or has no doc, while a picture is missing, or when nothing changed —
+ * the dialog shows why before anyone presses the button.
+ */
+function ReleaseManual({ manual, state, onClose, onReleased }) {
+  const toast = useToast();
+  const [newIssue, setNewIssue] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const first = !state.released;
+  const stamp = newIssue ? state.nextIssue : state.next;
+  const blocked = state.blockers.length > 0;
+  const unchanged = !state.changed;
+
+  async function release() {
+    setBusy(true);
+    try {
+      const res = await api.releaseManual(manual.slug, { newIssue, note: note.trim() });
+      onReleased(res.released);
+    } catch (e) {
+      toast(e.message, 'err');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-head">
+          <h2>{t('Release manual')}</h2>
+          <span className="steps" />
+          <button className="btn-icon" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {blocked ? (
+            <div className="field">
+              <span className="field-label">{t('Not yet — first:')}</span>
+              <ul className="release-blockers">
+                {state.blockers.map((b) => (
+                  <li key={b}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          ) : unchanged ? (
+            <p>
+              {t('Nothing changed since Issue {issue} Rev {revision} — that is the release in effect.', {
+                issue: state.released.issue,
+                revision: state.released.revision,
+              })}
+            </p>
+          ) : (
+            <div className="form-grid">
+              {first ? (
+                <p>{t('First release — Issue 1 · Rev 0')}</p>
+              ) : (
+                <div className="field">
+                  <label className="radio-row">
+                    <input type="radio" checked={!newIssue} onChange={() => setNewIssue(false)} />
+                    {t('Revision — Issue {issue} · Rev {revision}', { issue: state.next.issue, revision: state.next.revision })}
+                  </label>
+                  <label className="radio-row">
+                    <input type="radio" checked={newIssue} onChange={() => setNewIssue(true)} />
+                    {t('New issue — Issue {issue} · Rev 0', { issue: state.nextIssue.issue })}
+                  </label>
+                </div>
+              )}
+              <label className="field">
+                <span className="field-label">{t('What changed')}</span>
+                <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+                <span className="hint">{t('Printed in the manual’s revision record.')}</span>
+              </label>
+            </div>
+          )}
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>{t('Cancel')}</button>
+          <button className="btn btn-primary" disabled={blocked || unchanged || busy} onClick={release}>
+            {busy ? t('Releasing…') : t('Release as Issue {issue} Rev {revision}', { issue: stamp.issue, revision: stamp.revision })}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

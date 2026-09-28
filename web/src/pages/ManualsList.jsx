@@ -82,6 +82,11 @@ export default function ManualsList() {
                   ) : (
                     <span className="badge badge-in-review">{t('{n} unreleased', { n: m.unreleased })}</span>
                   )}
+                  <div className="muted small">
+                    {m.released
+                      ? t('Issue {issue} · Rev {revision}', { issue: m.released.issue, revision: m.released.revision })
+                      : t('Never released')}
+                  </div>
                 </td>
                 <td className="muted">{timeAgo(m.updatedAt)}</td>
               </tr>

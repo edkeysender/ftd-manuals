@@ -323,6 +323,8 @@ label.inline { font-weight: 400; color: var(--muted); }
 /* (table cells break anywhere, which otherwise spells "Revision" down the column).        */
 /* A table the author has sized keeps those widths: a <colgroup> of percentages, laid out fixed. */
 .doc-page table:has(> colgroup) { table-layout: fixed; }
+.release-blockers { margin: 6px 0 0; padding-left: 20px; color: var(--danger, #b91c1c); line-height: 1.6; }
+.radio-row { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 4px 0; }
 .content-edit.col-resize-hover td, .content-edit.col-resize-hover th { cursor: col-resize; }
 body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
 .doc-page table.revisions .rev-cell { width: 27mm; }
