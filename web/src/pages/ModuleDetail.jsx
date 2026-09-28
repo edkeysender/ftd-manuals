@@ -6,6 +6,7 @@ import { useToast, useAuth } from '../App.jsx';
 import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
 import RelationsSchema from '../components/RelationsSchema.jsx';
 import SoftwareTimeline from '../components/SoftwareTimeline.jsx';
+import ActionMenu from '../components/ActionMenu.jsx';
 import { ManualPills } from './ModulesList.jsx';
 import { t, plural } from '../i18n.jsx';
 
@@ -228,66 +229,6 @@ const MANUAL_FILTERS = [
   { id: 'customer', label: 'Customer', match: (mt) => mt.audience === 'customer' },
   { id: 'technician', label: 'Technician', match: (mt) => mt.audience === 'technician' },
 ];
-
-/** The row's "···" overflow: secondary actions (review, back to draft, FAT, discard). */
-function ActionMenu({ items }) {
-  // The menu is fixed-positioned from the button's rect (the table clips overflow for its rounded
-  // corners, so an absolute menu on the last row would be cut off); it flips upward near the bottom.
-  const [pos, setPos] = useState(null);
-  const open = !!pos;
-  const ref = useRef(null);
-  const btnRef = useRef(null);
-  const place = () => {
-    const r = btnRef.current.getBoundingClientRect();
-    const below = window.innerHeight - r.bottom;
-    const up = below < 220 && r.top > below;
-    setPos(up ? { right: window.innerWidth - r.right, top: 'auto', bottom: window.innerHeight - r.top + 6 } : { right: window.innerWidth - r.right, top: r.bottom + 6 });
-  };
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setPos(null); };
-    const esc = (e) => { if (e.key === 'Escape') setPos(null); };
-    const away = () => setPos(null);
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', esc);
-    window.addEventListener('scroll', away, true);
-    window.addEventListener('resize', away);
-    return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', esc);
-      window.removeEventListener('scroll', away, true);
-      window.removeEventListener('resize', away);
-    };
-  }, [open]);
-  return (
-    <div className="create-manual action-menu-wrap" ref={ref}>
-      <button ref={btnRef} className="btn btn-sm" title={t('More actions')} aria-haspopup="menu" aria-expanded={open} onClick={() => (open ? setPos(null) : place())}>···</button>
-      {open && (
-        <div className="create-manual-menu action-menu" role="menu" style={{ position: 'fixed', ...pos }}>
-          {items.map((it) => it.href ? (
-            <a key={it.label} className="cm-item" role="menuitem" href={it.href} target="_blank" rel="noreferrer" title={it.hint || ''} onClick={() => setPos(null)}>
-              <span className="cm-text"><strong>{it.label}</strong>{it.hint && <span className="muted small">{it.hint}</span>}</span>
-            </a>
-          ) : (
-            <button
-              key={it.label}
-              className={`cm-item ${it.danger ? 'danger' : ''}`}
-              role="menuitem"
-              disabled={!!it.disabled}
-              title={it.hint || ''}
-              onClick={() => { setPos(null); it.onClick(); }}
-            >
-              <span className="cm-text">
-                <strong>{it.label}{it.count > 0 && <span className="count-pill" style={{ marginLeft: 6 }}>{it.count}</span>}</strong>
-                {it.hint && <span className="muted small">{it.hint}</span>}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /**
  * The one "+ Create manual" button: a menu over the four manual types. Types the module already

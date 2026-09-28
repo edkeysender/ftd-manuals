@@ -608,7 +608,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .create-manual-menu .cm-text strong { font-size: 13.5px; }
 .manuals-table .actions-cell { white-space: nowrap; width: 1%; }
 .manuals-table .group-cell { display: flex; align-items: center; gap: 8px; }
-.action-menu-wrap .btn { letter-spacing: 1px; }
+.action-menu-wrap.is-overflow .btn { letter-spacing: 1px; }
+.action-menu-wrap .menu-caret { margin-left: 6px; font-size: 11px; opacity: 0.85; }
 .action-menu { min-width: 190px; }
 .action-menu .cm-item { text-decoration: none; }
 .action-menu .cm-item.danger strong { color: var(--red); }
