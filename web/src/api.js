@@ -130,6 +130,8 @@ export const api = {
   createManual: (body) => request('/api/manuals', { method: 'POST', body }),
   importManuals: (config, replace) => request('/api/manuals/import', { method: 'POST', body: { config, replace } }),
   updateManual: (slug, body) => request(`/api/manuals/${slug}`, { method: 'PUT', body }),
+  /** Release an assembled manual as its next revision, or {newIssue: true} for a new issue. */
+  releaseManual: (slug, body) => request(`/api/manuals/${slug}/release`, { method: 'POST', body }),
   deleteManual: (slug) => request(`/api/manuals/${slug}`, { method: 'DELETE' }),
   uploadManualCover: (slug, file) => request(`/api/manuals/${slug}/cover`, { method: 'POST', body: file }),
   uploadLogo: (file) => request('/api/settings/logo', { method: 'POST', body: file }),

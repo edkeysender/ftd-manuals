@@ -363,7 +363,7 @@ const STRINGS = {
     tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
     draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', draft: 'draft',
     // chapter 1 — General (FTD manual template)
-    frontMatter: 'Front matter',
+    frontMatter: 'Front matter', manualRevisions: 'Manual revisions', chapterRevisions: 'Chapters',
     lep: 'List of Effective Pages', page: 'Page', issue: 'Issue', rev: 'Rev.', effectiveDate: 'Effective date',
     headPage: 'Page', headVersion: 'Version', headRevision: 'Revision', headDate: 'Date',
     lepNote: 'Page numbers are assigned when the manual is opened for print or exported; the table below lists the effectivity of every chapter.',
@@ -389,7 +389,7 @@ const STRINGS = {
     intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience}`,
     tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
-    frontMatter: 'Strony wstępne',
+    frontMatter: 'Strony wstępne', manualRevisions: 'Rewizje instrukcji', chapterRevisions: 'Rozdziały',
     lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', effectiveDate: 'Data obowiązywania',
     headPage: 'Strona', headVersion: 'Wersja', headRevision: 'Rewizja', headDate: 'Data',
     lepNote: 'Numery stron są nadawane przy otwarciu instrukcji do druku lub eksporcie; poniższa tabela podaje obowiązującą wersję każdego rozdziału.',
@@ -581,6 +581,7 @@ export const MANUAL_CSS = `
 .manual-doc .chapter table:has(> colgroup) { table-layout: fixed; }
 .manual-doc .front > h2 { font-size: 18px; margin: 30px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #16324f; }
 .manual-doc .front > h2:first-child { margin-top: 0; }
+.manual-doc .front > h3 { font-size: 14.5px; margin: 20px 0 8px; }
 .manual-doc .toc li.front { font-weight: 600; }
 .manual-doc .toc li.front::before { content: none; }
 .manual-doc .chapter > h1 { font-size: 24px; border-bottom: 3px solid #16324f; padding-bottom: 8px; margin: 0 0 16px; }
@@ -696,16 +697,25 @@ function headerBox(manual, logoHtml, T, head = {}) {
  * Effective Pages per printed page; the web view shows the per-chapter table.
  * opts: { logoUrl, coverUrl, footerText }
  */
-export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts = {}) {
+export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = null }, opts = {}) {
   const { logoUrl = null, coverUrl = null, footerText = FOOTER_TEXT } = opts;
   const T = strings(lang);
   const date = new Date().toISOString().slice(0, 10);
   const logoHtml = logoUrl ? `<img class="logo" src="${esc(logoUrl)}" alt="FTD.aero">` : LOGO_SVG;
-  const frontLep = { issue: '—', rev: '—', date: fmtDots(date) };
+  // The manual's own issue and revision, as its last release stamped them. When the chapters have
+  // moved since — or it was never released — the pages say so: the next revision, marked as a
+  // draft and dated today. A printed page never claims a released revision for text nobody released.
+  const rel = state?.released;
+  const frontLep =
+    rel && !state.changed
+      ? { issue: String(rel.issue), rev: String(rel.revision), date: fmtDots(String(rel.date).slice(0, 10)) }
+      : state
+        ? { issue: String(state.next.issue), rev: `${state.next.revision} (${T.draft})`, date: fmtDots(date) }
+        : { issue: '—', rev: '—', date: fmtDots(date) };
   const lepAttrs = (l) => ` data-lep-issue="${esc(l.issue)}" data-lep-rev="${esc(l.rev)}" data-lep-date="${esc(l.date)}"`;
 
-  // What the template’s header fields say about this document. An assembled manual has no version of
-  // its own — the General chapter says the same with an em dash — so the header repeats that.
+  // What the template’s header fields say about this document: the manual’s issue and revision,
+  // the same stamp its front matter carries in the List of Effective Pages.
   const head = {
     title: manual.name,
     subtitle: manual.code || GROUP_LABELS[manual.group] || manual.group || '',
@@ -768,9 +778,22 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
     )
     .join('\n');
 
+  // The manual's own releases head its revision record; the chapters follow, as before.
+  const manualRevisions = (state?.releases || []).length
+    ? `<h3>${esc(T.manualRevisions)}</h3>
+<table class="manual-revisions">
+<thead><tr><th>${T.issue}</th><th>${T.rev}</th><th>${T.date}</th><th>${T.change}</th></tr></thead>
+<tbody>${state.releases
+        .map((r) => `<tr><td>${esc(r.issue)}</td><td>${esc(r.revision)}</td><td>${fmtDots(String(r.date).slice(0, 10))}</td><td>${esc(r.note || '—')}</td></tr>`)
+        .join('\n')}</tbody>
+</table>
+<h3>${esc(T.chapterRevisions)}</h3>
+`
+    : '';
+
   const front = `<section class="front" id="ch-general"${lepAttrs(frontLep)}>
 <h2 id="revision-record">${T.revisionRecord}</h2>
-<table>
+${manualRevisions}<table>
   <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.code}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
   <tbody>${recordRows}</tbody>
 </table>

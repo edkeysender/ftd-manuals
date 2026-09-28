@@ -760,10 +760,13 @@ app.get('/api/manuals', wrap(async (req, res) => {
   const manuals = await store.listManuals();
   const modules = await store.listModules();
   res.json(
-    manuals.map((m) => {
+    manuals.map(({ releases, ...m }) => {
       const type = manualTypeOf(m.manual).id;
+      const last = (releases || []).at(-1);
       return {
         ...m,
+        // the manual’s own stamp from its last release; whether it is still current takes a compile
+        released: last ? { issue: last.issue, revision: last.revision, date: last.date } : null,
         manual: type,
         moduleNames: m.modules.map((s) => modules.find((x) => x.slug === s)?.name || s),
         // chapters whose doc of this manual type is not released (or does not exist)
@@ -831,6 +834,12 @@ app.post('/api/settings/logo', wrap(async (req, res) => {
   const buffer = Buffer.from(req.body.dataBase64 || '', 'base64');
   if (!buffer.length) throw new Error('No image data');
   res.json(await store.saveBrandLogo(req.body.name || 'logo.png', buffer));
+}));
+
+/** Release an assembled manual: the next revision, or {newIssue: true} for Issue n+1 Rev 0. */
+app.post('/api/manuals/:slug/release', wrap(async (req, res) => {
+  const { newIssue, note } = req.body || {};
+  res.json(await store.releaseManual(ownerRef(req), { newIssue: !!newIssue, note, by: req.user?.email || null }));
 }));
 
 app.put('/api/manuals/:slug', wrap(async (req, res) => {
