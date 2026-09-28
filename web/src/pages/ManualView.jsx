@@ -59,6 +59,8 @@ export default function ManualView() {
   const drafts = chapters.filter((c) => c.isDraft).length;
   const missing = chapters.filter((c) => c.missing).length;
   const untranslated = chapters.filter((c) => c.langFallback).length;
+  // Pictures a chapter asks for that the owner no longer has: the printed manual would have a hole.
+  const missingPictures = data.missingAssets || [];
 
   return (
     <div className="page page-wide">
@@ -79,6 +81,14 @@ export default function ManualView() {
             <span className="chip">{plural(chapters.length, 'chapter')}</span>
             {drafts > 0 && <span className="badge badge-in-review">{t('{n} from draft', { n: drafts })}</span>}
             {missing > 0 && <span className="badge badge-missing">{t('{n} without doc', { n: missing })}</span>}
+            {missingPictures.length > 0 && (
+              <span
+                className="badge badge-missing"
+                title={missingPictures.map((a) => `${a.title}: ${a.name}`).join(', ')}
+              >
+                {t('{pictures} missing', { pictures: plural(missingPictures.length, 'picture') })}
+              </span>
+            )}
             {untranslated > 0 && (
               <span className="badge badge-draft" title={t('{chapters} shown in English — no {language} translation', { chapters: plural(untranslated, 'chapter'), language: t(language(lang).label) })}>
                 {t('{n} in English', { n: untranslated })}

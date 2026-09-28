@@ -1210,6 +1210,21 @@ try {
     'the manual opens with unnumbered front matter, not a General chapter');
   ok(compiled.html.indexOf('id="ch-general"') < compiled.html.indexOf('id="revision-record"') && compiled.html.indexOf('id="revision-record"') < compiled.html.indexOf('id="toc"') && compiled.html.indexOf('id="toc"') < compiled.html.indexOf('id="lep"'),
     'front matter order: revision record, table of contents, List of Effective Pages');
+  // a picture the owner no longer has is reported with the chapter it sits in, not silently printed
+  ok(Array.isArray(compiled.missingAssets) && compiled.missingAssets.length === 0, 'nothing missing while every picture is there');
+  const gapMod = await req('POST', '/api/modules', { name: 'Picture Gap', code: 'GAP', category: 'misc' });
+  await req('PUT', `/api/modules/${gapMod.slug}/docs/customer:A1.0/content`, {
+    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure>`,
+  });
+  const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', group: 'SIM', modules: [gapMod.slug] });
+  const gapCompiled = await req('GET', `/api/manuals/${gapManual.slug}`);
+  ok(
+    gapCompiled.missingAssets.length === 1 && gapCompiled.missingAssets[0].name === 'gone.png' && gapCompiled.missingAssets[0].chapter === gapMod.slug,
+    `a picture that is not in the assets is reported: ${JSON.stringify(gapCompiled.missingAssets)}`
+  );
+  await req('DELETE', `/api/manuals/${gapManual.slug}`);
+  await req('DELETE', `/api/modules/${gapMod.slug}`);
+
   // a released software manual of the same audience joins the bundle as its own chapter
   const swcNew = await req('POST', '/api/modules/starting-panel/docs', { manual: 'software-customer' });
   await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`, { force: true });

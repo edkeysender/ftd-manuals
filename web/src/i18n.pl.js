@@ -278,6 +278,7 @@ export const PL = {
   'Released {type} versions are used; modules without one are included from their latest draft and flagged.': 'Używane są wydane wersje ({type}); moduły bez wydania trafiają z ostatniej wersji roboczej i są oznaczone.',
   '{n} from draft': '{n} z wersji roboczej',
   '{n} without doc': '{n} bez dokumentu',
+  '{pictures} missing': 'brakuje: {pictures}',
   '{chapters} shown in English — no {language} translation': '{chapters} po angielsku — brak tłumaczenia ({language})',
   '{n} in English': '{n} po angielsku',
   'Language of the compiled manual — chapters without a translation fall back to English (flagged)': 'Język skompilowanej instrukcji — rozdziały bez tłumaczenia są po angielsku (oznaczone)',
