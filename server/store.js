@@ -2850,7 +2850,23 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       );
     }
   }
-  return { manual, chapters, lang };
+  // A picture whose file is no longer in the owner's assets leaves a hole in the printed manual and
+  // nothing else says so — a software renamed before the console moved picture URLs with it left
+  // exactly that behind. Report them with the chapter they sit in.
+  const assetNames = new Map();
+  const missingAssets = [];
+  const ASSET_RE = /\/api\/(modules|software)\/([^/"'\s]+)\/assets\/([^"'?)\s>]+)/g;
+  for (const c of chapters) {
+    for (const [url, kind, ownerSeg, fileSeg] of String(c.content || '').matchAll(ASSET_RE)) {
+      const ref = kind === 'software' ? swRef(slugify(decodeURIComponent(ownerSeg))) : decodeURIComponent(ownerSeg);
+      if (!assetNames.has(ref)) {
+        assetNames.set(ref, new Set((await listAssets(ref).catch(() => [])).map((a) => a.name)));
+      }
+      const name = decodeURIComponent(fileSeg);
+      if (!assetNames.get(ref).has(name)) missingAssets.push({ chapter: c.slug, title: c.title || c.module?.name || c.slug, name, url });
+    }
+  }
+  return { manual, chapters, lang, missingAssets };
 }
 
 /* ------------------------------------------------------------------ */
