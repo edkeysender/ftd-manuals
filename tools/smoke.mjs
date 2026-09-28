@@ -1224,13 +1224,19 @@ try {
   ok(Array.isArray(compiled.missingAssets) && compiled.missingAssets.length === 0, 'nothing missing while every picture is there');
   const gapMod = await req('POST', '/api/modules', { name: 'Picture Gap', code: 'GAP', category: 'misc' });
   await req('PUT', `/api/modules/${gapMod.slug}/docs/customer:A1.0/content`, {
-    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure>`,
+    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table>`,
   });
   const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', group: 'SIM', modules: [gapMod.slug] });
   const gapCompiled = await req('GET', `/api/manuals/${gapManual.slug}`);
   ok(
     gapCompiled.missingAssets.length === 1 && gapCompiled.missingAssets[0].name === 'gone.png' && gapCompiled.missingAssets[0].chapter === gapMod.slug,
     `a picture that is not in the assets is reported: ${JSON.stringify(gapCompiled.missingAssets)}`
+  );
+  ok(
+    (await req('GET', `/api/modules/${gapMod.slug}/docs/customer:A1.0`)).content.includes('<col style="width: 30%;">') &&
+      gapCompiled.html.includes('<col style="width: 70%;">') &&
+      gapCompiled.css.includes('table:has(> colgroup)'),
+    'column widths dragged in the editor are saved and laid out fixed in the manual'
   );
   await req('DELETE', `/api/manuals/${gapManual.slug}`);
   await req('DELETE', `/api/modules/${gapMod.slug}`);

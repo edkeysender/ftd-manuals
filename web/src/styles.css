@@ -321,6 +321,10 @@ label.inline { font-weight: 400; color: var(--muted); }
 .doc-page table th { background: #f1f4f8; }
 /* The revision record: the date under the revision, in a column that keeps its words whole */
 /* (table cells break anywhere, which otherwise spells "Revision" down the column).        */
+/* A table the author has sized keeps those widths: a <colgroup> of percentages, laid out fixed. */
+.doc-page table:has(> colgroup) { table-layout: fixed; }
+.content-edit.col-resize-hover td, .content-edit.col-resize-hover th { cursor: col-resize; }
+body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-select: none !important; }
 .doc-page table.revisions .rev-cell { width: 27mm; }
 .doc-page table.revisions th.rev-cell, .doc-page table.revisions .rev-id, .doc-page table.revisions .rev-date { white-space: nowrap; overflow-wrap: normal; word-break: keep-all; hyphens: none; }
 .doc-page table.revisions .rev-date, .doc-page table.revisions .rev-note { color: #64748b; font-size: 11.5px; }
