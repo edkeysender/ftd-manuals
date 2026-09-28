@@ -11,6 +11,50 @@ const TRANSCRIBE_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const MODEL = process.env.OPENAI_MODEL || 'gpt-5';
 const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
 
+/**
+ * Network faults worth another try: a DNS blip (the Pi's resolver answers EAI_AGAIN now and
+ * then), a dropped socket, a connect that never completed. The request never reached the API in
+ * those cases, so sending it again is safe. A timeout is not retried — the model was working,
+ * and a second 4-minute wait helps nobody.
+ */
+const TRANSIENT = new Set([
+  'EAI_AGAIN',
+  'ENOTFOUND',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ENETUNREACH',
+  'EPIPE',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
+/** What actually went wrong, in words — "fetch failed" on its own tells the author nothing. */
+function networkReason(e) {
+  const cause = e?.cause || e;
+  const code = cause?.code || '';
+  if (code === 'EAI_AGAIN' || code === 'ENOTFOUND')
+    return `${cause.hostname || 'the service'} could not be looked up — the console has no working name resolution right now`;
+  if (e?.name === 'TimeoutError') return 'it did not answer in time';
+  if (code) return `the connection failed (${code})`;
+  return cause?.message || e?.message || 'the connection failed';
+}
+
+/** fetch that says what went wrong and rides out a blip. */
+async function apiFetch(url, init, { attempts = 3, label = 'The AI service' } = {}) {
+  let last = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      last = e;
+      const code = e?.cause?.code || e?.code || '';
+      if (attempt === attempts || !TRANSIENT.has(code)) break;
+      await new Promise((r) => setTimeout(r, 500 * attempt * attempt));
+    }
+  }
+  throw new Error(`${label} could not be reached: ${networkReason(last)}`);
+}
+
 export function aiAvailable() {
   return !!process.env.OPENAI_API_KEY;
 }
@@ -27,7 +71,7 @@ export async function transcribe(buffer, filename = 'speech.webm', lang = '') {
   form.append('file', new Blob([buffer]), filename);
   form.append('model', TRANSCRIBE_MODEL);
   if (lang) form.append('language', lang);
-  const res = await fetch(TRANSCRIBE_URL, {
+  const res = await apiFetch(TRANSCRIBE_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
     body: form,
@@ -45,7 +89,7 @@ export async function transcribe(buffer, filename = 'speech.webm', lang = '') {
 async function callOpenAI(messages, { json = false } = {}) {
   if (!aiAvailable()) throw new Error('OPENAI_API_KEY is not set — AI assistant is unavailable');
   const supportsReasoning = /^(gpt-5|o\d)/.test(MODEL);
-  const res = await fetch(API_URL, {
+  const res = await apiFetch(API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -275,14 +319,14 @@ export async function generateImage({ prompt, reference = null, references = [] 
       const type = /\.png$/i.test(r.name) ? 'image/png' : /\.webp$/i.test(r.name) ? 'image/webp' : 'image/jpeg';
       form.append('image[]', new Blob([r.buffer], { type }), r.name);
     }
-    res = await fetch('https://api.openai.com/v1/images/edits', {
+    res = await apiFetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers,
       body: form,
       signal: AbortSignal.timeout(180000),
     });
   } else {
-    res = await fetch('https://api.openai.com/v1/images/generations', {
+    res = await apiFetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: IMAGE_MODEL, prompt, size: '1024x1024', quality: IMAGE_QUALITY }),
