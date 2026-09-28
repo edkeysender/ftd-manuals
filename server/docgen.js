@@ -550,7 +550,7 @@ export const MANUAL_CSS = `
 .manual-doc .hb-logo { text-align: center; }
 .manual-doc .hb-logo img, .manual-doc .hb-logo svg { width: 21mm; height: auto; display: inline-block; }
 .manual-doc .hb-title, .manual-doc .hb-sub { font-size: 6pt; font-weight: 700; text-align: justify; line-height: 1.3; }
-.manual-doc .hb-page { font-family: Arial, Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
+.manual-doc .hb-page { font-family: Arial, 'Liberation Sans', Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
 .manual-doc .hb-lbl, .manual-doc .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
 .manual-doc .cover { text-align: center; padding: 10px 0 40px; }
 .manual-doc .cover-image img { max-width: 92%; max-height: 560px; margin: 26px auto 10px; display: block; }
@@ -564,6 +564,10 @@ export const MANUAL_CSS = `
 .manual-doc .toc > ol > li { font-weight: 600; margin: 6px 0; }
 .manual-doc .toc ol ol { list-style: none; padding-left: 22px; font-weight: 400; color: #475569; font-size: 14px; }
 .manual-doc .toc .l3 { padding-left: 18px; }
+/* Cross-references (contents, revision record, in-text links) read as part of the text: the
+   document’s own colour, no underline — on screen it appears on hover. */
+.manual-doc a[href^="#"] { color: inherit; text-decoration: none; }
+.manual-doc a[href^="#"]:hover { text-decoration: underline; text-decoration-color: #94a3b8; }
 .manual-doc .toc a { color: inherit; text-decoration: none; }
 .manual-doc .toc a:hover { color: #0b5fff; text-decoration: underline; }
 .manual-doc .toc .num { display: inline-block; min-width: 46px; color: #64748b; font-variant-numeric: tabular-nums; }
@@ -861,10 +865,13 @@ ${body}
 const FONT = "Verdana, Tahoma, 'DejaVu Sans', Geneva, sans-serif";
 
 export const PAGED_CSS = `
+/* The page of the company template (Dok firmowy wzór.docx): margins 10 mm top, 10 mm right, 15 mm   */
+/* bottom, 15 mm left, the header 5 mm from the top edge. The top margin here is the header’s 5 mm, */
+/* its ~12 mm box and a gap before the text — Word grows the top margin around the header the same. */
 @page {
   size: A4;
-  margin: 34mm 14mm 22mm;
-  @top-center { content: element(pageHeader); width: 100%; vertical-align: bottom; }
+  margin: 24mm 10mm 15mm 15mm;
+  @top-center { content: element(pageHeader); width: 100%; vertical-align: top; }
   @bottom-center { content: element(pageFooter); width: 100%; vertical-align: top; }
   @bottom-right { content: counter(page) " / " counter(pages); font-family: ${FONT}; font-size: 9px; color: #64748b; vertical-align: top; white-space: nowrap; border-top: 1px solid #c8d1db; padding-top: 4px; text-align: right; }
 }
@@ -873,7 +880,8 @@ body { font-family: ${FONT}; }
 .manual-doc .print-header { position: running(pageHeader); display: block; }
 .manual-doc .print-footer { position: running(pageFooter); display: block; }
 .pagedjs_margin-content .print-footer { font-size: 8.5px; color: #64748b; text-align: center; border-top: 1px solid #c8d1db; padding-top: 4px; line-height: 1.4; }
-.pagedjs_margin-content .head-box { width: 190mm; table-layout: fixed; border-collapse: collapse; margin: 0 auto; color: #000; }
+.pagedjs_margin-content .head-box { width: 190mm; table-layout: fixed; border-collapse: collapse; margin: 5mm 0 0 -5mm; color: #000; }
+.pagedjs_margin-top-center, .pagedjs_margin-top-center > .pagedjs_margin-content { overflow: visible; }
 .pagedjs_margin-content .head-box td { border: 0.5pt solid #000; padding: 0.4mm 1.2mm; vertical-align: middle; }
 .pagedjs_margin-content .head-box .c-logo { width: 26.6mm; }
 .pagedjs_margin-content .head-box .c-lbl { width: 19mm; }
@@ -882,7 +890,7 @@ body { font-family: ${FONT}; }
 .pagedjs_margin-content .hb-logo { text-align: center; }
 .pagedjs_margin-content .hb-logo img, .pagedjs_margin-content .hb-logo svg { width: 21mm; height: auto; display: inline-block; }
 .pagedjs_margin-content .hb-title, .pagedjs_margin-content .hb-sub { font-size: 6pt; font-weight: 700; text-align: justify; line-height: 1.3; }
-.pagedjs_margin-content .hb-page { font-family: Arial, Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
+.pagedjs_margin-content .hb-page { font-family: Arial, 'Liberation Sans', Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
 .pagedjs_margin-content .hb-lbl, .pagedjs_margin-content .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
 /* the PAGE field of the template: printed pages know their number, the web view does not */
 .pagedjs_margin-content .hb-page .pg::after { content: counter(page) "/" counter(pages); }
