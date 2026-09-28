@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, GROUPS, ASSEMBLY_TYPES, manualType, readFileAsBase64, LANGUAGES, language } from '../api.js';
 import ModulePicker from '../components/ModulePicker.jsx';
+import ActionMenu from '../components/ActionMenu.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
 
@@ -127,18 +128,22 @@ export default function ManualView() {
           </div>
           <button className="btn" onClick={() => setEditing(true)}>{t('Edit manual')}</button>
           {canEdit && state && <button className="btn" onClick={() => setReleasing(true)}>{t('Release…')}</button>}
-          <a className="btn" href={`/api/manuals/${slug}/export.html${q}`} target="_blank" rel="noreferrer" title={t("Opens the standalone document — use the browser's Print for PDF")}>
-            {t('Open / print')}
-          </a>
-          <button className="btn btn-primary" disabled={pdfBusy} onClick={exportPdf} title={t('The document as it prints: A4 pages with the header on each')}>
-            {pdfBusy ? t('Printing…') : lang !== 'en' ? t('Export PDF ({lang})', { lang: t(language(lang).short) }) : t('Export PDF')}
-          </button>
-          <a className="btn" href={`/api/manuals/${slug}/export.html?download${lang !== 'en' ? `&lang=${lang}` : ''}`}>
-            {lang !== 'en' ? t('Export HTML ({lang})', { lang: t(language(lang).short) }) : t('Export HTML')}
-          </a>
-          <a className="btn" href={`/api/manuals/${slug}/fat.html`} target="_blank" rel="noreferrer" title={t('FAT protocol: the checklists of all modules in this manual as one document')}>
-            {t('FAT protocol')}
-          </a>
+          <ActionMenu
+            className="btn btn-primary"
+            label={pdfBusy ? t('Printing…') : lang !== 'en' ? t('Export ({lang})', { lang: t(language(lang).short) }) : t('Export')}
+            title={t('PDF, HTML or print — in the language shown')}
+            disabled={pdfBusy}
+            items={[
+              { label: t('PDF'), hint: t('The document as it prints: A4 pages with the header on each'), onClick: exportPdf },
+              {
+                label: t('HTML'),
+                hint: t('One standalone file, pictures included'),
+                href: `/api/manuals/${slug}/export.html?download${lang !== 'en' ? `&lang=${lang}` : ''}`,
+                download: true,
+              },
+              { label: t('Print'), hint: t('Opens the document in a new tab — print it from the browser'), href: `/api/manuals/${slug}/export.html${q}` },
+            ]}
+          />
           {isAdmin && (
             <button
               className="btn btn-danger"
