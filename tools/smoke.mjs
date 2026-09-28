@@ -1247,6 +1247,19 @@ try {
   const exp = await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html');
   const expHtml = await exp.text();
   ok(exp.ok && expHtml.startsWith('<!doctype html>') && expHtml.includes('<style id="manual-css">'), 'standalone export served');
+  // the same document printed to PDF, when this machine has a browser to print with
+  const pdfRes = await fetch(BASE + '/api/manuals/b737-simulator-manual/export.pdf');
+  const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
+  const canPrint = (await req('GET', '/api/status')).pdf;
+  if (canPrint) {
+    ok(
+      pdfRes.ok && pdfRes.headers.get('content-type') === 'application/pdf' && pdfBuf.subarray(0, 5).toString() === '%PDF-' && pdfBuf.length > 5000,
+      `PDF export printed by the browser (${Math.round(pdfBuf.length / 1024)} kB)`
+    );
+    ok(/attachment; filename="b737-simulator-manual\.pdf"/.test(pdfRes.headers.get('content-disposition') || ''), 'PDF export downloads under the manual name');
+  } else {
+    ok(!pdfRes.ok && /No browser to print with/.test(JSON.parse(pdfBuf.toString()).error), 'PDF export says what is missing when the machine has no browser');
+  }
   const mlist = await req('GET', '/api/manuals');
   ok(mlist.length === 1 && mlist[0].unreleased === 0, 'manual listed as all released');
   await req('PUT', '/api/manuals/b737-simulator-manual', { modules: [] });

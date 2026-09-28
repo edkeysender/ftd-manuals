@@ -358,8 +358,7 @@ const STRINGS = {
           ? `the <strong>${name}</strong> software`
           : `the software of the <strong>${name}</strong> module (${detail})`
         : `the <strong>${name}</strong> module (${detail})`,
-    intro1: (typeLabel, subject, audience) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience} It is a standalone mini-manual and is compiled into every simulator manual that includes it when this document version is released.`,
-    intro2: (version, draftRev) => `Document version ${version}${draftRev ? ` (draft, revision ${draftRev})` : ''}. Only released document versions are compiled into simulator manuals.`,
+    intro1: (typeLabel, subject, audience) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience}`,
     // assembled manual
     tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
     draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', draft: 'draft',
@@ -387,8 +386,7 @@ const STRINGS = {
           ? `oprogramowania <strong>${name}</strong>`
           : `oprogramowania modułu <strong>${name}</strong> (${detail})`
         : `modułu <strong>${name}</strong> (${detail})`,
-    intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience} Jest samodzielną mini-instrukcją i po wydaniu tej wersji dokumentu wchodzi w skład każdej instrukcji symulatora, która ją zawiera.`,
-    intro2: (version, draftRev) => `Wersja dokumentu ${version}${draftRev ? ` (robocza, rewizja ${draftRev})` : ''}. Do instrukcji symulatora kompilowane są wyłącznie wydane wersje dokumentów.`,
+    intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience}`,
     tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
     general: 'Ogólne', generalIntro: 'W tej sekcji podano ogólne informacje o samym dokumencie.',
@@ -484,7 +482,6 @@ ${record || `<tr><td colspan="2">${T.noRevisions}</td></tr>`}
 <section class="auto-section" data-auto="2">
 <h2>${T.introduction}</h2>
 <p>${T.intro1(typeLower, subject, audience)}</p>
-<p>${T.intro2(esc(doc.version), doc.status === 'released' ? '' : esc('r' + doc.revision))}</p>
 </section>
 <section class="auto-section" data-auto="3">
 <h2>${T.generalInfo}</h2>
@@ -857,6 +854,7 @@ body { font-family: ${FONT}; }
 .pagedjs_margin-content .hb-lbl, .pagedjs_margin-content .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
 /* the PAGE field of the template: printed pages know their number, the web view does not */
 .pagedjs_margin-content .hb-page .pg::after { content: counter(page) "/" counter(pages); }
+.pagedjs_margin-content .hb-page .pg.filled::after, .pagedjs_margin-content.filled::after { content: none; }
 .manual-doc .manual { max-width: none; padding: 0; margin: 0; }
 .manual-doc .cover { break-after: page; padding-top: 30mm; }
 .manual-doc .cover .head-box { display: none; }
@@ -932,6 +930,15 @@ const LEP_SCRIPT = `
       if (f !== 'page') cells[k].textContent = v ? v[f] : '';
     }
     document.documentElement.setAttribute('data-pages', String(flow.total));
+    // counter(pages) stays 0 in a print, so the number of pages is written in: the PAGE field
+    // of the header box and the page footer, on every page that came out.
+    var out = mount.querySelectorAll('.pagedjs_page');
+    for (var p = 0; p < out.length; p++) {
+      var pg = out[p].querySelector('.hb-page .pg');
+      if (pg) { pg.textContent = (p + 1) + '/' + flow.total; pg.className += ' filled'; }
+      var foot = out[p].querySelector('.pagedjs_margin-bottom-right .pagedjs_margin-content');
+      if (foot) { foot.textContent = (p + 1) + ' / ' + flow.total; foot.className += ' filled'; }
+    }
   }
   run().catch(function (e) {
     console.error('pagination failed — showing the continuous document', e);

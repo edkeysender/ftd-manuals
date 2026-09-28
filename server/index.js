@@ -21,6 +21,7 @@ import {
   langOf,
 } from './docgen.js';
 import { handleMcpRequest, TOOLS as MCP_TOOLS } from './mcp.js';
+import { htmlToPdf, pdfAvailable } from './pdf.js';
 import { GitTransientError } from './git.js';
 import * as inbox from './inbox.js';
 import * as images from './images.js';
@@ -93,7 +94,7 @@ app.delete('/api/users/:id', wrap(async (req, res) => {
 
 /* ---------- status ---------- */
 app.get('/api/status', wrap(async (req, res) => {
-  res.json({ ...(await store.getStatus()), ai: ai.aiAvailable() });
+  res.json({ ...(await store.getStatus()), ai: ai.aiAvailable(), pdf: pdfAvailable() });
 }));
 
 /* ---------- modules ---------- */
@@ -835,16 +836,18 @@ app.delete('/api/manuals/:slug', wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// Standalone HTML export with images inlined as data URIs.
-app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
-  const compiled = await store.compileManual(ownerRef(req), { lang: req.query.lang || DEFAULT_LANG });
-  if (!compiled) return res.status(404).json({ error: 'Manual not found' });
-  const opts = await manualRenderOpts(ownerRef(req), compiled.manual);
+/**
+ * The standalone manual document: compiled, with every console-served picture inlined as a data
+ * URI, so it opens and prints the same anywhere. Returns null when there is no such manual.
+ */
+async function manualExportDocument(ref, lang) {
+  const compiled = await store.compileManual(ref, { lang: lang || DEFAULT_LANG });
+  if (!compiled) return null;
+  const opts = await manualRenderOpts(ref, compiled.manual);
   let html = manualExportHtml(compiled, opts);
-  // Inline every console-served image (module assets, logo, cover) as a data URI.
   const refs = [...new Set([...html.matchAll(/\/api\/(?:modules\/[^/"']+\/assets\/[^"' >)?]+|settings\/logo|manuals\/[^/"']+\/cover)(?:\?[^"' >)]*)?/g)].map((m) => m[0]))];
-  for (const ref of refs) {
-    const clean = ref.split('?')[0];
+  for (const r of refs) {
+    const clean = r.split('?')[0];
     let file = null;
     let m;
     if ((m = /^\/api\/modules\/([^/]+)\/assets\/(.+)$/.exec(clean))) {
@@ -858,13 +861,30 @@ app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
     }
     if (!file) continue;
     const mime = MIME[path.extname(file.name).toLowerCase()] || 'application/octet-stream';
-    html = html.split(ref).join(`data:${mime};base64,${file.buffer.toString('base64')}`);
+    html = html.split(r).join(`data:${mime};base64,${file.buffer.toString('base64')}`);
   }
+  const suffix = compiled.lang && compiled.lang !== DEFAULT_LANG ? `-${compiled.lang}` : '';
+  return { compiled, html, name: `${compiled.manual.slug}${suffix}` };
+}
+
+// Standalone HTML export with images inlined as data URIs.
+app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
+  const doc = await manualExportDocument(ownerRef(req), req.query.lang);
+  if (!doc) return res.status(404).json({ error: 'Manual not found' });
   res.set('Content-Type', 'text/html; charset=utf-8');
-  if (req.query.download !== undefined) {
-    res.set('Content-Disposition', `attachment; filename="${compiled.manual.slug}${compiled.lang && compiled.lang !== DEFAULT_LANG ? `-${compiled.lang}` : ''}.html"`);
-  }
-  res.send(html);
+  if (req.query.download !== undefined) res.set('Content-Disposition', `attachment; filename="${doc.name}.html"`);
+  res.send(doc.html);
+}));
+
+// The same document, printed to PDF by the browser on this machine — the pages paged.js laid out.
+app.get('/api/manuals/:slug/export.pdf', wrap(async (req, res) => {
+  const doc = await manualExportDocument(ownerRef(req), req.query.lang);
+  if (!doc) return res.status(404).json({ error: 'Manual not found' });
+  const pdf = await htmlToPdf(doc.html);
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Length', String(pdf.length));
+  res.set('Content-Disposition', `${req.query.inline !== undefined ? 'inline' : 'attachment'}; filename="${doc.name}.pdf"`);
+  res.send(pdf);
 }));
 
 // FAT protocol: the checklists of every module in the manual as one standalone document.
@@ -879,6 +899,20 @@ app.get('/api/manuals/:slug/fat.html', wrap(async (req, res) => {
     res.set('Content-Disposition', `attachment; filename="${compiled.manual.slug}-fat.html"`);
   }
   res.send(html);
+}));
+
+// The FAT protocol as a PDF, for the folder that is signed on the day.
+app.get('/api/manuals/:slug/fat.pdf', wrap(async (req, res) => {
+  const compiled = await store.compileManual(ownerRef(req));
+  if (!compiled) return res.status(404).json({ error: 'Manual not found' });
+  const html = await inlineLogo(
+    checklistExportHtml(`FAT protocol — ${compiled.manual.name}`, fatProtocolBodyHtml(compiled, await fatRenderOpts()))
+  );
+  const pdf = await htmlToPdf(html);
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Length', String(pdf.length));
+  res.set('Content-Disposition', `${req.query.inline !== undefined ? 'inline' : 'attachment'}; filename="${compiled.manual.slug}-fat.pdf"`);
+  res.send(pdf);
 }));
 
 /* ---------- settings ---------- */

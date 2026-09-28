@@ -20,6 +20,30 @@ export default function ManualView() {
     load();
   }, [load]);
 
+  const [pdfBusy, setPdfBusy] = useState(false);
+  /**
+   * The PDF is printed by the browser on the console machine, which takes a moment on a long
+   * manual — so it is fetched rather than linked, and the reason is shown when the machine has
+   * no browser to print with.
+   */
+  async function exportPdf() {
+    setPdfBusy(true);
+    try {
+      const res = await fetch(`/api/manuals/${slug}/export.pdf${q}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `${res.status} ${res.statusText}`);
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${slug}${lang !== 'en' ? `-${lang}` : ''}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   // In-document anchors (TOC, revision record) must not fight the hash router:
   // intercept them and scroll to the target instead.
   const onDocClick = (e) => {
@@ -75,7 +99,10 @@ export default function ManualView() {
           <a className="btn" href={`/api/manuals/${slug}/export.html${q}`} target="_blank" rel="noreferrer" title={t("Opens the standalone document — use the browser's Print for PDF")}>
             {t('Open / print')}
           </a>
-          <a className="btn btn-primary" href={`/api/manuals/${slug}/export.html?download${lang !== 'en' ? `&lang=${lang}` : ''}`}>
+          <button className="btn btn-primary" disabled={pdfBusy} onClick={exportPdf} title={t('The document as it prints: A4 pages with the header on each')}>
+            {pdfBusy ? t('Printing…') : lang !== 'en' ? t('Export PDF ({lang})', { lang: t(language(lang).short) }) : t('Export PDF')}
+          </button>
+          <a className="btn" href={`/api/manuals/${slug}/export.html?download${lang !== 'en' ? `&lang=${lang}` : ''}`}>
             {lang !== 'en' ? t('Export HTML ({lang})', { lang: t(language(lang).short) }) : t('Export HTML')}
           </a>
           <a className="btn" href={`/api/manuals/${slug}/fat.html`} target="_blank" rel="noreferrer" title={t('FAT protocol: the checklists of all modules in this manual as one document')}>
