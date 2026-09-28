@@ -577,6 +577,8 @@ export const MANUAL_CSS = `
 .manual-doc .chapter { counter-increment: chap; counter-reset: sec; margin-top: 60px; padding-top: 24px; border-top: 1px dashed #dde3ea; }
 /* Front matter: the same page furniture as a chapter, but it is not one — no number, and the */
 /* headings inside it are not numbered either.                                                */
+/* A table the author sized in the editor keeps those widths (a <colgroup> of percentages). */
+.manual-doc .chapter table:has(> colgroup) { table-layout: fixed; }
 .manual-doc .front > h2 { font-size: 18px; margin: 30px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #16324f; }
 .manual-doc .front > h2:first-child { margin-top: 0; }
 .manual-doc .toc li.front { font-weight: 600; }

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, releaseDoc, readFileAsBase64, timeAgo, manualType, LANGUAGES, language, ownerHref } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
+import { attachTableResize } from '../components/tableResize.js';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
 
@@ -289,6 +290,9 @@ export default function Editor({ review: reviewProp = false }) {
 
   const docOpen = docMeta && (docMeta.status === 'draft' || docMeta.status === 'in-review' || !!docMeta.hotfix);
   const editable = docOpen && !review;
+  // read by the table-column drag on every gesture, so it always sees the current state
+  const columnsResizable = useRef(false);
+  columnsResizable.current = editable && !pending;
   const canComment = !!docOpen; // anyone viewing an open draft may comment
   const openComments = comments.filter((c) => c.status === 'open');
 
@@ -522,6 +526,20 @@ export default function Editor({ review: reviewProp = false }) {
   }, []);
 
   // Imperatively fill the contenteditable whenever content is replaced wholesale.
+  /* Table columns are resized by dragging the border between them; the widths are saved in the
+     body as a <colgroup>, like any other edit. */
+  useEffect(() => {
+    const root = editorRef.current;
+    if (!root) return undefined;
+    return attachTableResize(root, {
+      enabled: () => columnsResizable.current,
+      onChange: () => {
+        setHtml(root.innerHTML);
+        setDirty(true);
+      },
+    });
+  }, [mode, data]);
+
   const setEditorHtml = useCallback((value) => {
     setHtml(value);
     if (editorRef.current) editorRef.current.innerHTML = value;
