@@ -363,7 +363,7 @@ const STRINGS = {
     tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
     draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', draft: 'draft',
     // chapter 1 — General (FTD manual template)
-    general: 'General', generalIntro: 'In this section the overall information about the document itself is provided.',
+    frontMatter: 'Front matter',
     lep: 'List of Effective Pages', page: 'Page', issue: 'Issue', rev: 'Rev.', effectiveDate: 'Effective date',
     headPage: 'Page', headVersion: 'Version', headRevision: 'Revision', headDate: 'Date',
     lepNote: 'Page numbers are assigned when the manual is opened for print or exported; the table below lists the effectivity of every chapter.',
@@ -389,7 +389,7 @@ const STRINGS = {
     intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience}`,
     tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
-    general: 'Ogólne', generalIntro: 'W tej sekcji podano ogólne informacje o samym dokumencie.',
+    frontMatter: 'Strony wstępne',
     lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', effectiveDate: 'Data obowiązywania',
     headPage: 'Strona', headVersion: 'Wersja', headRevision: 'Rewizja', headDate: 'Data',
     lepNote: 'Numery stron są nadawane przy otwarciu instrukcji do druku lub eksporcie; poniższa tabela podaje obowiązującą wersję każdego rozdziału.',
@@ -575,6 +575,12 @@ export const MANUAL_CSS = `
 .manual-doc table:has(tr > :nth-child(9)) th, .manual-doc table:has(tr > :nth-child(9)) td { padding: 4px 5px; }
 .manual-doc h1, .manual-doc h2, .manual-doc h3 { scroll-margin-top: 70px; }
 .manual-doc .chapter { counter-increment: chap; counter-reset: sec; margin-top: 60px; padding-top: 24px; border-top: 1px dashed #dde3ea; }
+/* Front matter: the same page furniture as a chapter, but it is not one — no number, and the */
+/* headings inside it are not numbered either.                                                */
+.manual-doc .front > h2 { font-size: 18px; margin: 30px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #16324f; }
+.manual-doc .front > h2:first-child { margin-top: 0; }
+.manual-doc .toc li.front { font-weight: 600; }
+.manual-doc .toc li.front::before { content: none; }
 .manual-doc .chapter > h1 { font-size: 24px; border-bottom: 3px solid #16324f; padding-bottom: 8px; margin: 0 0 16px; }
 .manual-doc .chapter > h1::before { content: counter(chap) '  '; color: #16324f; }
 .manual-doc .draft-flag { display: inline-block; font-size: 12px; background: #fef3c7; color: #b45309; border-radius: 5px; padding: 2px 8px; margin-left: 10px; vertical-align: middle; }
@@ -614,6 +620,7 @@ export const MANUAL_CSS = `
   .manual-doc .print-footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8.5px; color: #64748b; text-align: center; border-top: 1px solid #c8d1db; padding-top: 4px; background: #fff; line-height: 1.4; }
   .manual-doc .cover .head-box, .manual-doc .doc-footer { display: none; }
   .manual-doc .chapter { page-break-before: always; border-top: none; margin-top: 0; }
+  .manual-doc .front { page-break-after: always; }
   .manual-doc .cover { page-break-after: always; }
 }
 `;
@@ -705,9 +712,11 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
     date: frontLep.date,
   };
 
-  // chapter 1 is General — module chapters are numbered from 2
+  // The front matter (revision record, contents, List of Effective Pages) carries no chapter
+  // number of its own — what a simulator manual says about itself is not a chapter of it, and
+  // the company and safety text is written as a module. Module chapters are the chapters.
   const processed = chapters.map((c, i) => {
-    const num = i + 2;
+    const num = i + 1;
     const lep = c.missing ? frontLep : docEffectivity(c.doc);
     return c.missing ? { ...c, num, lep, html: '', items: [] } : { ...c, num, lep, ...numberHeadings(`${c.generated}\n${c.content}`, num) };
   });
@@ -729,10 +738,10 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
     ['toc', T.tableOfContents],
     ['lep', T.lep],
   ];
-  const generalToc = `<li><a href="#ch-general"><span class="num">1</span>${esc(T.general)}</a><ol>${generalItems
-    .map(([id, title], i) => `<li class="l2"><a href="#${id}"><span class="num">1.${i + 1}</span>${esc(title)}</a></li>`)
-    .join('')}</ol></li>`;
-  const toc = [generalToc]
+  const frontToc = generalItems
+    .map(([id, title]) => `<li class="front"><a href="#${id}">${esc(title)}</a></li>`)
+    .join('');
+  const toc = [frontToc]
     .concat(
       processed.map((c) => {
         const title = esc(c.title || c.module?.name || c.slug);
@@ -748,7 +757,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
     )
     .join('\n');
 
-  const lepChapterRows = [`<tr><td>1</td><td>${esc(T.general)}</td><td>—</td><td>—</td><td>${esc(frontLep.date)}</td></tr>`]
+  const lepChapterRows = [`<tr><td>—</td><td>${esc(T.frontMatter)}</td><td>—</td><td>—</td><td>${esc(frontLep.date)}</td></tr>`]
     .concat(
       processed.map(
         (c) =>
@@ -757,9 +766,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG }, opts =
     )
     .join('\n');
 
-  const general = `<section class="chapter general" id="ch-general"${lepAttrs(frontLep)}>
-<h1>${esc(T.general)}</h1>
-<p>${T.generalIntro}</p>
+  const front = `<section class="front" id="ch-general"${lepAttrs(frontLep)}>
 <h2 id="revision-record">${T.revisionRecord}</h2>
 <table>
   <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.code}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
@@ -809,7 +816,7 @@ ${c.html}
   ${headerBox(manual, logoHtml, T, head)}
   ${cover}
 </section>
-${general}
+${front}
 ${body}
 <footer class="doc-footer">${esc(footerText)}</footer>
 </div>
