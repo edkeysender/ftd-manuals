@@ -72,6 +72,9 @@ app.delete('/api/*', auth.requireAdmin);
  */
 const ownerRef = (req) =>
   req.params.name !== undefined ? `sw:${store.slugify(req.params.name)}` : req.params.slug;
+/** The owner as a request body names it: a module slug, `sw:<slug>`, or {software: name}. */
+const bodyOwnerRef = (v) =>
+  v && typeof v === 'object' ? (v.software ? `sw:${store.slugify(v.software)}` : v.slug || '') : String(v || '');
 const docPaths = (suffix = '') => [`/api/modules/:slug/docs/:version${suffix}`, `/api/software/:name/docs/:version${suffix}`];
 const ownerPaths = (suffix = '') => [`/api/modules/:slug${suffix}`, `/api/software/:name${suffix}`];
 
@@ -625,7 +628,10 @@ app.post(docPaths('/illustrate'), wrap(async (req, res) => {
 
 /* ---------- AI assistant (same actions available over the API and MCP) ---------- */
 app.post('/api/ai/chat', wrap(async (req, res) => {
-  const { slug, version, messages, attachments } = req.body;
+  const { version, messages, attachments } = req.body;
+  // The editor names the owner the way its page does — a module slug, or {software: name} for a
+  // software that owns its manuals — and this route has no URL to read it from like the others.
+  const slug = bodyOwnerRef(req.body.slug);
   const lang = langOf(req.body.lang || DEFAULT_LANG);
   const d = await store.getDoc(slug, version, { lang });
   if (!d) throw new Error('Doc not found');

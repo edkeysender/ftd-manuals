@@ -951,6 +951,16 @@ try {
     'the doc reads through the software, with the software as its subject');
   ok(ownDoc.generated.includes('Panel Tool') && !ownDoc.generated.includes('>Hardware<'),
     'its generated sections name the software and list no hardware');
+  // the editor's side chat names a software owner as {software: name}; it must find the doc
+  const swChat = await req('POST', '/api/ai/chat', {
+    slug: { software: 'Panel Tool' },
+    version: 'software-customer:A1.0',
+    messages: [{ role: 'user', content: 'Shorten the overview.' }],
+  }).catch((e) => e);
+  ok(
+    !(swChat instanceof Error) || !/Doc not found/.test(swChat.message),
+    `the side chat finds a software's own manual (${swChat instanceof Error ? swChat.message : 'answered'})`
+  );
   await req('PUT', '/api/software/Panel%20Tool/docs/software-customer:A1.0/content', {
     html: ownDoc.content.replace('</h2>', '</h2>\n<p>Start the kiosk from the desktop shortcut.</p>'),
     bump: true,
