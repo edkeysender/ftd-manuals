@@ -669,7 +669,17 @@ export const MANUAL_CSS = `
 .manual-doc .toc a:hover { color: #0b5fff; text-decoration: underline; }
 .manual-doc .toc .num { display: inline-block; min-width: 46px; color: #64748b; font-variant-numeric: tabular-nums; }
 .manual-doc table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12.5px; }
-.manual-doc th, .manual-doc td { border: 1px solid #c8d1db; padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.manual-doc th, .manual-doc td { border: 1px solid #c8d1db; padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: break-word; }
+/* A checklist table (markChecklists): the number stays whole, and each task gets tick boxes. */
+.manual-doc table.checklist td.num { width: 1%; white-space: nowrap; text-align: center; font-weight: 700; }
+.manual-doc table.checklist td.check { width: 1%; white-space: nowrap; vertical-align: top; }
+.manual-doc table.checklist .box { display: inline-block; width: 3.2mm; height: 3.2mm; border: 1px solid #1c2733; border-radius: 1px; vertical-align: -0.5mm; margin: 0 4px 0 0; }
+.manual-doc table.checklist .box + .box-label { margin-right: 12px; }
+.manual-doc table.checklist tbody tr:nth-child(even) td { background: #f7f9fb; }
+.manual-doc table.checklist td > :first-child { margin-top: 0; }
+.manual-doc table.checklist td > :last-child { margin-bottom: 0; }
+.manual-doc table.checklist th { white-space: nowrap; }
+.manual-doc table.checklist th:nth-child(2) { white-space: normal; }
 .manual-doc th { background: #f1f4f8; }
 /* wide tables (9+ columns) go compact so cells rarely have to break words to fit the page */
 .manual-doc table:has(tr > :nth-child(9)) { font-size: 10.5px; }
@@ -797,6 +807,43 @@ function numberHeadings(html, ch) {
     return `<${tag}${cleanAttrs} id="${id}">${inner}</${tag}>`;
   });
   return { html: out, items };
+}
+
+/**
+ * A checklist written as a table — every row ends in "Yes / No" (or "Tak / Nie") — prints as one:
+ * a tick box before each answer, the task number kept whole in a narrow column, alternate rows
+ * shaded. The author writes a plain table; nothing to learn.
+ */
+const YES_NO = /^\s*(yes|tak)\s*\/\s*(no|nie)\s*$/i;
+const cellText = (html) => html.replace(/<[^>]+>/g, '').replace(/&nbsp;| /g, ' ').trim();
+function markChecklists(html) {
+  return String(html || '').replace(/<table\b([^>]*)>([\s\S]*?)<\/table>/gi, (whole, attrs, inner) => {
+    // the header row stays as written; the rows after it are the tasks
+    const headEnd = inner.search(/<\/thead>/i);
+    const head = headEnd >= 0 ? inner.slice(0, headEnd + '</thead>'.length) : '';
+    const body = inner.slice(head.length);
+    // Task rows have two cells or more; a row of one cell spanning the table is a caution or a
+    // note between the tasks and stays as written.
+    const cells = [...body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)]
+      .map((r) => [...r[1].matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/gi)])
+      .filter((c) => c.length >= 2);
+    if (cells.length < 2 || !cells.every((c) => YES_NO.test(cellText(c[c.length - 1][2])))) return whole;
+    const numbered = cells.every((c) => /^\d+[.)]?$/.test(cellText(c[0][2])));
+    const newBody = body.replace(/<tr\b([^>]*)>([\s\S]*?)<\/tr>/gi, (row, trAttrs, rowInner) => {
+      const tds = [...rowInner.matchAll(/<td\b([^>]*)>([\s\S]*?)<\/td>/gi)];
+      if (tds.length < 2) return row;
+      const [, yes, no] = YES_NO.exec(cellText(tds[tds.length - 1][2]));
+      const out = tds.map((m, i) => {
+        if (i === tds.length - 1)
+          return `<td class="check"><span class="box"></span><span class="box-label">${esc(yes)}</span><span class="box"></span><span class="box-label">${esc(no)}</span></td>`;
+        if (i === 0 && numbered) return `<td class="num">${cellText(m[2])}</td>`;
+        return m[0];
+      });
+      return `<tr${trAttrs}>${out.join('')}</tr>`;
+    });
+    const cls = /\bclass="/i.test(attrs) ? attrs.replace(/\bclass="/i, 'class="checklist ') : `${attrs} class="checklist"`;
+    return `<table${cls}>${head}${newBody}</table>`;
+  });
 }
 
 /**
@@ -942,7 +989,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
     const num = i + 1;
     const lep = c.missing ? frontLep : docEffectivity(c.doc);
     if (c.missing) return { ...c, num, lep, html: '', items: [], figures: [] };
-    const body = resolveXrefs(fillManualVars(dropPlaceholderSections(c.content), manual), targets, T);
+    const body = markChecklists(resolveXrefs(fillManualVars(dropPlaceholderSections(c.content), manual), targets, T));
     const { html, items } = numberHeadings(`${c.generated}\n${body}`, num);
     return { ...c, num, lep, items, ...numberFigures(html, num, T) };
   });

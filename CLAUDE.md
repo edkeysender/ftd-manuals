@@ -178,7 +178,10 @@ The functional spec lives in this file's history and in the Modules spec provide
   table cell; `<figure data-size="small|medium|large|full">` (editor ⤢ Size, MCP `attach_figure {size}`) overrides.
   The List of Effective Pages is three columns. A table split across pages repeats its `<thead>`
   (`RepeatTableHeaders` paged.js handler in `LEP_SCRIPT`). Chapter pages carry a **thumb tab** on the outer edge
-  (`data-ch` on each chapter section, placed after pagination, `.thumb-tab`).
+  (`data-ch` on each chapter section, placed after pagination, `.thumb-tab`). A table whose task rows all end in
+  "Yes / No" ("Tak / Nie") prints as a **checklist** (`markChecklists`): tick boxes, the number column kept whole,
+  one-cell caution / note rows left as written. Table cells break long words only when they overflow
+  (`overflow-wrap: break-word`, never `anywhere`, which squeezed number columns to one digit).
 - Document codes start with the owner's code or slug, and that start is unique across modules and softwares that
   own manuals (`assertUniqueCodeBase` in `store.js`: create, code change, own manual, software rename).
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
