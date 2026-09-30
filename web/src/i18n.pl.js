@@ -431,6 +431,13 @@ export const PL = {
   'What does this version change for the reader? This line is printed in the revision record.':
     'Co ta wersja zmienia dla czytelnika? Ten wiersz trafia do rejestru zmian.',
   'Initial issue': 'Pierwsze wydanie',
+  'Cross-reference': 'Odsyłacz',
+  'The manual prints it with the chapter and page of that module — in every manual that carries it.': 'Instrukcja drukuje go z numerem rozdziału i strony tego modułu — w każdej instrukcji, która go zawiera.',
+  'Search modules': 'Szukaj modułów',
+  '↗ Reference': '↗ Odsyłacz',
+  'Refer to another module — the manual prints its chapter and page': 'Odeślij do innego modułu — instrukcja drukuje jego rozdział i stronę',
+  '{chapter} refers to {target}, which is not in this manual': '{chapter} odsyła do {target}, którego nie ma w tej instrukcji',
+  '{n} unresolved references': 'Nierozwiązane odsyłacze: {n}',
   'A release needs its revision record line': 'Wydanie wymaga wiersza w rejestrze zmian',
   'Revision record line…': 'Wiersz w rejestrze zmian…',
   'The line the reader sees for this release in the revision record': 'Wiersz, który czytelnik widzi dla tego wydania w rejestrze zmian',

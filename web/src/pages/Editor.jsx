@@ -4,6 +4,7 @@ import { api, releaseDoc, readFileAsBase64, timeAgo, manualType, LANGUAGES, lang
 import StatusBadge from '../components/StatusBadge.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { attachTableResize } from '../components/tableResize.js';
+import XrefPicker from '../components/XrefPicker.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
 
@@ -259,6 +260,7 @@ export default function Editor({ review: reviewProp = false }) {
   const [html, setHtml] = useState('');
   const [mode, setMode] = useState('rich');
   const [tab, setTab] = useState('manual'); // 'manual' | 'fat'
+  const [xrefOpen, setXrefOpen] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -702,6 +704,14 @@ export default function Editor({ review: reviewProp = false }) {
         input.click();
       },
       t('Attach a file the reader downloads (ready-to-use configuration, firmware…) — or paste / drop it into the text'),
+    ],
+    [
+      t('↗ Reference'),
+      () => {
+        rememberSelection();
+        setXrefOpen(true);
+      },
+      t('Refer to another module — the manual prints its chapter and page'),
     ],
     [
       t('⚠ Warning'),
@@ -1297,6 +1307,17 @@ export default function Editor({ review: reviewProp = false }) {
                     {label}
                   </button>
                 ))}
+              {xrefOpen && (
+                <XrefPicker
+                  onClose={() => setXrefOpen(false)}
+                  onPick={(m) => {
+                    setXrefOpen(false);
+                    const words = selRef.current?.toString().trim() || m.name;
+                    const escText = (x) => x.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                    insertAtCaret(`<a data-module="${m.slug}">${escText(words)}</a>`);
+                  }}
+                />
+              )}
               <div className="toolbar-spacer" />
               {mode === 'rich' && todoCount > 0 && (
                 <button className="todo-chip" title={t('Jump to the next open TODO(author) marker')} onMouseDown={(e) => { e.preventDefault(); jumpToTodo(); }}>

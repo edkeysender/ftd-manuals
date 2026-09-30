@@ -360,7 +360,7 @@ const STRINGS = {
         : `the <strong>${name}</strong> module (${detail})`,
     intro1: (typeLabel, subject, audience) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience}`,
     // assembled manual
-    tableOfContents: 'Table of contents', chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
+    tableOfContents: 'Table of contents', listOfFigures: 'List of figures', fig: 'Fig.', caption: 'Caption', pageAbbr: 'p.', chapterRef: (n) => `chapter ${n}`, chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
     draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', draft: 'draft',
     // chapter 1 — General (FTD manual template)
     frontMatter: 'Front matter', manualRevisions: 'Manual revisions', chapterRevisions: 'Chapters',
@@ -387,7 +387,7 @@ const STRINGS = {
           : `oprogramowania modułu <strong>${name}</strong> (${detail})`
         : `modułu <strong>${name}</strong> (${detail})`,
     intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience}`,
-    tableOfContents: 'Spis treści', chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
+    tableOfContents: 'Spis treści', listOfFigures: 'Spis rysunków', fig: 'Rys.', caption: 'Podpis', pageAbbr: 's.', chapterRef: (n) => `rozdział ${n}`, chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
     frontMatter: 'Strony wstępne', manualRevisions: 'Rewizje instrukcji', chapterRevisions: 'Rozdziały',
     lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', effectiveDate: 'Data obowiązywania',
@@ -693,6 +693,13 @@ export const MANUAL_CSS = `
 .manual-doc img { max-width: 100%; height: auto; }
 .manual-doc figure img { max-width: 100%; border: 1px solid #dde3ea; border-radius: 4px; }
 .manual-doc figcaption { color: #64748b; font-size: 12.5px; margin-top: 6px; }
+.manual-doc .fig-num { font-weight: 700; color: #334155; margin-right: 4px; }
+/* A page number exists only once the manual is paginated (export / PDF). */
+.manual-doc .paged-only { display: none; }
+.manual-doc .xref-at { white-space: nowrap; }
+/* A reference to a module this manual does not carry: flagged on screen, plain words in print. */
+.manual-doc .xref-missing { background: #fff4e5; border-bottom: 1px dashed #d97706; }
+.manual-doc .lof td:first-child, .manual-doc .lof td:last-child { white-space: nowrap; }
 .manual-doc a.attachment { display: inline-block; padding: 4px 10px 4px 8px; border: 1px solid #c8d1db; border-radius: 6px; background: #f6f8fb; color: #16324f; text-decoration: none; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .manual-doc a.attachment::before { content: '📎 '; }
 .manual-doc .admonition { border-left: 4px solid; border-radius: 6px; padding: 10px 14px; margin: 14px 0; }
@@ -752,6 +759,75 @@ function numberHeadings(html, ch) {
     return `<${tag}${cleanAttrs} id="${id}">${inner}</${tag}>`;
   });
   return { html: out, items };
+}
+
+/**
+ * Figures are numbered by the build, per chapter, in the order they stand (Fig. 11.3) — authors
+ * write the caption only. A number typed by hand ("Fig. 2.10 …", "Rys. 2.1 …", "3. …") is dropped
+ * from the caption, so a printed number can never drift from the real order. Each figure gets an
+ * id the List of figures links to.
+ */
+const HAND_NUMBER = /^((?:\s*<[^>/][^>]*>)*)\s*(?:(?:fig(?:ure)?|rys(?:unek)?)\.?\s*\d+(?:\.\d+)*[.:)]?|\d+(?:\.\d+)*[.)](?=\s))\s*[-–—:]?\s*/i;
+function numberFigures(html, ch, T) {
+  let k = 0;
+  const figures = [];
+  const out = String(html || '').replace(/<figure\b([^>]*)>([\s\S]*?)<\/figure>/gi, (m, attrs, inner) => {
+    k += 1;
+    const num = `${ch}.${k}`;
+    const id = `fig-${ch}-${k}`;
+    let caption = '';
+    const body = inner.replace(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i, (_, c) => {
+      caption = c.replace(HAND_NUMBER, '$1').trim();
+      return '';
+    });
+    const title = caption.replace(/<[^>]+>/g, '').trim();
+    figures.push({ id, num, title });
+    return `<figure${attrs.replace(/\sid="[^"]*"/i, '')} id="${id}">${body}<figcaption><span class="fig-num">${esc(T.fig)} ${num}</span>${
+      title ? ` ${caption}` : ''
+    }</figcaption></figure>`;
+  });
+  return { html: out, figures };
+}
+
+/**
+ * Cross-references. A module is named as <a data-module="loose-knob-repair">Loose knob repair</a>;
+ * the build resolves it against the manual being assembled: a chapter of this manual becomes a link
+ * with where it is — "(chapter 19, p. 76)", the page written in once the manual is paginated. A
+ * module this manual does not carry keeps its words as plain text, and `missingCrossRefs` reports it.
+ * A software that documents itself is named by its slug the same way.
+ */
+const XREF_RE = /<a\b([^>]*?)\sdata-module="([^"]*)"([^>]*)>([\s\S]*?)<\/a>/gi;
+function xrefTargets(chapters) {
+  const targets = new Map();
+  chapters.forEach((c, i) => {
+    if (c.missing) return;
+    const t = { slug: c.slug, num: i + 1 };
+    if (!targets.has(c.slug)) targets.set(c.slug, t);
+    if (c.module?.slug && !targets.has(c.module.slug)) targets.set(c.module.slug, t);
+  });
+  return targets;
+}
+function resolveXrefs(html, targets, T) {
+  return String(html || '').replace(XREF_RE, (m, a1, slug, a2, inner) => {
+    const t = targets.get(slug);
+    if (!t) return `<span class="xref-missing" data-module="${esc(slug)}">${inner}</span>`;
+    const href = `#ch-${esc(t.slug)}`;
+    return `<a class="xref" href="${href}">${inner}</a> <span class="xref-at">(${esc(T.chapterRef(t.num))}<span class="paged-only">, ${esc(
+      T.pageAbbr
+    )} <a class="pg-ref" href="${href}">—</a></span>)</span>`;
+  });
+}
+/** References in the chapters to modules this manual does not carry: [{chapter, title, target, text}]. */
+export function missingCrossRefs(chapters) {
+  const targets = xrefTargets(chapters);
+  const out = [];
+  for (const c of chapters) {
+    for (const [, , slug, , inner] of String(c.content || '').matchAll(XREF_RE)) {
+      if (!targets.has(slug))
+        out.push({ chapter: c.slug, title: c.title || c.module?.name || c.slug, target: slug, text: inner.replace(/<[^>]+>/g, '').trim() });
+    }
+  }
+  return out;
 }
 
 /**
@@ -823,11 +899,16 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   // The front matter (revision record, contents, List of Effective Pages) carries no chapter
   // number of its own — what a simulator manual says about itself is not a chapter of it, and
   // the company and safety text is written as a module. Module chapters are the chapters.
+  const targets = xrefTargets(chapters);
   const processed = chapters.map((c, i) => {
     const num = i + 1;
     const lep = c.missing ? frontLep : docEffectivity(c.doc);
-    return c.missing ? { ...c, num, lep, html: '', items: [] } : { ...c, num, lep, ...numberHeadings(`${c.generated}\n${fillManualVars(dropPlaceholderSections(c.content), manual)}`, num) };
+    if (c.missing) return { ...c, num, lep, html: '', items: [], figures: [] };
+    const body = resolveXrefs(fillManualVars(dropPlaceholderSections(c.content), manual), targets, T);
+    const { html, items } = numberHeadings(`${c.generated}\n${body}`, num);
+    return { ...c, num, lep, items, ...numberFigures(html, num, T) };
   });
+  const allFigures = processed.flatMap((c) => c.figures);
 
   const recordRows = processed
     .map((c) =>
@@ -844,8 +925,24 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   const generalItems = [
     ['revision-record', T.revisionRecord],
     ['toc', T.tableOfContents],
+    ...(allFigures.length ? [['lof', T.listOfFigures]] : []),
     ['lep', T.lep],
   ];
+  // Every figure of the manual, by the number the build gave it; the page is written in once the
+  // manual is paginated (export / PDF).
+  const lof = allFigures.length
+    ? `<h2 id="lof">${esc(T.listOfFigures)}</h2>
+<table class="lof">
+<thead><tr><th>${esc(T.fig)}</th><th>${esc(T.caption)}</th><th class="paged-only">${esc(T.page)}</th></tr></thead>
+<tbody>${allFigures
+        .map(
+          (f) =>
+            `<tr><td>${f.num}</td><td><a href="#${f.id}">${esc(f.title || '—')}</a></td><td class="paged-only"><a class="pg-ref" href="#${f.id}">—</a></td></tr>`
+        )
+        .join('\n')}</tbody>
+</table>
+`
+    : '';
   const frontToc = generalItems
     .map(([id, title]) => `<li class="front"><a href="#${id}">${esc(title)}</a></li>`)
     .join('');
@@ -895,7 +992,7 @@ ${manualRevisions}<table>
 </table>
 <h2 id="toc">${T.tableOfContents}</h2>
 <div class="toc"><ol>${toc}</ol></div>
-<h2 id="lep">${esc(T.lep)}</h2>
+${lof}<h2 id="lep">${esc(T.lep)}</h2>
 <p class="lep-note">${T.lepNote}</p>
 <table class="lep-chapters">
 <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th></tr></thead>
@@ -994,6 +1091,10 @@ body { font-family: ${FONT}; }
 .manual-doc .doc-footer { display: none; }
 .manual-doc .lep-chapters, .manual-doc .lep-note { display: none; }
 .manual-doc .lep-pages { display: table; }
+.manual-doc span.paged-only { display: inline; }
+.manual-doc td.paged-only, .manual-doc th.paged-only { display: table-cell; }
+.manual-doc .xref-missing { background: none; border: 0; }
+.manual-doc a.pg-ref { color: inherit; text-decoration: none; }
 .manual-doc h1, .manual-doc h2, .manual-doc h3 { break-after: avoid; }
 .manual-doc tr, .manual-doc figure, .manual-doc .admonition { break-inside: avoid; }
 .manual-doc .auto-section { background: none; padding: 0; }
@@ -1027,8 +1128,22 @@ const LEP_SCRIPT = `
     }
     return out;
   }
-  function withLep(total, info) {
-    return html.replace(/(<table class="lep-pages">[\\s\\S]*?<tbody>)[\\s\\S]*?(<\\/tbody>)/, function (m, a, b) { return a + rows(total, info) + b; });
+  function withLep(total, info, refs) {
+    return html
+      .replace(/(<table class="lep-pages">[\\s\\S]*?<tbody>)[\\s\\S]*?(<\\/tbody>)/, function (m, a, b) { return a + rows(total, info) + b; })
+      .replace(/(<a class="pg-ref" href="#([^"]+)">)[^<]*(<\\/a>)/g, function (m, a, id, b) { return a + (refs[id] || '—') + b; });
+  }
+  // The page each cross-reference and List of figures entry points at, read off the pages that came out.
+  function pagesOfRefs() {
+    var refs = {}, links = mount.querySelectorAll('a.pg-ref'), pages = mount.querySelectorAll('.pagedjs_page');
+    for (var i = 0; i < links.length; i++) {
+      var id = links[i].getAttribute('href').slice(1);
+      if (refs[id]) continue;
+      var target = mount.querySelector('[id="' + id + '"]');
+      var page = target && target.closest('.pagedjs_page');
+      if (page) refs[id] = String(Array.prototype.indexOf.call(pages, page) + 1);
+    }
+    return refs;
   }
   function effectivity() {
     var info = {};
@@ -1045,15 +1160,18 @@ const LEP_SCRIPT = `
     source.parentNode.removeChild(source);
     style.parentNode.removeChild(style);
     document.body.appendChild(mount);
-    var total = 0, info = {}, previewer = null, flow = null;
-    for (var pass = 0; pass < 4; pass++) {
+    var total = 0, info = {}, refs = {}, previewer = null, flow = null;
+    for (var pass = 0; pass < 5; pass++) {
       if (previewer) previewer.polisher.destroy();
       mount.innerHTML = '';
       previewer = new PagedModule.Previewer();
-      flow = await previewer.preview(withLep(total, info), [{ 'manual.css': css }], mount);
+      flow = await previewer.preview(withLep(total, info, refs), [{ 'manual.css': css }], mount);
       info = effectivity();
-      if (flow.total === total) break;
+      var found = pagesOfRefs();
+      var settled = flow.total === total && JSON.stringify(found) === JSON.stringify(refs);
       total = flow.total;
+      refs = found;
+      if (settled) break;
     }
     var cells = mount.querySelectorAll('.lep-pages td[data-f]');
     for (var k = 0; k < cells.length; k++) {

@@ -63,6 +63,8 @@ export default function ManualView() {
   const untranslated = chapters.filter((c) => c.langFallback).length;
   // Pictures a chapter asks for that the owner no longer has: the printed manual would have a hole.
   const missingPictures = data.missingAssets || [];
+  // Cross-references to modules this manual does not carry: they print as plain words.
+  const missingRefs = data.missingRefs || [];
 
   return (
     <div className="page page-wide">
@@ -108,6 +110,11 @@ export default function ManualView() {
                 title={missingPictures.map((a) => `${a.title}: ${a.name}`).join(', ')}
               >
                 {t('{pictures} missing', { pictures: plural(missingPictures.length, 'picture') })}
+              </span>
+            )}
+            {missingRefs.length > 0 && (
+              <span className="badge badge-draft" title={missingRefs.map((x) => t('{chapter} refers to {target}, which is not in this manual', { chapter: x.title, target: x.text || x.target })).join('\n')}>
+                {t('{n} unresolved references', { n: missingRefs.length })}
               </span>
             )}
             {untranslated > 0 && (

@@ -25,6 +25,7 @@ import {
   DEFAULT_LANG,
   langOf,
   cleanBodyHtml,
+  missingCrossRefs,
   hasPendingEdits,
   TODO_MARKER_RE,
 } from './docgen.js';
@@ -2934,7 +2935,9 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       if (!assetNames.get(ref).has(name)) missingAssets.push({ chapter: c.slug, title: c.title || c.module?.name || c.slug, name, url });
     }
   }
-  return { manual, chapters, lang, missingAssets, state: manualState(manual, chapters, missingAssets) };
+  // A cross-reference to a module this manual does not carry prints as plain words; the console says so.
+  const missingRefs = missingCrossRefs(chapters);
+  return { manual, chapters, lang, missingAssets, missingRefs, state: manualState(manual, chapters, missingAssets) };
 }
 
 /* ------------------------------------------------------------------ */
