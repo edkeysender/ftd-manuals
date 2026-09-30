@@ -396,7 +396,11 @@ app.post(docPaths('/back-to-draft'), wrap(async (req, res) => {
 }));
 
 app.post(docPaths('/release'), wrap(async (req, res) => {
-  res.json(await store.releaseDoc(ownerRef(req), req.params.version, { force: !!req.body?.force }));
+  res.json(await store.releaseDoc(ownerRef(req), req.params.version, { force: !!req.body?.force, note: req.body?.note }));
+}));
+/** The reader's line in the revision record of a version already released (older releases had none). */
+app.put(docPaths('/release-note'), wrap(async (req, res) => {
+  res.json(await store.setReleaseNote(ownerRef(req), req.params.version, req.body?.note));
 }));
 
 app.post(docPaths('/discard'), wrap(async (req, res) => {

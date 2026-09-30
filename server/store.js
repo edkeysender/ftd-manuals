@@ -1640,7 +1640,22 @@ async function releaseBlockers(branch, dir, meta) {
   return { pending, todos };
 }
 
-export async function releaseDoc(ref, key, { force = false } = {}) {
+/**
+ * The revision record a reader sees holds one line per release, written by the author when the
+ * version goes out: what changed, for the reader. Everything the console records on the way —
+ * "Created via MCP", "AI edit: …", "Content update", "Hotfix (draft)" — is working history (git and
+ * the History tab keep it) and never prints. Returns the line to push, or throws when there is none.
+ */
+function releaseLine(meta, note, ts) {
+  const summary = String(note || '').replace(/\s+/g, ' ').trim();
+  if (!summary)
+    throw Object.assign(new Error('Say what this release changes for the reader — that line is printed in the revision record.'), {
+      code: 'note-required',
+    });
+  return { rev: `r${meta.revision}`, version: meta.version, date: ts, summary, public: true };
+}
+
+export async function releaseDoc(ref, key, { force = false, note = '' } = {}) {
   const { branch, dir, meta, manual } = await loadDraftDoc(ref, key);
   const blockers = await releaseBlockers(branch, dir, meta);
   if (blockers.pending.length)
@@ -1659,6 +1674,7 @@ export async function releaseDoc(ref, key, { force = false } = {}) {
   const feed = await getSoftwareFeed();
   const version = meta.version;
   const ts = now();
+  meta.revisionRecord = [...(meta.revisionRecord || []), releaseLine(meta, note, ts)];
   if (meta.hotfix) return await publishHotfix({ slug: entry.module.slug, branch, dir, meta, manual, version, ts, recordFile: ownerRecordFile(entry.module) });
 
   await mutate(async () => {
@@ -1694,6 +1710,36 @@ export async function releaseDoc(ref, key, { force = false } = {}) {
 }
 
 /**
+ * Write (or correct) the reader's line for a version already out — for versions released before
+ * the line was asked for, whose record holds only working entries. Written on main to the
+ * revision in effect. Refused while a hotfix is open: its line is given when it is published.
+ */
+export async function setReleaseNote(ref, key, note) {
+  const hit = await findDoc(ref, key);
+  if (!hit) throw new Error(`Doc ${ref} ${key} not found`);
+  const { entry, doc } = hit;
+  if (doc.hotfix) throw new Error(`${doc.version} is being hotfixed — its line is given when the hotfix is published`);
+  if (doc.status !== 'released' && doc.status !== 'superseded')
+    throw new Error(`${doc.version} is ${doc.status} — its line is given when it is released`);
+  let saved;
+  await mutate(async () => {
+    await repo.checkout('main');
+    const meta = await readJson('main', docJson(doc.dir));
+    if (!meta) throw new Error('Doc version not found');
+    const line = releaseLine(meta, note, meta.releasedAt || now());
+    const record = meta.revisionRecord || [];
+    const at = record.findIndex((r) => r.public && !r.inherited && r.rev === line.rev && (r.version || meta.version) === meta.version);
+    if (at >= 0) record[at] = { ...record[at], summary: line.summary };
+    else record.push(line);
+    meta.revisionRecord = record;
+    await repo.writeFile(docJson(doc.dir), JSON.stringify(meta, null, 2) + '\n');
+    await repo.commitAll(`${entry.module.slug} ${doc.version}: revision record line for ${line.rev}`);
+    saved = meta;
+  });
+  return saved;
+}
+
+/**
  * The owner's record (module.json / software.json) is main's; a draft branch only carries a copy.
  * Before a branch is merged its copy is made main's, so a copy that drifted can never stop a
  * release with a merge conflict — a software rename used to stamp each branch's copy a few
@@ -1715,8 +1761,6 @@ const ownerRecordFile = (module) => (module.kind === 'software' ? softwareFile(m
  *  revision, the version stays Released, the branch goes. */
 async function publishHotfix({ slug, branch, dir, meta, manual, version, ts, recordFile }) {
   const rev = `r${meta.revision}`;
-  const last = meta.revisionRecord[meta.revisionRecord.length - 1];
-  if (last && last.rev === rev && last.summary === 'Hotfix (draft)') last.summary = 'Hotfix';
   meta.hotfix = null;
   meta.branch = null;
   meta.updatedAt = ts;

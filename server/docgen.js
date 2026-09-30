@@ -345,7 +345,7 @@ const STRINGS = {
     groups: GROUP_LABELS,
     categories: CATEGORY_LABELS,
     audiences: { customer: 'customer', technician: 'technician' },
-    revisionRecord: 'Revision record', documentRevisions: 'Document revisions', versionInEffect: (v, d) => `Document version ${v}, released ${d}.`, revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded',
+    revisionRecord: 'Revision record', documentRevisions: 'Document revisions', versionInEffect: (v, d) => `Document version ${v}, released ${d}.`, revision: 'Revision', date: 'Date', change: 'Description of change', inherited: 'inherited', noRevisions: 'No revisions recorded', releasedLine: 'Released.', lineAtRelease: 'Draft — the description is written at release.',
     introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualType: 'Manual type', docCode: 'Document code',
     hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes',
     relatedHardware: 'Related hardware', runsIn: 'Runs in',
@@ -373,7 +373,7 @@ const STRINGS = {
     groups: { SIM: 'Instrukcja symulatora', IOS: 'Instrukcja IOS', RACK: 'Instrukcja szaf RACK' },
     categories: { ios: 'IOS', cockpit: 'Kokpit', misc: 'Różne', software: 'Oprogramowanie', 'cockpit-hardware': 'Sprzęt kokpitu', structure: 'Konstrukcja', peripherals: 'Urządzenia peryferyjne', 'instructor-station': 'Stanowisko instruktora', rack: 'Rack' },
     audiences: { customer: 'klient', technician: 'technik' },
-    revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', versionInEffect: (v, d) => `Wersja dokumentu ${v}, wydana ${d}.`, revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji',
+    revisionRecord: 'Rejestr zmian', documentRevisions: 'Wersje dokumentu', versionInEffect: (v, d) => `Wersja dokumentu ${v}, wydana ${d}.`, revision: 'Wersja', date: 'Data', change: 'Opis zmiany', inherited: 'odziedziczona', noRevisions: 'Brak zarejestrowanych wersji', releasedLine: 'Wydanie.', lineAtRelease: 'Wersja robocza — opis zmiany powstaje przy wydaniu.',
     introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
     hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi',
     relatedHardware: 'Powiązany sprzęt', runsIn: 'Pracuje w',
@@ -413,12 +413,24 @@ export function generatedSections(
   // instead of a third column, so the description keeps the width it needs. Each line is a block
   // element, so the cell stacks even where the stylesheet has not arrived yet, and the
   // "(inherited)" note sits on its own line where it is free to wrap.
-  const record = (doc.revisionRecord || [])
+  // Only the release lines print — what the author wrote for the reader when the version went out.
+  // The working entries ("Created via MCP", "AI edit: …") stay in the doc's history, never here.
+  const released = doc.status === 'released' || doc.status === 'superseded';
+  const lines = (doc.revisionRecord || []).filter((r) => r.public);
+  const own = lines.some((r) => !r.inherited && (r.version || doc.version) === doc.version);
+  // A version released before the line was asked for still says it was released, and when.
+  if (released && !doc.hotfix && !own && doc.releasedAt)
+    lines.push({ rev: `r${doc.revision}`, version: doc.version, date: doc.releasedAt, summary: T.releasedLine });
+  // A draft shows where its line will go.
+  if (!released || doc.hotfix) lines.push({ rev: `r${doc.revision}`, version: doc.version, date: doc.updatedAt, summary: T.lineAtRelease, pending: true });
+  const record = lines
     .map(
       (r) =>
-        `<tr><td class="rev-cell"><div class="rev-id">${esc(doc.version)} ${esc(r.rev)}</div><div class="rev-date">${fmtDate(
+        `<tr><td class="rev-cell"><div class="rev-id">${esc(r.version || doc.version)} ${esc(r.rev)}</div><div class="rev-date">${fmtDate(
           r.date
-        )}</div>${r.inherited ? `<div class="rev-note"><em>(${T.inherited})</em></div>` : ''}</td><td>${esc(r.summary)}</td></tr>`
+        )}</div>${r.inherited ? `<div class="rev-note"><em>(${T.inherited})</em></div>` : ''}</td><td>${
+          r.pending ? `<em>${esc(r.summary)}</em>` : esc(r.summary)
+        }</td></tr>`
     )
     .join('\n');
 
@@ -564,6 +576,17 @@ ${swRows}
  * routine maintenance is required") stays, and so does any section with a picture, table, list,
  * admonition or subsection. The doc itself is untouched: the editor still shows every section.
  */
+/**
+ * Build variables. A module is a chapter of several simulator manuals, so its text never names the
+ * manual it is printed in — it writes {{manual.title}} or {{manual.code}}, and the build fills in the
+ * manual being assembled (the same manual the page header names). Outside a manual the token stays.
+ */
+const MANUAL_VARS = { title: (m) => m.name, code: (m) => m.code || m.name };
+export function fillManualVars(html, manual) {
+  if (!manual) return String(html || '');
+  return String(html || '').replace(/\{\{\s*manual\.(title|code)\s*\}\}/g, (_, k) => esc(MANUAL_VARS[k](manual) || ''));
+}
+
 const PLACEHOLDER_TEXT = /^(?:[\s—–\-.…]*|n\/?a\.?|not applicable\.?|none\.?|refer to [^.]{1,40}\.?)$/i;
 const TODO_SENTENCE = /\bTODO(?:\([^)]*\))?\s*:.*?(?:[.!?](?=\s|$)|$)/gi;
 export function dropPlaceholderSections(html) {
@@ -803,7 +826,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   const processed = chapters.map((c, i) => {
     const num = i + 1;
     const lep = c.missing ? frontLep : docEffectivity(c.doc);
-    return c.missing ? { ...c, num, lep, html: '', items: [] } : { ...c, num, lep, ...numberHeadings(`${c.generated}\n${dropPlaceholderSections(c.content)}`, num) };
+    return c.missing ? { ...c, num, lep, html: '', items: [] } : { ...c, num, lep, ...numberHeadings(`${c.generated}\n${fillManualVars(dropPlaceholderSections(c.content), manual)}`, num) };
   });
 
   const recordRows = processed

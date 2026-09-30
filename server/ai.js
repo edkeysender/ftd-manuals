@@ -116,7 +116,7 @@ async function callOpenAI(messages, { json = false } = {}) {
 }
 
 const HTML_RULES = `Allowed HTML only: <h2> (top-level sections), <h3> (subsections), <p>, <ol>, <ul>, <li>, <strong>, <em>, <table>/<colgroup>/<col>/<thead>/<tbody>/<tr>/<th>/<td> (a <colgroup> of <col style="width: …%"> holds column widths the author set by hand — keep it exactly as it is, and when you add or remove a column, add or remove its <col> so the widths still add up to 100%), <figure>/<img>/<figcaption>, and admonitions as <div class="admonition warning"><p class="admonition-title">Warning</p><p>…</p></div> (or class "note" with title "Note"). A file the reader downloads (a ready-to-use configuration, firmware) is linked as <p><a class="attachment" href="URL" download>file name</a></p> — only URLs from the ATTACHMENTS list, never invented.
-Style: operating-manual English, present tense, no marketing language. Procedures are numbered lists (<ol>), one action per step, with the expected indication after the action. Do not invent behaviour, timings, part numbers or limits — write TODO(author): … where facts are missing. Never write passwords or other credentials into a manual — refer to the credentials sheet instead.`;
+Style: operating-manual English, present tense, no marketing language. Procedures are numbered lists (<ol>), one action per step, with the expected indication after the action. Do not invent behaviour, timings, part numbers or limits — write TODO(author): … where facts are missing. Never write passwords or other credentials into a manual — refer to the credentials sheet instead. A module is a chapter of several simulator manuals, so never name the manual it is printed in ("this Flight Crew Operating Manual", "the IOS manual"): write {{manual.title}} (or {{manual.code}}) — the build fills in the manual being printed.`;
 
 /** Which manual is being written, for whom, and what its sections 4–7 are. */
 function manualBlock(manualId) {
@@ -181,6 +181,7 @@ You receive the body HTML (sections 4–7) of the ${manualTypeOf(doc.manual).lab
 Rules:
 - Keep every tag, attribute, class, id, <img src>, href and the document structure exactly as they are; translate only text nodes, alt texts and figcaptions.
 - Keep the "TODO(author):" prefix of author markers as is and translate the note after it.
+- Keep {{manual.title}} / {{manual.code}} placeholders exactly as they are.
 - Do not translate software/product names, part numbers, menu paths shown in <strong> when they are UI labels of an English interface, code, URLs, IP addresses, units or version numbers.
 - Aviation / simulator operating-manual register: imperative procedures, present tense, consistent terminology (${target.code === 'pl' ? 'e.g. "symulator", "moduł", "instruktor", "stanowisko instruktora (IOS)", "zasilanie", "okablowanie", "konfiguracja"' : 'standard technical terms'}).
 - Admonition titles: ${target.code === 'pl' ? '"Warning" → "Ostrzeżenie", "Note" → "Uwaga"' : 'translate the title words'}.

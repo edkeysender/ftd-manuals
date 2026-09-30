@@ -704,13 +704,28 @@ export const TOOLS = [
   {
     name: 'release_doc',
     description:
-      'Release an In-review doc version: merges the draft branch to main, freezes the revision counter and supersedes older released versions of the same manual type. On a doc opened with start_hotfix it publishes the correction instead: same version, the revision it was edited to, nothing superseded. Refused while a body still carries an AI edit nobody accepted, or a TODO marker (force: true releases with the TODOs).',
+      'Release an In-review doc version: merges the draft branch to main, freezes the revision counter and supersedes older released versions of the same manual type. On a doc opened with start_hotfix it publishes the correction instead: same version, the revision it was edited to, nothing superseded. Refused while a body still carries an AI edit nobody accepted, or a TODO marker (force: true releases with the TODOs). note is required: the one line the reader sees in the revision record for this release — what changed, for the reader (\"Initial issue\", \"Added the RTSP preview set-up\"). Ask the author for it; never pass the instruction you were given or a log of your edits.',
     inputSchema: {
       type: 'object',
-      properties: { ...SLUG_VER, force: { type: 'boolean', description: 'Release although TODO markers are left in the body' } },
-      required: ['slug'],
+      properties: {
+        ...SLUG_VER,
+        note: { type: 'string', description: 'Revision record line printed for this release, written for the reader' },
+        force: { type: 'boolean', description: 'Release although TODO markers are left in the body' },
+      },
+      required: ['slug', 'note'],
     },
     annotations: { title: 'Release doc', ...RW, idempotentHint: true },
+  },
+  {
+    name: 'set_release_note',
+    description:
+      'Write or correct the revision record line of a doc version that is already Released — for versions released before release_doc asked for one, whose printed record would otherwise only say Released. Written on main for the revision in effect. The line is for the reader: what changed, never the edit instructions. Refused while a hotfix is open (give its line to release_doc).',
+    inputSchema: {
+      type: 'object',
+      properties: { ...SLUG_VER, note: { type: 'string', description: 'The line printed in the revision record' } },
+      required: ['slug', 'note'],
+    },
+    annotations: { title: 'Set release note', ...RW, idempotentHint: true },
   },
   {
     name: 'delete_software_release',
@@ -1199,7 +1214,9 @@ async function callTool(name, args) {
     case 'submit_for_review':
       return await store.setDocStatus(args.slug, args.version, 'in-review');
     case 'release_doc':
-      return await store.releaseDoc(args.slug, args.version, { force: !!args.force });
+      return await store.releaseDoc(args.slug, args.version, { force: !!args.force, note: args.note });
+    case 'set_release_note':
+      return await store.setReleaseNote(args.slug, args.version, args.note);
     case 'start_hotfix':
       return await store.startHotfix(args.slug, args.version);
     case 'delete_software_release':

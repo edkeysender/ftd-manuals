@@ -46,6 +46,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   MCP: `list_comments`, `reply_comment`, `resolve_comment`. No auth: the reviewer name is a browser prompt.
 - Each doc is a standalone **mini-manual**: version `A<major>.<minor>`, revisions `r1, r2…`,
   own revision record, own draft branch `draft/<slug>-<manual>-a1.0` (one open draft per manual type).
+  The **printed** revision record holds only release lines: `releaseDoc` requires a `note` (UI prompt, API body,
+  MCP `release_doc {note}`) and pushes `{rev, version, date, summary, public: true}`; every other entry ("Created via
+  MCP", "AI edit: …", autosave summaries, "Hotfix (draft)") is working history and never prints. A version released
+  before the line was asked for prints one "Released." line until `setReleaseNote` (released ⋯ → Revision record
+  line…, `PUT …/release-note`, MCP `set_release_note`) writes its line on main.
   A released version is corrected in place by a **hotfix** (`startHotfix` in `store.js`, MCP `start_hotfix`,
   ⋯ → Hotfix on the Manuals tab): its branch reopens at the next revision and the edit tools treat it as a draft,
   while on `main` it stays Released and keeps compiling — `releaseDoc` publishes the correction back into the
@@ -157,7 +162,9 @@ The functional spec lives in this file's history and in the Modules spec provide
   two repairs: create the software with the version the links use, or `mergeSoftware` (`POST
   /api/software/:name/merge {into}`, MCP `merge_software`) which renames links and doc `covers`.
 - Manual tone: operating-manual English, present tense, numbered procedures with expected indication,
-  warnings/notes as admonitions, no invented facts — use `TODO(author): …` markers.
+  warnings/notes as admonitions, no invented facts — use `TODO(author): …` markers. A module never names the manual
+  it is printed in: `{{manual.title}}` / `{{manual.code}}` are build variables filled per assembled manual
+  (`fillManualVars` in `docgen.js`); the AI prompts are told to write them and translation keeps them.
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
   `list_assets {thumbnails}`, MCP resources `ftd://modules/<slug>/assets/<file>`), fetch server-side
   (`upload_photo_from_url` for a picture into the assets, `fetch_to_inbox` for any file incl. documents/zips into the
