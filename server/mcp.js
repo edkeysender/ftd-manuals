@@ -441,6 +441,7 @@ export const TOOLS = [
         position: { type: 'string', enum: ['start', 'end'], description: 'Where in the section when after_text is not given (default end)' },
         caption: { type: 'string', description: 'Figure caption (operating-manual English / the doc language)' },
         alt: { type: 'string', description: 'Alt text (defaults to the caption)' },
+        size: { type: 'string', enum: ['small', 'medium', 'large', 'full'], description: 'Printed width (40 / 60 / 80 / 100 % of the text). Omit: at least 60 %, a small screenshot is scaled up' },
         applies_to: { type: 'array', items: { type: 'string' }, description: 'Hardware unit ids the picture shows (stamps the asset)' },
         summary: { type: 'string', description: 'Revision record entry' },
       },
@@ -1104,7 +1105,8 @@ async function callTool(name, args) {
       if (!asset) throw new Error(`Asset "${args.asset}" not found — see list_assets or import it first`);
       const body = await currentBody(args.slug, args.version, lang);
       const caption = String(args.caption || '').trim();
-      const figure = `<figure><img src="${asset.url}" alt="${escapeAttr(args.alt || caption)}"><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
+      const size = ['small', 'medium', 'large', 'full'].includes(args.size) ? ` data-size="${args.size}"` : '';
+      const figure = `<figure${size}><img src="${asset.url}" alt="${escapeAttr(args.alt || caption)}"><figcaption>${escapeHtml(caption)}</figcaption></figure>`;
       const html = insertFigure(body, args.section, figure, { afterText: args.after_text, position: args.position || 'end' });
       const meta = await store.saveDraftContent(args.slug, args.version, html, {
         bump: true,

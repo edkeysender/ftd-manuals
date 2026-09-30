@@ -652,6 +652,8 @@ export const MANUAL_CSS = `
 .manual-doc .lep-pages { display: none; }
 .manual-doc .lep-pages th, .manual-doc .lep-pages td { text-align: center; }
 .manual-doc .lep-pages td.pg { background: #f1f4f8; font-weight: 600; }
+.manual-doc .lep-pages { font-size: 9px; }
+.manual-doc .lep-pages th, .manual-doc .lep-pages td { padding: 1px 3px; line-height: 1.25; }
 .manual-doc .toc ol { margin: 0; padding-left: 22px; line-height: 1.9; }
 .manual-doc .toc > ol { list-style: none; padding-left: 0; }
 .manual-doc .toc > ol > li { font-weight: 600; margin: 6px 0; }
@@ -698,6 +700,15 @@ export const MANUAL_CSS = `
 .manual-doc figure { margin: 16px 0; text-align: center; }
 .manual-doc img { max-width: 100%; height: auto; }
 .manual-doc figure img { max-width: 100%; border: 1px solid #dde3ea; border-radius: 4px; }
+/* No picture prints postage-stamp size. Outside a table a figure takes at least 60 % of the text     */
+/* width (a small screenshot is scaled up), and a tall one is held to a page. In a table a picture     */
+/* fills its column but never below 35 mm. data-size="small|medium|large|full" on a <figure> sets it. */
+.manual-doc figure img { min-width: 60%; max-height: 190mm; object-fit: contain; }
+.manual-doc td img, .manual-doc th img, .manual-doc td figure img { width: 100%; min-width: 35mm; max-height: none; }
+.manual-doc figure[data-size="small"] img { min-width: 0; width: 40%; }
+.manual-doc figure[data-size="medium"] img { min-width: 0; width: 60%; }
+.manual-doc figure[data-size="large"] img { min-width: 0; width: 80%; }
+.manual-doc figure[data-size="full"] img { min-width: 0; width: 100%; }
 .manual-doc figcaption { color: #64748b; font-size: 12.5px; margin-top: 6px; }
 .manual-doc .fig-num { font-weight: 700; color: #334155; margin-right: 4px; }
 /* A page number exists only once the manual is paginated (export / PDF). */
@@ -1022,7 +1033,7 @@ ${lepChapterRows}
 </tbody>
 </table>
 <table class="lep-pages">
-<thead><tr><th>${T.page}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th><th>${T.page}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th></tr></thead>
+<thead><tr>${[1, 2, 3].map(() => `<th>${T.page}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th>`).join('')}</tr></thead>
 <tbody></tbody>
 </table>
 </section>`;
@@ -1030,13 +1041,13 @@ ${lepChapterRows}
   const body = processed
     .map((c) => {
       if (c.missing) {
-        return `<section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(c.lep)}><h1>${esc(c.module?.name || c.slug)}</h1><p class="missing">${T.noDocumentationYet}</p></section>`;
+        return `<section class="chapter" id="ch-${esc(c.slug)}" data-ch="${c.num}"${lepAttrs(c.lep)}><h1>${esc(c.module?.name || c.slug)}</h1><p class="missing">${T.noDocumentationYet}</p></section>`;
       }
       const flags = [
         c.isDraft ? `<span class="draft-flag">${esc(T.draftFlag(c.doc.version, c.doc.revision))}</span>` : '',
         c.langFallback ? `<span class="draft-flag lang-flag">${esc(T.langFallback)}</span>` : '',
       ].join('');
-      return `<section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(c.lep)}>
+      return `<section class="chapter" id="ch-${esc(c.slug)}" data-ch="${c.num}"${lepAttrs(c.lep)}>
 <h1>${esc(c.title || c.module.name)}${kindBadge(c, T)}${flags}</h1>
 ${c.html}
 </section>`;
@@ -1135,6 +1146,13 @@ body { font-family: ${FONT}; }
 .manual-doc .doc-footer { display: none; }
 .manual-doc .lep-chapters, .manual-doc .lep-note { display: none; }
 .manual-doc .lep-pages { display: table; }
+/* Thumb index tabs on the outer edge (LEP_SCRIPT places them): right on a recto, left on a verso. */
+.pagedjs_page { position: relative; }
+.thumb-tab { position: absolute; width: 7mm; display: flex; align-items: center; justify-content: center; color: #fff; font: 700 9pt ${FONT}; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.pagedjs_right_page .thumb-tab { right: 0; border-radius: 2mm 0 0 2mm; }
+.pagedjs_left_page .thumb-tab { left: 0; border-radius: 0 2mm 2mm 0; }
+.thumb-tab.tab-c0 { background: #1e3a5f; } .thumb-tab.tab-c1 { background: #2f6f4f; } .thumb-tab.tab-c2 { background: #8a4b12; }
+.thumb-tab.tab-c3 { background: #5b3a7a; } .thumb-tab.tab-c4 { background: #8b1e2d; } .thumb-tab.tab-c5 { background: #1f6b7a; }
 .manual-doc span.paged-only { display: inline; }
 .manual-doc td.paged-only, .manual-doc th.paged-only { display: table-cell; }
 .manual-doc .xref-missing { background: none; border: 0; }
@@ -1151,6 +1169,24 @@ body { font-family: ${FONT}; }
 /** Runs in the exported file: paginates #source and fills the List of Effective Pages. */
 const LEP_SCRIPT = `
 (function () {
+  // A table that runs onto the next page repeats its header row there. paged.js marks the part
+  // that continues with data-split-from; the header is put in as the part is laid out, so the
+  // page is measured with it.
+  function repeatHeader(table) {
+    if (!table || table.tagName !== 'TABLE' || !table.hasAttribute('data-split-from') || table.querySelector(':scope > thead')) return;
+    var first = document.querySelector('table[data-ref="' + table.getAttribute('data-split-from') + '"]:not([data-split-from]) > thead');
+    if (first) table.insertBefore(first.cloneNode(true), table.firstChild);
+  }
+  class RepeatTableHeaders extends PagedModule.Handler {
+    renderNode(node) {
+      if (node && node.nodeType === 1) repeatHeader(node.tagName === 'TABLE' ? node : node.closest && node.closest('table'));
+    }
+    afterPageLayout(page) {
+      var parts = page.querySelectorAll('table[data-split-from]');
+      for (var i = 0; i < parts.length; i++) repeatHeader(parts[i]);
+    }
+  }
+  PagedModule.registerHandlers(RepeatTableHeaders);
   var source = document.getElementById('source');
   var style = document.getElementById('manual-css');
   var html = source.innerHTML;
@@ -1165,10 +1201,10 @@ const LEP_SCRIPT = `
   }
   function entry(n, info) { return cell(n, 'page', info) + FIELDS.map(function (f) { return cell(n, f, info); }).join(''); }
   function rows(total, info) {
-    var half = Math.ceil(total / 2), out = '';
-    for (var i = 1; i <= half; i++) {
-      var j = i + half;
-      out += '<tr>' + entry(i, info) + (j <= total ? entry(j, info) : '<td></td><td></td><td></td><td></td>') + '</tr>';
+    // three columns of pages, read down each column: a hundred pages fit on one page
+    var third = Math.ceil(total / 3), out = '', blank = '<td></td><td></td><td></td><td></td>';
+    for (var i = 1; i <= third; i++) {
+      out += '<tr>' + [i, i + third, i + 2 * third].map(function (n) { return n <= total ? entry(n, info) : blank; }).join('') + '</tr>';
     }
     return out;
   }
@@ -1223,16 +1259,32 @@ const LEP_SCRIPT = `
       var v = info[cells[k].getAttribute('data-p')];
       if (f !== 'page') cells[k].textContent = v ? v[f] : '';
     }
-    document.documentElement.setAttribute('data-pages', String(flow.total));
     // counter(pages) stays 0 in a print, so the number of pages is written in: the PAGE field
     // of the header box and the page footer, on every page that came out.
     var out = mount.querySelectorAll('.pagedjs_page');
+    // Thumb index: every page of a chapter carries a tab on its outer edge with the chapter number,
+    // one step lower per chapter, so a closed binder opens at the chapter wanted.
+    var chapters = 0;
+    var marked = mount.querySelectorAll('[data-ch]');
+    for (var c = 0; c < marked.length; c++) chapters = Math.max(chapters, +marked[c].getAttribute('data-ch'));
+    var step = chapters ? Math.min(22, 235 / chapters) : 0;
     for (var p = 0; p < out.length; p++) {
       var pg = out[p].querySelector('.hb-page .pg');
       if (pg) { pg.textContent = (p + 1) + '/' + flow.total; pg.className += ' filled'; }
       var foot = out[p].querySelector('.pagedjs_margin-bottom-right .pagedjs_margin-content');
       if (foot) { foot.textContent = (p + 1) + ' / ' + flow.total; foot.className += ' filled'; }
+      var ch = out[p].querySelector('.pagedjs_page_content [data-ch]');
+      if (ch) {
+        var n = +ch.getAttribute('data-ch');
+        var tab = document.createElement('div');
+        tab.className = 'thumb-tab tab-c' + ((n - 1) % 6);
+        tab.style.top = (32 + (n - 1) * step) + 'mm';
+        tab.style.height = (step - 1.5) + 'mm';
+        tab.textContent = String(n);
+        out[p].appendChild(tab);
+      }
     }
+    document.documentElement.setAttribute('data-pages', String(flow.total));
   }
   run().catch(function (e) {
     console.error('pagination failed — showing the continuous document', e);

@@ -1244,6 +1244,10 @@ try {
   // a picture the owner no longer has is reported with the chapter it sits in, not silently printed
   ok(Array.isArray(compiled.missingAssets) && compiled.missingAssets.length === 0, 'nothing missing while every picture is there');
   const gapMod = await req('POST', '/api/modules', { name: 'Picture Gap', code: 'GAP', category: 'misc' });
+  const sameCode = await req('POST', '/api/modules', { name: 'Another Gap', code: 'gap', category: 'misc' }).catch((e) => e);
+  ok(sameCode instanceof Error && /Document codes GAP-/.test(sameCode.message), `two owners never share a document code: ${sameCode.message}`);
+  const sameSlug = await req('POST', '/api/modules', { name: 'Gap', category: 'misc' }).catch((e) => e);
+  ok(sameSlug instanceof Error && /already belong/.test(sameSlug.message), 'a module named like another owner\'s code is asked for its own code');
   await req('PUT', `/api/modules/${gapMod.slug}/docs/customer:A1.0/content`, {
     html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p><h2>Safety</h2><p>This document is the {{manual.title}} ({{ manual.code }}).</p><p>Refer to <a data-module="${gapMod.slug}">this module</a> and <a data-module="starting-panel">the starting panel</a>.</p>`,
   });
