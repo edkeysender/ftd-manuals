@@ -406,7 +406,7 @@ export function generatedSections(
   module,
   doc,
   lang = DEFAULT_LANG,
-  { revisionHistory = true, relatedHardware = [] } = {}
+  { revisionHistory = true, relatedHardware = [], assembled = false } = {}
 ) {
   const T = strings(lang);
   // The revision column carries the date under the revision: short lines in one narrow column
@@ -467,6 +467,38 @@ export function generatedSections(
     ownedBySoftware
   );
 
+  // In an assembled manual a chapter opens with its own text. What sections 1–3 would repeat in
+  // every chapter — the version in effect, the stock introduction, the module / code / category /
+  // manual type / document code table — is said once, in the front matter's chapter table. Only
+  // the tables that carry something about this chapter stay: its parts, the hardware that runs it,
+  // the software releases it documents.
+  if (assembled) {
+    const tables = [
+      !hasHardware ? '' : `<h3>${T.hardware}</h3>
+<table>
+<thead><tr><th>${T.unit}</th><th>${T.relation}</th><th>${T.notes}</th></tr></thead>
+<tbody>
+${hwRows}
+</tbody>
+</table>`,
+      !hasRelated ? '' : `<h3>${T.relatedHardware}</h3>
+<table>
+<thead><tr><th>${T.unit}</th><th>${T.relation}</th><th>${T.runsIn}</th></tr></thead>
+<tbody>
+${relRows}
+</tbody>
+</table>`,
+      !hasSoftware ? '' : `<h3>${T.softwareRelation}</h3>
+<table>
+<thead><tr><th>${T.software}</th><th>${T.coveredReleases}</th></tr></thead>
+<tbody>
+${swRows}
+</tbody>
+</table>`,
+    ].filter(Boolean);
+    return tables.length ? `<section class="auto-section" data-auto="3">\n<h2>${T.generalInfo}</h2>\n${tables.join('\n')}\n</section>\n` : '';
+  }
+
   return `<section class="auto-section" data-auto="1">
 <h2>${T.revisionRecord}</h2>
 ${revisionHistory
@@ -522,6 +554,38 @@ ${swRows}
 /* ------------------------------------------------------------------ */
 /* Assembled manual                                                    */
 /* ------------------------------------------------------------------ */
+
+/**
+ * A body section that says nothing. Every doc carries its manual type's four sections, and an author
+ * with nothing to put under one writes "—" or "Refer to Description." In an assembled manual such a
+ * section is only a heading the reader pages past, and a line in the contents, so it is left out.
+ * Only bodies with no information at all go — empty, dashes, N/A / Not applicable / None, a bare
+ * "Refer to <section>." or TODO(author) markers. A sentence that tells the reader something ("No
+ * routine maintenance is required") stays, and so does any section with a picture, table, list,
+ * admonition or subsection. The doc itself is untouched: the editor still shows every section.
+ */
+const PLACEHOLDER_TEXT = /^(?:[\s—–\-.…]*|n\/?a\.?|not applicable\.?|none\.?|refer to [^.]{1,40}\.?)$/i;
+const TODO_SENTENCE = /\bTODO(?:\([^)]*\))?\s*:.*?(?:[.!?](?=\s|$)|$)/gi;
+export function dropPlaceholderSections(html) {
+  return String(html || '')
+    .split(/(?=<h2[\s>])/i)
+    .filter((part) => {
+      const head = /^<h2[^>]*>[\s\S]*?<\/h2>/i.exec(part);
+      if (!head) return true; // whatever stands before the first section
+      const body = part.slice(head[0].length);
+      if (/<(?:img|figure|table|ol|ul|h3|h4|iframe|video)\b|class="[^"]*admonition|class="[^"]*attachment/i.test(body)) return true;
+      const text = body
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;|&#160;/g, ' ')
+        .replace(/&mdash;|&#8212;|&ndash;|&#8211;/g, '—')
+        .replace(/&hellip;|&#8230;/g, '…')
+        .replace(TODO_SENTENCE, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return !PLACEHOLDER_TEXT.test(text);
+    })
+    .join('');
+}
 
 /** Fallback brand mark used when no logo has been uploaded in Settings. */
 export const LOGO_SVG = `<svg class="logo" viewBox="0 0 330 92" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="FTD.aero">
@@ -586,6 +650,11 @@ export const MANUAL_CSS = `
 .manual-doc .front > h2 { font-size: 18px; margin: 30px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #16324f; }
 .manual-doc .front > h2:first-child { margin-top: 0; }
 .manual-doc .front > h3 { font-size: 14.5px; margin: 20px 0 8px; }
+/* The front matter's tables keep their words whole: a long document code wraps at its hyphens, */
+/* a date or a status never wraps — the columns size themselves to that.                          */
+.manual-doc .front th, .manual-doc .front td { overflow-wrap: normal; word-break: normal; }
+.manual-doc .front td.doc-code { font-size: 11px; }
+.manual-doc .front td:first-child, .manual-doc .front td:nth-last-child(-n+3) { white-space: nowrap; }
 .manual-doc .toc li.front { font-weight: 600; }
 .manual-doc .toc li.front::before { content: none; }
 .manual-doc .chapter > h1 { font-size: 24px; border-bottom: 3px solid #16324f; padding-bottom: 8px; margin: 0 0 16px; }
@@ -734,16 +803,16 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   const processed = chapters.map((c, i) => {
     const num = i + 1;
     const lep = c.missing ? frontLep : docEffectivity(c.doc);
-    return c.missing ? { ...c, num, lep, html: '', items: [] } : { ...c, num, lep, ...numberHeadings(`${c.generated}\n${c.content}`, num) };
+    return c.missing ? { ...c, num, lep, html: '', items: [] } : { ...c, num, lep, ...numberHeadings(`${c.generated}\n${dropPlaceholderSections(c.content)}`, num) };
   });
 
   const recordRows = processed
     .map((c) =>
       c.missing
-        ? `<tr><td>${c.num}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="4" class="missing">${T.noDocumentation}</td></tr>`
+        ? `<tr><td>${c.num}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="5" class="missing">${T.noDocumentation}</td></tr>`
         : `<tr><td>${c.num}</td><td><a href="#ch-${esc(c.slug)}">${esc(c.title || c.module.name)}</a></td><td>${esc(
-            c.module.code || '—'
-          )}</td><td>${esc(c.doc.version)}${c.isDraft ? ` ${T.draft} r${c.doc.revision}` : ''}</td><td>${esc(
+            c.module.kind === 'software' ? '—' : T.categories[c.module.category] || c.module.category || '—'
+          )}</td><td class="doc-code">${esc(manualDocCode(c.module, c.doc.manual) || c.module.code || '—')}</td><td>${esc(c.doc.version)}${c.isDraft ? ` ${T.draft} r${c.doc.revision}` : ''}</td><td>${esc(
             c.doc.status
           )}</td><td>${fmtDate(c.doc.releasedAt || c.doc.updatedAt)}</td></tr>`
     )
@@ -798,7 +867,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   const front = `<section class="front" id="ch-general"${lepAttrs(frontLep)}>
 <h2 id="revision-record">${T.revisionRecord}</h2>
 ${manualRevisions}<table>
-  <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.code}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
+  <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.category}</th><th>${T.docCode}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
   <tbody>${recordRows}</tbody>
 </table>
 <h2 id="toc">${T.tableOfContents}</h2>

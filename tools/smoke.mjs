@@ -1147,8 +1147,14 @@ try {
   // the A1.0 translation was already stale (English edited after it) — the copy keeps that status
   ok(techNextPl.languages.pl.exists && techNextPl.languages.pl.stale === true && techNextPl.content.includes('Przez MCP.'), 'next doc version carries the translation over, staleness included');
   await req('POST', `/api/modules/starting-panel/docs/${techNext.key}/discard`);
-  ok(techCompiled.chapters[0].doc.key === 'technician:A1.0' && !techCompiled.chapters[0].isDraft && techCompiled.html.includes('Set the static IP.') && techCompiled.html.includes('Technician manual'),
+  ok(techCompiled.chapters[0].doc.key === 'technician:A1.0' && !techCompiled.chapters[0].isDraft && techCompiled.html.includes('Set the static IP.') && techCompiled.manual.manual === 'technician',
     'technician manual compiles the released technician docs');
+  const techFront = techCompiled.html.slice(0, techCompiled.html.indexOf('id="toc"'));
+  const techChapter = techCompiled.html.slice(techCompiled.html.indexOf('id="ch-starting-panel"'));
+  ok(
+    /<td class="doc-code">[A-Z0-9-]+-TECH-HW</.test(techFront) && !techChapter.includes('>Manual type<') && !techChapter.includes('>Introduction<'),
+    `a chapter opens with its own text: document code and category sit once in the front matter, no stock introduction or identity table (${[techFront.match(/<td class="doc-code">[^<]*/)?.[0], techChapter.includes('>Manual type<'), techChapter.includes('>Introduction<')].join(' / ')})`
+  );
   // the header of the company template: logo, title, subtitle, page field, version/revision/date
   const headBox = techCompiled.html.slice(techCompiled.html.indexOf('<table class="head-box"'));
   ok(/c-logo[\s\S]*c-date/.test(headBox) && headBox.includes('hb-page') && headBox.includes('hb-lbl'),
@@ -1224,7 +1230,7 @@ try {
   ok(Array.isArray(compiled.missingAssets) && compiled.missingAssets.length === 0, 'nothing missing while every picture is there');
   const gapMod = await req('POST', '/api/modules', { name: 'Picture Gap', code: 'GAP', category: 'misc' });
   await req('PUT', `/api/modules/${gapMod.slug}/docs/customer:A1.0/content`, {
-    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table>`,
+    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p>`,
   });
   const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', group: 'SIM', modules: [gapMod.slug] });
   const gapCompiled = await req('GET', `/api/manuals/${gapManual.slug}`);
@@ -1237,6 +1243,15 @@ try {
       gapCompiled.html.includes('<col style="width: 70%;">') &&
       gapCompiled.css.includes('table:has(> colgroup)'),
     'column widths dragged in the editor are saved and laid out fixed in the manual'
+  );
+  const gapChapter = gapCompiled.html.slice(gapCompiled.html.indexOf(`id="ch-${gapMod.slug}"`));
+  ok(
+    !/>Operation</.test(gapChapter) && !/>Appendixes</.test(gapChapter) && gapChapter.includes('No routine maintenance is required.'),
+    'a section that says nothing ("Refer to Description.", "—") is left out of the manual; one that says something stays'
+  );
+  ok(
+    (await req('GET', `/api/modules/${gapMod.slug}/docs/customer:A1.0`)).content.includes('Refer to Description.'),
+    'the doc itself keeps every section'
   );
   const gapRelease = await req('POST', `/api/manuals/${gapManual.slug}/release`, {}).catch((e) => e);
   ok(
