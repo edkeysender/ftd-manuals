@@ -733,6 +733,7 @@ export async function renameSoftware(oldName, newName) {
   if (feed[newName]) throw new Error(`Software "${newName}" already exists — merge into it instead of renaming`);
   if (softwareOwners.some((o) => o.module.name === newName)) throw new Error(`Software "${newName}" already exists`);
   const newSlug = slugify(newName);
+  if (owner && !owner.module.code) await assertUniqueCodeBase(newSlug, owner.module);
   if (!newSlug) throw new Error('The new name must contain a letter or a digit');
   if (owner && newSlug !== owner.module.slug && softwareOwners.some((o) => o.module.slug === newSlug)) {
     throw new Error(`Another software already owns manuals at "${newSlug}"`);
@@ -1248,9 +1249,33 @@ async function writeFirstDoc(module, spec, moduleOnMain, feed = {}) {
  * each on its own draft/<slug>-<manual>-a1.0 branch.
  * manuals: [{ manual, content, checklist, revisionSeed, startSummary, copiedFrom }] — at least one.
  */
+/**
+ * A document code starts with its owner's code, else its slug (STARTING-PANEL-USER-HW), and a
+ * module and a software are named in different folders — so two owners could print the same code
+ * on different documents. The start of the code is kept unique across modules and softwares that
+ * own manuals: refused when an owner is created, given a new code or renamed.
+ */
+const codeBaseOf = (module) => String(module.code || module.slug || '').toUpperCase();
+async function assertUniqueCodeBase(base, self = null) {
+  base = String(base || '').toUpperCase();
+  if (!base) return;
+  const { modules, softwareOwners } = await collectAll();
+  const clash = [...modules, ...softwareOwners].find(
+    ({ module }) => codeBaseOf(module) === base && !(self && module.slug === self.slug && (module.kind === 'software') === (self.kind === 'software'))
+  );
+  if (clash)
+    throw Object.assign(
+      new Error(
+        `Document codes ${base}-… already belong to the ${clash.module.kind === 'software' ? 'software' : 'module'} "${clash.module.name}" — give this one its own short code`
+      ),
+      { code: 'code-taken' }
+    );
+}
+
 export async function createModuleDoc(input, manuals) {
   const slug = slugify(input.name);
   if (!slug) throw new Error('Module name is required');
+  await assertUniqueCodeBase(String(input.code || '').trim() || slug);
   if (!Array.isArray(manuals) || !manuals.length) throw new Error('At least one manual type is required');
   const seen = new Set();
   for (const m of manuals) {
@@ -1794,6 +1819,7 @@ export async function createSoftwareManuals(name, { fromVersion = '', startSumma
   // Written before softwares owned their docs? Then those manuals are the ones it wants.
   const legacy = await adoptOwnSoftwareModule(name, fromVersion || feed[name].at(-1)?.version || '');
   if (legacy) return legacy;
+  await assertUniqueCodeBase(slug);
   const releases = [...(feed[name] || [])].sort((a, b) => compareSwVersions(a.version, b.version));
   const newest = releases.length ? releases[releases.length - 1].version : '';
   const from = String(fromVersion || newest || '').trim();
@@ -3165,6 +3191,8 @@ export async function updateModule(slug, patch) {
   const refs = [...(onMain ? ['main'] : []), ...entry.docs.filter((d) => isOpen(d) && d.branch).map((d) => d.branch)];
   if (!refs.length) throw new Error('Module has no draft branch and is not released — nothing to write to');
   const { hardwareItems, ...module } = entry.module;
+  if (patch.code !== undefined && codeBaseOf({ code: patch.code, slug }) !== codeBaseOf(entry.module))
+    await assertUniqueCodeBase(codeBaseOf({ code: patch.code, slug }), entry.module);
   for (const k of ['name', 'code', 'category', 'softwares']) {
     if (patch[k] !== undefined) module[k] = patch[k];
   }

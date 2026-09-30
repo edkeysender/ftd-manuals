@@ -336,6 +336,11 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .doc-page figure { margin: 16px 0; text-align: center; }
 .doc-page img { max-width: 100%; height: auto; }
 .doc-page figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; min-height: 60px; background: #f6f8fb; }
+/* The printed width an author set (⤢ Size), shown as it will print. */
+.doc-page figure[data-size="small"] img { width: 40%; }
+.doc-page figure[data-size="medium"] img { width: 60%; }
+.doc-page figure[data-size="large"] img { width: 80%; }
+.doc-page figure[data-size="full"] img { width: 100%; }
 .doc-page figcaption { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
 /* a software known from module links only — repair prompt */
 .hint.warn { color: #b45309; }

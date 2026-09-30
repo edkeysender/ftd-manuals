@@ -706,6 +706,22 @@ export default function Editor({ review: reviewProp = false }) {
       t('Attach a file the reader downloads (ready-to-use configuration, firmware…) — or paste / drop it into the text'),
     ],
     [
+      t('⤢ Size'),
+      () => {
+        // The printed width of the figure under the caret: at least 60 % by default, or set explicitly.
+        const node = window.getSelection()?.anchorNode;
+        const fig = (node?.nodeType === 1 ? node : node?.parentElement)?.closest?.('figure');
+        if (!fig || !editorRef.current?.contains(fig)) return toast(t('Put the caret in a figure caption first'), 'err');
+        const sizes = ['', 'small', 'medium', 'large', 'full'];
+        const next = sizes[(sizes.indexOf(fig.getAttribute('data-size') || '') + 1) % sizes.length];
+        if (next) fig.setAttribute('data-size', next);
+        else fig.removeAttribute('data-size');
+        onInput();
+        toast(next ? t('Figure printed {size}', { size: t(next) }) : t('Figure printed at the default size (at least 60 %)'));
+      },
+      t('Printed size of the figure under the caret: default → small → medium → large → full width'),
+    ],
+    [
       t('↗ Reference'),
       () => {
         rememberSelection();
