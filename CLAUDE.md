@@ -84,7 +84,14 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Sections 1–3 (revision record, introduction, general info) are **generated** from module data; section 3 lists
   **Parts** only in a technician manual (the operator is told what the module does, not what it is made of) and lists
   a table only when there is something in it —
-  they are never hand-edited; the editor stores only sections 4–7 as semantic HTML.
+  they are never hand-edited; the editor stores only sections 4–7 as semantic HTML. In an **assembled manual** a
+  chapter carries none of the boilerplate (`generatedSections(…, {assembled: true})`): the version in effect, the
+  stock introduction and the module/code/category/type/document-code table are said once, in the front matter's
+  chapter table (Category and Document code columns); only the Parts / Related hardware / Software relation tables
+  stay, under General information, when there are any. And a body section that says nothing — empty, `—`,
+  N/A / Not applicable / None, a bare "Refer to X." or only TODO markers — is left out of the manual and its
+  contents (`dropPlaceholderSections`); a sentence that tells the reader something stays. The doc itself keeps
+  every section.
 - A module’s **category** is `ios` / `cockpit` / `misc` (`CATEGORIES` in `web/src/api.js`, labelled by
   `CATEGORY_LABELS` in `docgen.js`, which still names the older values existing modules carry — never migrated);
   it defaults to `misc`, shows on the modules list and in section 3, and picks the FAT template’s phases
