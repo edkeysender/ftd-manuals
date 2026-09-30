@@ -627,8 +627,10 @@ export const MANUAL_CSS = `
 .manual-doc .head-box .c-lbl { width: 19mm; }
 .manual-doc .head-box .c-val { width: 19mm; }
 .manual-doc .head-box .c-date { width: 67.5mm; }
-.manual-doc .hb-logo { text-align: center; }
-.manual-doc .hb-logo img, .manual-doc .hb-logo svg { width: 21mm; height: auto; display: inline-block; }
+.manual-doc .hb-logo { text-align: center; overflow: hidden; }
+/* 21 mm as in the template, but never wider than its cell (the box narrows with a narrow window) */
+/* and never taller than the three rows it spans — a logo of any proportions stays inside its lines. */
+.manual-doc .hb-logo img, .manual-doc .hb-logo svg { width: 21mm; max-width: 100%; height: auto; max-height: 11mm; object-fit: contain; display: inline-block; vertical-align: middle; }
 .manual-doc .hb-title, .manual-doc .hb-sub { font-size: 6pt; font-weight: 700; text-align: justify; line-height: 1.3; }
 .manual-doc .hb-page { font-family: Arial, 'Liberation Sans', Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
 .manual-doc .hb-lbl, .manual-doc .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
@@ -705,7 +707,7 @@ export const MANUAL_CSS = `
 /* width (a small screenshot is scaled up), and a tall one is held to a page. In a table a picture     */
 /* fills its column but never below 35 mm. data-size="small|medium|large|full" on a <figure> sets it. */
 .manual-doc figure img { min-width: 60%; max-height: 190mm; object-fit: contain; }
-.manual-doc td img, .manual-doc th img, .manual-doc td figure img { width: 100%; min-width: 35mm; max-height: none; }
+.manual-doc .chapter td img, .manual-doc .chapter th img, .manual-doc .chapter td figure img { width: 100%; min-width: 35mm; max-height: none; }
 .manual-doc figure[data-size="small"] img { min-width: 0; width: 40%; }
 .manual-doc figure[data-size="medium"] img { min-width: 0; width: 60%; }
 .manual-doc figure[data-size="large"] img { min-width: 0; width: 80%; }
@@ -1131,8 +1133,8 @@ body { font-family: ${FONT}; }
 .pagedjs_margin-content .head-box .c-lbl { width: 19mm; }
 .pagedjs_margin-content .head-box .c-val { width: 19mm; }
 .pagedjs_margin-content .head-box .c-date { width: 67.5mm; }
-.pagedjs_margin-content .hb-logo { text-align: center; }
-.pagedjs_margin-content .hb-logo img, .pagedjs_margin-content .hb-logo svg { width: 21mm; height: auto; display: inline-block; }
+.pagedjs_margin-content .hb-logo { text-align: center; overflow: hidden; }
+.pagedjs_margin-content .hb-logo img, .pagedjs_margin-content .hb-logo svg { width: 21mm; max-width: 100%; height: auto; max-height: 11mm; object-fit: contain; display: inline-block; vertical-align: middle; }
 .pagedjs_margin-content .hb-title, .pagedjs_margin-content .hb-sub { font-size: 6pt; font-weight: 700; text-align: justify; line-height: 1.3; }
 .pagedjs_margin-content .hb-page { font-family: Arial, 'Liberation Sans', Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
 .pagedjs_margin-content .hb-lbl, .pagedjs_margin-content .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
