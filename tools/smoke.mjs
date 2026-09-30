@@ -1249,7 +1249,7 @@ try {
   const sameSlug = await req('POST', '/api/modules', { name: 'Gap', category: 'misc' }).catch((e) => e);
   ok(sameSlug instanceof Error && /already belong/.test(sameSlug.message), 'a module named like another owner\'s code is asked for its own code');
   await req('PUT', `/api/modules/${gapMod.slug}/docs/customer:A1.0/content`, {
-    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p><h2>Safety</h2><p>This document is the {{manual.title}} ({{ manual.code }}).</p><p>Refer to <a data-module="${gapMod.slug}">this module</a> and <a data-module="starting-panel">the starting panel</a>.</p>`,
+    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p><h2>Safety</h2><p>This document is the {{manual.title}} ({{ manual.code }}).</p><table><thead><tr><th>No.</th><th>Task</th><th>Done</th></tr></thead><tbody><tr><td>1</td><td><p>Check the seat.</p></td><td>Yes / No</td></tr><tr><td colspan="3"><div class="admonition note"><p class="admonition-title">Note</p><p>Mind the rails.</p></div></td></tr><tr><td>10</td><td><p>Check the belt.</p></td><td>Yes / No</td></tr></tbody></table><p>Refer to <a data-module="${gapMod.slug}">this module</a> and <a data-module="starting-panel">the starting panel</a>.</p>`,
   });
   const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', code: 'PGM', group: 'SIM', modules: [gapMod.slug], device: 'B737-800 FNPT II', serialNumber: 'SN-042', operator: 'Smoke Aviation Academy' });
   const gapCompiled = await req('GET', `/api/manuals/${gapManual.slug}`);
@@ -1284,6 +1284,12 @@ try {
       gapChapter.includes('<span class="xref-missing" data-module="starting-panel">the starting panel</span>') &&
       gapCompiled.missingRefs.length === 1 && gapCompiled.missingRefs[0].target === 'starting-panel',
     `a reference resolves to its chapter here, and one to a module this manual lacks is reported: ${JSON.stringify(gapCompiled.missingRefs)}`
+  );
+  ok(
+    gapChapter.includes('<table class="checklist">') && gapChapter.includes('<td class="num">10</td>') &&
+      (gapChapter.match(/<td class="check"><span class="box"><\/span><span class="box-label">Yes<\/span>/g) || []).length === 2 &&
+      gapChapter.includes('Mind the rails.'),
+    'a table whose tasks end in Yes / No prints as a checklist: tick boxes, whole task numbers, note rows kept'
   );
   ok(
     gapChapter.includes('This document is the Picture Gap Manual (PGM).') && !gapChapter.includes('{{'),
