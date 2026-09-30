@@ -345,6 +345,14 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .doc-page a.attachment { display: inline-block; padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel, #f6f8fb); color: var(--accent); text-decoration: none; font-family: ui-monospace, Consolas, monospace; font-size: 13px; cursor: pointer; }
 .doc-page a.attachment::before { content: '📎 '; }
 .doc-page a.attachment:hover { border-color: var(--accent); }
+/* A cross-reference to a module: the manual build prints its chapter and page. */
+.doc-page a[data-module] { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+.doc-page a[data-module]::after { content: ' ↗'; font-size: 0.85em; }
+.xref-search { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; margin: 8px 0; box-sizing: border-box; }
+.xref-list { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow: auto; }
+.xref-list li { border-bottom: 1px solid var(--line); }
+.xref-pick { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 7px 4px; font: inherit; cursor: pointer; color: inherit; }
+.xref-pick:hover { background: var(--panel, #f6f8fb); color: var(--accent); }
 
 .doc-page .admonition { border-left: 4px solid; border-radius: 6px; padding: 10px 14px; margin: 14px 0; }
 .doc-page .admonition-title { font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.05em; margin: 0 0 4px; }

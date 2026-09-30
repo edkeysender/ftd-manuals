@@ -250,7 +250,7 @@ export const TOOLS = [
   {
     name: 'save_doc_content',
     description:
-      'Replace the whole body HTML (sections 4–7 — the four <h2> sections of the manual type, e.g. Installation, Configuration, Maintenance, Appendixes for a technician manual; see get_doc) of a Draft/In-review doc. Allowed HTML: h2, h3, p, ol, ul, li, strong, em, table, figure/img/figcaption, <div class="admonition warning|note"><p class="admonition-title">…</p>…</div>. Commits on the draft branch and bumps the revision (r1 → r2 …) with the summary in the revision record. Prefer replace_in_doc or insert_into_section for small changes.',
+      'Replace the whole body HTML (sections 4–7 — the four <h2> sections of the manual type, e.g. Installation, Configuration, Maintenance, Appendixes for a technician manual; see get_doc) of a Draft/In-review doc. Allowed HTML: h2, h3, p, ol, ul, li, strong, em, table, figure/img/figcaption, <div class="admonition warning|note"><p class="admonition-title">…</p>…</div>, and <a data-module="<module slug>">words</a> to refer to another module (the build prints its chapter and page; search_modules gives the slugs). Captions carry no figure number — the build numbers figures. Commits on the draft branch and bumps the revision (r1 → r2 …) with the summary in the revision record. Prefer replace_in_doc or insert_into_section for small changes.',
     inputSchema: {
       type: 'object',
       properties: { ...SLUG_VER, lang: LANG_PROP, html: { type: 'string' }, summary: { type: 'string', description: 'Revision record entry' } },

@@ -165,6 +165,12 @@ The functional spec lives in this file's history and in the Modules spec provide
   warnings/notes as admonitions, no invented facts — use `TODO(author): …` markers. A module never names the manual
   it is printed in: `{{manual.title}}` / `{{manual.code}}` are build variables filled per assembled manual
   (`fillManualVars` in `docgen.js`); the AI prompts are told to write them and translation keeps them.
+- Figures and cross-references are the build's: `numberFigures` numbers every `<figure>` per chapter (Fig. 11.3),
+  drops a hand-typed "Fig. 2.10" / "Rys. 2.1" / "3." from the caption, and the front matter gets a **List of figures**.
+  A reference to another module is `<a data-module="<slug>">words</a>` (editor toolbar ↗ Reference, `XrefPicker`);
+  `resolveXrefs` prints it as a link "(chapter N, p. X)" when the manual carries that module (chapter slug or module
+  slug), plain words when not — `missingCrossRefs` → `missingRefs` on the compiled manual, a badge on the manual page.
+  Page numbers (`a.pg-ref`, `.paged-only`) exist only in the export: `LEP_SCRIPT` re-paginates until they settle.
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,
   `list_assets {thumbnails}`, MCP resources `ftd://modules/<slug>/assets/<file>`), fetch server-side
   (`upload_photo_from_url` for a picture into the assets, `fetch_to_inbox` for any file incl. documents/zips into the

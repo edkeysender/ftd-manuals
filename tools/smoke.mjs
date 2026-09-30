@@ -1245,7 +1245,7 @@ try {
   ok(Array.isArray(compiled.missingAssets) && compiled.missingAssets.length === 0, 'nothing missing while every picture is there');
   const gapMod = await req('POST', '/api/modules', { name: 'Picture Gap', code: 'GAP', category: 'misc' });
   await req('PUT', `/api/modules/${gapMod.slug}/docs/customer:A1.0/content`, {
-    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p><h2>Safety</h2><p>This document is the {{manual.title}} ({{ manual.code }}).</p>`,
+    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p><h2>Safety</h2><p>This document is the {{manual.title}} ({{ manual.code }}).</p><p>Refer to <a data-module="${gapMod.slug}">this module</a> and <a data-module="starting-panel">the starting panel</a>.</p>`,
   });
   const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', code: 'PGM', group: 'SIM', modules: [gapMod.slug] });
   const gapCompiled = await req('GET', `/api/manuals/${gapManual.slug}`);
@@ -1263,6 +1263,16 @@ try {
   ok(
     !/>Operation</.test(gapChapter) && !/>Appendixes</.test(gapChapter) && gapChapter.includes('No routine maintenance is required.'),
     'a section that says nothing ("Refer to Description.", "—") is left out of the manual; one that says something stays'
+  );
+  ok(
+    gapChapter.includes('<span class="fig-num">Fig. 1.1</span> gone') && gapCompiled.html.includes('id="lof"') && gapCompiled.html.includes('href="#fig-1-1">gone</a>'),
+    'figures are numbered per chapter by the build and listed in the List of figures'
+  );
+  ok(
+    gapChapter.includes('<a class="xref" href="#ch-' + gapMod.slug + '">this module</a> <span class="xref-at">(chapter 1') &&
+      gapChapter.includes('<span class="xref-missing" data-module="starting-panel">the starting panel</span>') &&
+      gapCompiled.missingRefs.length === 1 && gapCompiled.missingRefs[0].target === 'starting-panel',
+    `a reference resolves to its chapter here, and one to a module this manual lacks is reported: ${JSON.stringify(gapCompiled.missingRefs)}`
   );
   ok(
     gapChapter.includes('This document is the Picture Gap Manual (PGM).') && !gapChapter.includes('{{'),
