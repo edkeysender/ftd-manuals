@@ -364,7 +364,7 @@ const STRINGS = {
     draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', draft: 'draft',
     // chapter 1 — General (FTD manual template)
     frontMatter: 'Front matter', manualRevisions: 'Manual revisions', chapterRevisions: 'Chapters',
-    lep: 'List of Effective Pages', page: 'Page', issue: 'Issue', rev: 'Rev.', effectiveDate: 'Effective date',
+    lep: 'List of Effective Pages', page: 'Page', issue: 'Issue', rev: 'Rev.', serialNumber: 'Serial number', operatorName: 'Operator', issueRev: 'Issue / revision', issuedBy: 'Issued by', hardwareKind: 'Hardware', softwareKind: 'Software', effectiveDate: 'Effective date',
     headPage: 'Page', headVersion: 'Version', headRevision: 'Revision', headDate: 'Date',
     lepNote: 'Page numbers are assigned when the manual is opened for print or exported; the table below lists the effectivity of every chapter.',
   },
@@ -390,7 +390,7 @@ const STRINGS = {
     tableOfContents: 'Spis treści', listOfFigures: 'Spis rysunków', fig: 'Rys.', caption: 'Podpis', pageAbbr: 's.', chapterRef: (n) => `rozdział ${n}`, chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
     frontMatter: 'Strony wstępne', manualRevisions: 'Rewizje instrukcji', chapterRevisions: 'Rozdziały',
-    lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', effectiveDate: 'Data obowiązywania',
+    lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', serialNumber: 'Numer seryjny', operatorName: 'Operator', issueRev: 'Wydanie / rewizja', issuedBy: 'Wydawca', hardwareKind: 'Sprzęt', softwareKind: 'Oprogramowanie', effectiveDate: 'Data obowiązywania',
     headPage: 'Strona', headVersion: 'Wersja', headRevision: 'Rewizja', headDate: 'Data',
     lepNote: 'Numery stron są nadawane przy otwarciu instrukcji do druku lub eksporcie; poniższa tabela podaje obowiązującą wersję każdego rozdziału.',
   },
@@ -482,8 +482,8 @@ export function generatedSections(
   // In an assembled manual a chapter opens with its own text. What sections 1–3 would repeat in
   // every chapter — the version in effect, the stock introduction, the module / code / category /
   // manual type / document code table — is said once, in the front matter's chapter table. Only
-  // the tables that carry something about this chapter stay: its parts, the hardware that runs it,
-  // the software releases it documents.
+  // the tables that carry something about this chapter stay: its parts and the hardware that runs
+  // it. The software releases it documents are in the chapter heading's badge.
   if (assembled) {
     const tables = [
       !hasHardware ? '' : `<h3>${T.hardware}</h3>
@@ -500,13 +500,7 @@ ${hwRows}
 ${relRows}
 </tbody>
 </table>`,
-      !hasSoftware ? '' : `<h3>${T.softwareRelation}</h3>
-<table>
-<thead><tr><th>${T.software}</th><th>${T.coveredReleases}</th></tr></thead>
-<tbody>
-${swRows}
-</tbody>
-</table>`,
+      // The software and the releases it covers are said by the chapter's badge (kindBadge).
     ].filter(Boolean);
     return tables.length ? `<section class="auto-section" data-auto="3">\n<h2>${T.generalInfo}</h2>\n${tables.join('\n')}\n</section>\n` : '';
   }
@@ -533,7 +527,6 @@ ${record || `<tr><td colspan="2">${T.noRevisions}</td></tr>`}
 <tbody>
 <tr><th>${ownedBySoftware ? T.software : T.module}</th><td>${esc(module.name)}</td></tr>
 <tr><th>${T.code}</th><td>${esc(module.code || '—')}</td></tr>
-${ownedBySoftware ? '' : `<tr><th>${T.category}</th><td>${esc(T.categories[module.category] || module.category || '—')}</td></tr>`}
 <tr><th>${T.manualType}</th><td>${T.audienceRow(typeLabel, esc(T.audiences[type.audience]))}</td></tr>
 <tr><th>${T.docCode}</th><td>${esc(manualDocCode(module, type.id))}</td></tr>
 </tbody>
@@ -640,7 +633,20 @@ export const MANUAL_CSS = `
 .manual-doc .hb-page { font-family: Arial, 'Liberation Sans', Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
 .manual-doc .hb-lbl, .manual-doc .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
 .manual-doc .cover { text-align: center; padding: 10px 0 40px; }
-.manual-doc .cover-image img { max-width: 92%; max-height: 560px; margin: 26px auto 10px; display: block; }
+.manual-doc .cover-image img { max-width: 92%; max-height: 420px; margin: 18px auto 10px; display: block; }
+.manual-doc .cover-title { margin: 28px 0 8px; }
+.manual-doc .cover-code { font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: #475569; }
+.manual-doc .cover-name { font-size: 30px; font-weight: 700; line-height: 1.2; color: #0f172a; margin: 6px 0; }
+.manual-doc .cover-device { font-size: 16px; color: #334155; }
+.manual-doc .cover-facts { margin: 18px auto 0; width: auto; min-width: 55%; border-collapse: collapse; font-size: 13px; text-align: left; }
+.manual-doc .cover-facts th, .manual-doc .cover-facts td { border: 0; border-bottom: 1px solid #d5dce4; padding: 5px 12px; background: none; }
+.manual-doc .cover-facts th { color: #64748b; font-weight: 400; width: 40%; }
+.manual-doc .cover-company { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 28px; font-size: 12px; color: #334155; text-align: left; }
+.manual-doc .cover-logo img, .manual-doc .cover-logo svg { height: 34px; width: auto; display: block; }
+/* What kind of chapter this is: hardware, or software with the releases it covers. */
+.manual-doc .kind-badge { display: inline-block; vertical-align: middle; margin-left: 10px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; border: 1px solid; }
+.manual-doc .kind-badge.hw { color: #334155; border-color: #94a3b8; background: #f1f5f9; }
+.manual-doc .kind-badge.sw { color: #1e40af; border-color: #93c5fd; background: #eff6ff; }
 .manual-doc .cover-placeholder { margin: 40px auto; width: 70%; height: 240px; border: 1px dashed #c8d1db; border-radius: 8px; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-size: 14px; }
 .manual-doc .lep-note { color: #64748b; font-size: 12px; }
 .manual-doc .lep-pages { display: none; }
@@ -724,7 +730,7 @@ export const MANUAL_CSS = `
   .manual-doc .print-header { display: block; position: fixed; top: 0; left: 0; right: 0; background: #fff; }
   .manual-doc .print-header .head-box { margin: 0; }
   .manual-doc .print-footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 8.5px; color: #64748b; text-align: center; border-top: 1px solid #c8d1db; padding-top: 4px; background: #fff; line-height: 1.4; }
-  .manual-doc .cover .head-box, .manual-doc .doc-footer { display: none; }
+  .manual-doc .cover .head-box, .manual-doc .doc-footer, .manual-doc .cover-placeholder { display: none; }
   .manual-doc .chapter { page-break-before: always; border-top: none; margin-top: 0; }
   .manual-doc .front { page-break-after: always; }
   .manual-doc .cover { page-break-after: always; }
@@ -735,6 +741,23 @@ export const MANUAL_CSS = `
  * Number and anchor every h2/h3 of one chapter: assigns ids c<ch>-s<n>[-<m>]
  * (matching the CSS counters) and returns the outline for the TOC.
  */
+/**
+ * Says what kind of chapter this is, next to its title: Hardware, or Software with the software it
+ * documents and the releases this version covers ("Software · startPanelUI 2.0.1 and later"). It
+ * replaces the Software relation table an assembled chapter used to carry.
+ */
+function kindBadge(c, T) {
+  const software = c.software || c.module?.kind === 'software' || manualTypeOf(c.doc?.manual).kind === 'software';
+  if (!software) return `<span class="kind-badge hw">${esc(T.hardwareKind)}</span>`;
+  const covered = (c.doc?.covers || [])
+    .map((cov) => {
+      const range = cov.to ? (cov.to === cov.from ? cov.from : `${cov.from} – ${cov.to}`) : cov.from ? `${cov.from} ${T.andLater}` : '';
+      return [cov.name, range].filter(Boolean).join(' ');
+    })
+    .filter(Boolean);
+  return `<span class="kind-badge sw">${esc([T.softwareKind, ...covered].join(' · '))}</span>`;
+}
+
 function numberHeadings(html, ch) {
   let s2 = 0;
   let s3 = 0;
@@ -913,10 +936,8 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   const recordRows = processed
     .map((c) =>
       c.missing
-        ? `<tr><td>${c.num}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="5" class="missing">${T.noDocumentation}</td></tr>`
-        : `<tr><td>${c.num}</td><td><a href="#ch-${esc(c.slug)}">${esc(c.title || c.module.name)}</a></td><td>${esc(
-            c.module.kind === 'software' ? '—' : T.categories[c.module.category] || c.module.category || '—'
-          )}</td><td class="doc-code">${esc(manualDocCode(c.module, c.doc.manual) || c.module.code || '—')}</td><td>${esc(c.doc.version)}${c.isDraft ? ` ${T.draft} r${c.doc.revision}` : ''}</td><td>${esc(
+        ? `<tr><td>${c.num}</td><td class="missing">${esc(c.module?.name || c.slug)}</td><td colspan="4" class="missing">${T.noDocumentation}</td></tr>`
+        : `<tr><td>${c.num}</td><td><a href="#ch-${esc(c.slug)}">${esc(c.title || c.module.name)}</a></td><td class="doc-code">${esc(manualDocCode(c.module, c.doc.manual) || c.module.code || '—')}</td><td>${esc(c.doc.version)}${c.isDraft ? ` ${T.draft} r${c.doc.revision}` : ''}</td><td>${esc(
             c.doc.status
           )}</td><td>${fmtDate(c.doc.releasedAt || c.doc.updatedAt)}</td></tr>`
     )
@@ -987,7 +1008,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   const front = `<section class="front" id="ch-general"${lepAttrs(frontLep)}>
 <h2 id="revision-record">${T.revisionRecord}</h2>
 ${manualRevisions}<table>
-  <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.category}</th><th>${T.docCode}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
+  <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.docCode}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
   <tbody>${recordRows}</tbody>
 </table>
 <h2 id="toc">${T.tableOfContents}</h2>
@@ -1016,7 +1037,7 @@ ${lepChapterRows}
         c.langFallback ? `<span class="draft-flag lang-flag">${esc(T.langFallback)}</span>` : '',
       ].join('');
       return `<section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(c.lep)}>
-<h1>${esc(c.title || c.module.name)}${flags}</h1>
+<h1>${esc(c.title || c.module.name)}${kindBadge(c, T)}${flags}</h1>
 ${c.html}
 </section>`;
     })
@@ -1025,6 +1046,24 @@ ${c.html}
   const cover = coverUrl
     ? `<div class="cover-image"><img src="${esc(coverUrl)}" alt="${esc(manual.name)}"></div>`
     : `<div class="cover-placeholder">Cover illustration — set one via Edit manual</div>`;
+  // The cover says what the document is and whose device it is: the title large, the device, its
+  // serial number and operator, the issue in effect and its date, and who issued it.
+  // The device is named under the title; the table carries what identifies this one.
+  const facts = [
+    [T.serialNumber, manual.serialNumber],
+    [T.operatorName, manual.operator],
+    [T.issueRev, `${T.issue} ${frontLep.issue} · ${T.rev} ${frontLep.rev}`],
+    [T.date, frontLep.date],
+  ].filter(([, v]) => v && String(v).trim());
+  const coverTitle = `<div class="cover-title">
+    ${manual.code ? `<div class="cover-code">${esc(manual.code)}</div>` : ''}
+    <div class="cover-name">${esc(manual.name)}</div>
+    ${manual.device ? `<div class="cover-device">${esc(manual.device)}</div>` : ''}
+  </div>`;
+  const coverFacts = `<table class="cover-facts"><tbody>${facts
+    .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`)
+    .join('')}</tbody></table>`;
+  const coverCompany = `<div class="cover-company"><span class="cover-logo">${logoHtml}</span><span>${esc(T.issuedBy)}<br><strong>FTD.aero Sp. z o.o.</strong></span></div>`;
 
   return `<div class="manual-doc" lang="${esc(lang)}">
 <div class="print-header">${headerBox(manual, logoHtml, T, head)}</div>
@@ -1032,7 +1071,10 @@ ${c.html}
 <div class="manual">
 <section class="cover" id="cover"${lepAttrs(frontLep)}>
   ${headerBox(manual, logoHtml, T, head)}
+  ${coverTitle}
   ${cover}
+  ${coverFacts}
+  ${coverCompany}
 </section>
 ${front}
 ${body}
@@ -1085,7 +1127,9 @@ body { font-family: ${FONT}; }
 .pagedjs_margin-content .hb-page .pg::after { content: counter(page) "/" counter(pages); }
 .pagedjs_margin-content .hb-page .pg.filled::after, .pagedjs_margin-content.filled::after { content: none; }
 .manual-doc .manual { max-width: none; padding: 0; margin: 0; }
-.manual-doc .cover { break-after: page; padding-top: 30mm; }
+.manual-doc .cover { break-after: page; padding-top: 12mm; }
+.manual-doc .cover-placeholder { display: none; }
+.manual-doc .cover-image img { max-height: 105mm; }
 .manual-doc .cover .head-box { display: none; }
 .manual-doc .chapter { break-before: page; border-top: none; margin-top: 0; padding-top: 0; }
 .manual-doc .doc-footer { display: none; }

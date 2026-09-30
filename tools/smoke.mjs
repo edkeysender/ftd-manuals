@@ -1247,7 +1247,7 @@ try {
   await req('PUT', `/api/modules/${gapMod.slug}/docs/customer:A1.0/content`, {
     html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p><h2>Safety</h2><p>This document is the {{manual.title}} ({{ manual.code }}).</p><p>Refer to <a data-module="${gapMod.slug}">this module</a> and <a data-module="starting-panel">the starting panel</a>.</p>`,
   });
-  const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', code: 'PGM', group: 'SIM', modules: [gapMod.slug] });
+  const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', code: 'PGM', group: 'SIM', modules: [gapMod.slug], device: 'B737-800 FNPT II', serialNumber: 'SN-042', operator: 'Smoke Aviation Academy' });
   const gapCompiled = await req('GET', `/api/manuals/${gapManual.slug}`);
   ok(
     gapCompiled.missingAssets.length === 1 && gapCompiled.missingAssets[0].name === 'gone.png' && gapCompiled.missingAssets[0].chapter === gapMod.slug,
@@ -1259,6 +1259,13 @@ try {
       gapCompiled.css.includes('table:has(> colgroup)'),
     'column widths dragged in the editor are saved and laid out fixed in the manual'
   );
+  const gapCover = gapCompiled.html.slice(gapCompiled.html.indexOf('id="cover"'), gapCompiled.html.indexOf('class="front"'));
+  ok(
+    gapCover.includes('<div class="cover-name">Picture Gap Manual</div>') && gapCover.includes('<td>SN-042</td>') &&
+      gapCover.includes('<td>Smoke Aviation Academy</td>') && gapCover.includes('B737-800 FNPT II') && gapCover.includes('FTD.aero Sp. z o.o.'),
+    'the cover carries the title, device, serial number, operator, issue and the issuer'
+  );
+  ok(!/<th>Category<\/th>/.test(gapCompiled.html), 'the category is not printed — it means nothing to the reader');
   const gapChapter = gapCompiled.html.slice(gapCompiled.html.indexOf(`id="ch-${gapMod.slug}"`));
   ok(
     !/>Operation</.test(gapChapter) && !/>Appendixes</.test(gapChapter) && gapChapter.includes('No routine maintenance is required.'),
@@ -1316,6 +1323,13 @@ try {
     'released software customer manual compiles as a second chapter of its module');
   ok(withSw.chapters[1].title.includes('STP Core') && withSw.html.includes('id="ch-starting-panel--software"'),
     `software chapter titled after the linked software: ${withSw.chapters[1].title}`);
+  const swHead = withSw.html.slice(withSw.html.indexOf('id="ch-starting-panel--software"')).match(/<h1>[\s\S]*?<\/h1>/)[0];
+  const hwHead = withSw.html.slice(withSw.html.indexOf('id="ch-starting-panel"')).match(/<h1>[\s\S]*?<\/h1>/)[0];
+  ok(
+    /class="kind-badge sw">Software · STP Core v2\.\d\.\d/.test(swHead) && hwHead.includes('class="kind-badge hw">Hardware') &&
+      !withSw.html.slice(withSw.html.indexOf('id="ch-starting-panel--software"')).includes('>Software relation<'),
+    `a chapter heading says Hardware, or Software with the software and releases it covers: ${swHead}`
+  );
   ok(
     withSw.state.changed && withSw.state.next.revision === 1 && withSw.html.includes('data-lep-rev="1 (draft)"'),
     'a chapter added after the release puts Rev 1 on the pages, as a draft'
@@ -1326,7 +1340,7 @@ try {
   const fatHtml = await fatRes.text();
   ok(fatRes.status === 200 && fatHtml.includes('Factory Acceptance Test protocol') && fatHtml.includes('id="fat-starting-panel"') && fatHtml.includes('Modules under test'),
     'manual FAT protocol compiles the module checklists');
-  ok(compiled.html.includes('href="#c1-s4"') && compiled.html.includes('id="c1-s4"') && compiled.html.includes('href="#ch-starting-panel"') && compiled.html.includes('href="#revision-record"'),
+  ok(compiled.html.includes('href="#c1-s1"') && compiled.html.includes('id="c1-s1"') && compiled.html.includes('href="#ch-starting-panel"') && compiled.html.includes('href="#revision-record"'),
     'TOC links point at anchored headings; the first module is chapter 1');
   ok(compiled.html.includes('proprietary material protected by international law') && compiled.html.includes('class="head-box"'),
     'manual has header box and proprietary footer');

@@ -431,6 +431,12 @@ export const PL = {
   'What does this version change for the reader? This line is printed in the revision record.':
     'Co ta wersja zmienia dla czytelnika? Ten wiersz trafia do rejestru zmian.',
   'Initial issue': 'Pierwsze wydanie',
+  'Device': 'Urządzenie',
+  'Serial number': 'Numer seryjny',
+  'Operator': 'Operator',
+  'e.g. B737-800 FNPT II MCC': 'np. B737-800 FNPT II MCC',
+  'Training organisation': 'Organizacja szkoleniowa',
+  'Drag to reorder': 'Przeciągnij, aby zmienić kolejność',
   'Cross-reference': 'Odsyłacz',
   'The manual prints it with the chapter and page of that module — in every manual that carries it.': 'Instrukcja drukuje go z numerem rozdziału i strony tego modułu — w każdej instrukcji, która go zawiera.',
   'Search modules': 'Szukaj modułów',

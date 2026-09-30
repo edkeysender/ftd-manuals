@@ -73,7 +73,9 @@ The functional spec lives in this file's history and in the Modules spec provide
   while a chapter is a draft or has no doc, a picture is missing, or nothing changed. The header's Version / Revision
   / Date and the front matter's LEP carry that stamp — and while the chapters have moved since, the next revision
   marked `(draft)` with today's date, so a page never claims a release for text nobody released. The revision
-  record lists the manual's releases above its chapters.
+  record lists the manual's releases above its chapters. The **cover** names the document: code, title set large,
+  the `device`, then `serialNumber` / `operator` (manual.json, Edit manual), the issue / revision and date in effect,
+  the drawing, and the FTD.aero issuer block. Chapter order is the manual's `modules` list (Edit manual: drag or ↑↓).
   **Export**: `export.html` is the standalone document (pictures inlined) and `export.pdf` / `fat.pdf` print it
   with the browser on the machine (`server/pdf.js`: chromium/Chrome/Edge, `FTD_CHROME` to override, `pdf` on
   `GET /api/status`) — driven over the DevTools protocol and taken only once the page reports `data-pages`,
@@ -92,15 +94,16 @@ The functional spec lives in this file's history and in the Modules spec provide
   they are never hand-edited; the editor stores only sections 4–7 as semantic HTML. In an **assembled manual** a
   chapter carries none of the boilerplate (`generatedSections(…, {assembled: true})`): the version in effect, the
   stock introduction and the module/code/category/type/document-code table are said once, in the front matter's
-  chapter table (Category and Document code columns); only the Parts / Related hardware / Software relation tables
-  stay, under General information, when there are any. And a body section that says nothing — empty, `—`,
+  chapter table (Document code column); only the Parts / Related hardware tables stay, under General information,
+  when there are any. Each chapter heading carries a **kind badge** (`kindBadge`): *Hardware*, or *Software* with
+  the software and the releases the doc covers — it replaces the Software relation table. And a body section that says nothing — empty, `—`,
   N/A / Not applicable / None, a bare "Refer to X." or only TODO markers — is left out of the manual and its
   contents (`dropPlaceholderSections`); a sentence that tells the reader something stays. The doc itself keeps
   every section.
 - A module’s **category** is `ios` / `cockpit` / `misc` (`CATEGORIES` in `web/src/api.js`, labelled by
   `CATEGORY_LABELS` in `docgen.js`, which still names the older values existing modules carry — never migrated);
-  it defaults to `misc`, shows on the modules list and in section 3, and picks the FAT template’s phases
-  (`templateChecklist` in `checklist.js`).
+  it defaults to `misc`, shows on the modules list, and picks the FAT template’s phases
+  (`templateChecklist` in `checklist.js`). It is the console's filing, not the reader's: it is **never printed**.
 - Module types (`MODULE_TYPES` in `server/docgen.js`, mirrored in `web/src/api.js`): what a module IS decides
   which manuals are drafted on creation — `own-module` / `third-party-kit` → customer + technician,
   `own-software` → the software pair (a software named after the module is auto-created when none is picked),
