@@ -298,6 +298,9 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
   const [code, setCode] = useState(manual.code || '');
   const [group, setGroup] = useState(manual.group || '');
   const [type, setType] = useState(manual.manual || 'customer');
+  const [device, setDevice] = useState(manual.device || '');
+  const [serialNumber, setSerialNumber] = useState(manual.serialNumber || '');
+  const [operator, setOperator] = useState(manual.operator || '');
   const [modules, setModules] = useState([]);
   const [selected, setSelected] = useState(manual.modules);
   const [cover, setCover] = useState(null); // pending upload
@@ -311,7 +314,7 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
   async function save() {
     setBusy(true);
     try {
-      await api.updateManual(manual.slug, { name: name.trim(), code: code.trim() || null, group: group || null, manual: type, modules: selected });
+      await api.updateManual(manual.slug, { name: name.trim(), code: code.trim() || null, group: group || null, manual: type, modules: selected, device, serialNumber, operator });
       if (cover) await api.uploadManualCover(manual.slug, cover);
       onSaved();
     } catch (e) {
@@ -355,6 +358,20 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
                     <option key={mt.id} value={mt.id}>{t(mt.label)}</option>
                   ))}
                 </select>
+              </label>
+            </div>
+            <div className="pair">
+              <label style={{ flex: 2 }}>
+                {t('Device')}
+                <input value={device} onChange={(e) => setDevice(e.target.value)} placeholder={t('e.g. B737-800 FNPT II MCC')} />
+              </label>
+              <label style={{ flex: 1 }}>
+                {t('Serial number')}
+                <input value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} />
+              </label>
+              <label style={{ flex: 1.5 }}>
+                {t('Operator')}
+                <input value={operator} onChange={(e) => setOperator(e.target.value)} placeholder={t('Training organisation')} />
               </label>
             </div>
             <div className="field">

@@ -2653,7 +2653,7 @@ function assemblyTypeOf(id) {
   return t;
 }
 
-export async function createManual({ name, code, group, modules, manual: type }) {
+export async function createManual({ name, code, group, modules, manual: type, device, serialNumber, operator }) {
   const slug = slugify(name);
   if (!slug) throw new Error('Manual name is required');
   if (await getManual(slug)) throw new Error(`A manual with slug "${slug}" already exists`);
@@ -2665,6 +2665,10 @@ export async function createManual({ name, code, group, modules, manual: type })
     group: group || null,
     manual: assemblyTypeOf(type).id, // which manual type of each module is compiled
     modules: Array.isArray(modules) ? modules : [],
+    // what the cover says about the device the manual belongs to
+    device: String(device || '').trim() || null,
+    serialNumber: String(serialNumber || '').trim() || null,
+    operator: String(operator || '').trim() || null,
     createdAt: ts,
     updatedAt: ts,
   };
@@ -2685,6 +2689,7 @@ export async function updateManual(slug, patch) {
   if (patch.group !== undefined) manual.group = patch.group || null;
   if (patch.manual !== undefined) manual.manual = assemblyTypeOf(patch.manual).id;
   if (patch.modules !== undefined) manual.modules = patch.modules;
+  for (const k of ['device', 'serialNumber', 'operator']) if (patch[k] !== undefined) manual[k] = String(patch[k] || '').trim() || null;
   manual.updatedAt = now();
   await mutate(async () => {
     await repo.checkout('main');
