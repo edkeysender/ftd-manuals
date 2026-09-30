@@ -761,7 +761,7 @@ export default function Editor({ review: reviewProp = false }) {
 
   async function release() {
     try {
-      const meta = await releaseDoc(slug, version);
+      const meta = await releaseDoc(slug, version, { hotfix: !!docMeta?.hotfix });
       setDocMeta(meta);
       toast(t('{version} released — merged to main', { version }));
       navigate(backHref);

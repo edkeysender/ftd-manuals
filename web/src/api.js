@@ -38,17 +38,35 @@ export const ownerHref = (owner) =>
     : `/modules/${owner}`;
 
 /**
- * Release a doc version, asking the author once when the only thing in the way is a TODO they left
- * themselves. An AI edit nobody accepted is not offered here: it has to be accepted or discarded in
- * the editor first, so no reader is ever shown a change that is still under review.
+ * Ask the author for the one line the reader sees in the revision record for a release — what
+ * changed, for the reader. The working entries (AI edits, autosaves) never print.
  */
-export async function releaseDoc(slug, key) {
+export function askReleaseNote({ hotfix = false, first = false, current = '' } = {}) {
+  const note = prompt(
+    hotfix
+      ? t('What does this correction change for the reader? This line is printed in the revision record.')
+      : t('What does this version change for the reader? This line is printed in the revision record.'),
+    current || (first && !hotfix ? t('Initial issue') : '')
+  );
+  if (note === null) throw new Error(t('Release cancelled'));
+  if (!note.trim()) throw new Error(t('A release needs its revision record line'));
+  return note.trim();
+}
+
+/**
+ * Release a doc version, asking the author for its revision record line, and asking once more
+ * when the only thing in the way is a TODO they left themselves. An AI edit nobody accepted is not
+ * offered here: it has to be accepted or discarded in the editor first, so no reader is ever shown
+ * a change that is still under review.
+ */
+export async function releaseDoc(slug, key, { hotfix = false } = {}) {
+  const note = askReleaseNote({ hotfix, first: /A1\.0$/.test(String(key)) });
   try {
-    return await api.release(slug, key);
+    return await api.release(slug, key, { note });
   } catch (e) {
     if (e.code !== 'todo') throw e;
     if (!confirm(t('{reason} Release anyway?', { reason: e.message }))) throw new Error(t('Release cancelled'));
-    return await api.release(slug, key, { force: true });
+    return await api.release(slug, key, { force: true, note });
   }
 }
 
@@ -92,8 +110,11 @@ export const api = {
   translate: (slug, version, lang, html) => request(`${ownerPath(slug)}/docs/${version}/translate`, { method: 'POST', body: { lang, html } }),
   submitReview: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/submit-review`, { method: 'POST' }),
   backToDraft: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/back-to-draft`, { method: 'POST' }),
-  release: (slug, version, { force = false } = {}) =>
-    request(`${ownerPath(slug)}/docs/${version}/release`, { method: 'POST', body: { force } }),
+  release: (slug, version, { force = false, note = '' } = {}) =>
+    request(`${ownerPath(slug)}/docs/${version}/release`, { method: 'POST', body: { force, note } }),
+  /** The revision record line of a version already released. */
+  setReleaseNote: (slug, version, note) =>
+    request(`${ownerPath(slug)}/docs/${version}/release-note`, { method: 'PUT', body: { note } }),
   discard: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/discard`, { method: 'POST' }),
   /** Reopen a released version to correct it in place; `release` publishes it back at the new revision. */
   startHotfix: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/hotfix`, { method: 'POST' }),

@@ -692,8 +692,10 @@ try {
   const blockedByTodo = await req('POST', '/api/modules/starting-panel/docs/A1.0/release').catch((e) => e);
   ok(blockedByTodo instanceof Error && /TODO/.test(blockedByTodo.message), 'release refused while a TODO is left in the body');
   await req('PUT', '/api/modules/starting-panel/docs/A1.0/content', { html: cleanBody });
+  const noLine = await req('POST', '/api/modules/starting-panel/docs/A1.0/release', { force: true, note: '  ' }).catch((e) => e);
+  ok(noLine instanceof Error && /revision record/.test(noLine.message), 'a release needs the line the reader sees in the revision record');
 
-  await req('POST', '/api/modules/starting-panel/docs/A1.0/release', { force: true });
+  await req('POST', '/api/modules/starting-panel/docs/A1.0/release', { force: true, note: 'Smoke release' });
   list = await req('GET', '/api/modules');
   ok(list[0].status === 'released' && list[0].latestDoc === 'A1.0', 'release -> Released A1.0 on main');
   const status = await req('GET', '/api/status');
@@ -751,7 +753,7 @@ try {
   ok(badSw instanceof Error && /not linked to this module/.test(badSw.message), 'cannot cover a software the module is not linked to');
 
   await req('POST', '/api/modules/starting-panel/docs/A1.1/submit-review');
-  await req('POST', '/api/modules/starting-panel/docs/A1.1/release', { force: true });
+  await req('POST', '/api/modules/starting-panel/docs/A1.1/release', { force: true, note: 'Smoke release' });
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.docs.find((d) => d.version === 'A1.0').status === 'superseded', 'A1.0 superseded by A1.1');
   ok(detail.docs.find((d) => d.version === 'A1.1').status === 'released', 'A1.1 released');
@@ -783,11 +785,24 @@ try {
   ok(hfDoc.content.includes('1.2 Nm') && hfDoc.doc.revision === hf.revision + 1, 'the hotfix edits like a draft');
   const mainCopy = await req('GET', '/api/manuals');
   ok(Array.isArray(mainCopy), 'manuals list still reads while a hotfix is open');
-  await req('POST', '/api/modules/starting-panel/docs/A1.1/release', { force: true });
+  ok(/the description is written at release/.test(hfDoc.generated), 'an open hotfix shows where its revision record line will go');
+  await req('POST', '/api/modules/starting-panel/docs/A1.1/release', { force: true, note: 'Screw torque corrected' });
   const published = await req('GET', '/api/modules/starting-panel/docs/A1.1');
   ok(published.doc.status === 'released' && !published.doc.hotfix && !published.doc.branch && published.content.includes('1.2 Nm'),
     'publishing the hotfix merges it into the released version');
-  ok(published.doc.revisionRecord.some((r) => r.summary === 'Corrected the screw torque'), 'the correction is in the revision record');
+  ok(published.doc.revisionRecord.some((r) => r.summary === 'Corrected the screw torque'), 'the working entry stays in the doc record');
+  ok(
+    published.generated.includes('Screw torque corrected') &&
+      !published.generated.includes('Corrected the screw torque') &&
+      !/Hotfix \(draft\)|Content update|Created via MCP/.test(published.generated),
+    'only the release lines print in the revision record — the working entries do not'
+  );
+  const reNoted = await req('PUT', '/api/modules/starting-panel/docs/A1.1/release-note', { note: 'Screw torque corrected to 1.2 Nm' });
+  ok(
+    reNoted.revisionRecord.filter((r) => r.public && r.rev === `r${reNoted.revision}`).length === 1 &&
+      (await req('GET', '/api/modules/starting-panel/docs/A1.1')).generated.includes('Screw torque corrected to 1.2 Nm'),
+    'the line of a released version can be corrected afterwards'
+  );
   ok(!(await req('GET', '/api/modules/starting-panel')).docs.find((d) => d.version === 'A1.1').branch, 'the hotfix branch is gone');
   const hfDraft = await req('POST', '/api/modules/starting-panel/docs/A1.0/hotfix').catch((e) => e);
   ok(hfDraft instanceof Error && /a hotfix corrects a released version/.test(hfDraft.message), 'a superseded version cannot be hotfixed');
@@ -969,7 +984,7 @@ try {
   const ownEdited = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
   ok(ownEdited.content.includes('desktop shortcut') && ownEdited.doc.revision === 2, 'a software manual edits like any other draft');
   await req('POST', '/api/software/Panel%20Tool/docs/software-customer:A1.0/submit-review');
-  await req('POST', '/api/software/Panel%20Tool/docs/software-customer:A1.0/release', { force: true });
+  await req('POST', '/api/software/Panel%20Tool/docs/software-customer:A1.0/release', { force: true, note: 'Smoke release' });
   const releasedOwn = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
   ok(releasedOwn.doc.status === 'released' && !releasedOwn.doc.branch, 'a software manual releases like any other doc');
   // it shows on the Software page as the software documenting itself
@@ -1131,7 +1146,7 @@ try {
     'the released version is closed by the version that took over');
   // release the technician manual; assemble a technician manual from it
   await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/submit-review');
-  await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/release', { force: true });
+  await req('POST', '/api/modules/starting-panel/docs/technician:A1.0/release', { force: true, note: 'Smoke release' });
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.manuals.technician.status === 'released' && detail.manuals.customer.status === 'draft' && detail.docs.find((d) => d.key === 'customer:A1.1').status === 'released',
     'releasing the technician manual supersedes nothing in the customer stream');
@@ -1230,9 +1245,9 @@ try {
   ok(Array.isArray(compiled.missingAssets) && compiled.missingAssets.length === 0, 'nothing missing while every picture is there');
   const gapMod = await req('POST', '/api/modules', { name: 'Picture Gap', code: 'GAP', category: 'misc' });
   await req('PUT', `/api/modules/${gapMod.slug}/docs/customer:A1.0/content`, {
-    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p>`,
+    html: `<h2>Description</h2><figure><img src="/api/modules/${gapMod.slug}/assets/gone.png" alt="gone"><figcaption>gone</figcaption></figure><table><colgroup><col style="width: 30%;"><col style="width: 70%;"></colgroup><tbody><tr><td>Step</td><td>Action</td></tr></tbody></table><h2>Operation</h2><p>Refer to Description.</p><h2>Maintenance</h2><p>No routine maintenance is required.</p><h2>Appendixes</h2><p>—</p><h2>Safety</h2><p>This document is the {{manual.title}} ({{ manual.code }}).</p>`,
   });
-  const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', group: 'SIM', modules: [gapMod.slug] });
+  const gapManual = await req('POST', '/api/manuals', { name: 'Picture Gap Manual', code: 'PGM', group: 'SIM', modules: [gapMod.slug] });
   const gapCompiled = await req('GET', `/api/manuals/${gapManual.slug}`);
   ok(
     gapCompiled.missingAssets.length === 1 && gapCompiled.missingAssets[0].name === 'gone.png' && gapCompiled.missingAssets[0].chapter === gapMod.slug,
@@ -1248,6 +1263,10 @@ try {
   ok(
     !/>Operation</.test(gapChapter) && !/>Appendixes</.test(gapChapter) && gapChapter.includes('No routine maintenance is required.'),
     'a section that says nothing ("Refer to Description.", "—") is left out of the manual; one that says something stays'
+  );
+  ok(
+    gapChapter.includes('This document is the Picture Gap Manual (PGM).') && !gapChapter.includes('{{'),
+    'a chapter names the manual it is printed in through {{manual.title}} / {{manual.code}}'
   );
   ok(
     (await req('GET', `/api/modules/${gapMod.slug}/docs/customer:A1.0`)).content.includes('Refer to Description.'),
@@ -1281,7 +1300,7 @@ try {
   ok((await req('GET', '/api/manuals')).find((m) => m.slug === 'b737-simulator-manual').released?.revision === 0, 'the manuals list shows the stamp');
   // a released software manual of the same audience joins the bundle as its own chapter
   const swcNew = await req('POST', '/api/modules/starting-panel/docs', { manual: 'software-customer' });
-  await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`, { force: true });
+  await req('POST', `/api/modules/starting-panel/docs/${swcNew.key}/release`, { force: true, note: 'Smoke release' });
   const withSw = await req('GET', '/api/manuals/b737-simulator-manual');
   ok(withSw.chapters.length === 2 && withSw.chapters[1].slug === 'starting-panel--software' && withSw.chapters[1].software === true && withSw.chapters[1].doc.key === 'software-customer:A1.0',
     'released software customer manual compiles as a second chapter of its module');
@@ -1463,7 +1482,7 @@ try {
     'a software manual still in draft compiles as a flagged chapter');
   // released, it is the same chapter without the flag
   await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/submit-review');
-  await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/release', { force: true });
+  await req('POST', '/api/software/Route%20Editor/docs/software-technician:A1.0/release', { force: true, note: 'Smoke release' });
   const inhManual = await req('GET', '/api/manuals/inherit-check');
   const swChapter = inhManual.chapters.find((c) => c.software);
   ok(swChapter && swChapter.inheritedFrom === 'Route Editor' && swChapter.doc.key === 'software-technician:A1.0',
@@ -1471,7 +1490,7 @@ try {
   // a second documented software adds its own chapter — every one the module runs is in the manual
   await req('POST', '/api/software', { name: 'Panel Watchdog', version: 'v1.0', ownManual: {} });
   await req('POST', '/api/software/Panel%20Watchdog/docs/software-technician:A1.0/submit-review');
-  await req('POST', '/api/software/Panel%20Watchdog/docs/software-technician:A1.0/release', { force: true });
+  await req('POST', '/api/software/Panel%20Watchdog/docs/software-technician:A1.0/release', { force: true, note: 'Smoke release' });
   await req('POST', '/api/modules/starting-panel/software', { name: 'Panel Watchdog', fromVersion: 'v1.0' });
   const twoSw = await req('GET', '/api/manuals/inherit-check');
   ok(twoSw.chapters.filter((c) => c.software).map((c) => c.inheritedFrom).join(', ') === 'Route Editor, Panel Watchdog',
@@ -1539,7 +1558,7 @@ try {
   // module delete: a released module with an open draft — folder on main and the draft branch go
   const before = (await req('GET', '/api/modules')).length;
   const tmpMod = await req('POST', '/api/modules', { name: 'Tmp Module', group: 'SIM', category: 'cockpit', hardware: { type: 'none' }, softwares: [], start: { mode: 'blank' }, checklist: { mode: 'none' } });
-  await req('POST', `/api/modules/${tmpMod.slug}/docs/${tmpMod.key}/release`, { force: true });
+  await req('POST', `/api/modules/${tmpMod.slug}/docs/${tmpMod.key}/release`, { force: true, note: 'Smoke release' });
   const tmpNext = await req('POST', `/api/modules/${tmpMod.slug}/docs`, { manual: 'customer', bump: 'minor' });
   const delMod = await req('DELETE', `/api/modules/${tmpMod.slug}`);
   ok(delMod.slug === tmpMod.slug && delMod.docs === 2 && delMod.branchesDeleted.length === 1 && delMod.branchesDeleted[0] === tmpNext.branch, `delete_module reports ${delMod.docs} docs, branch ${delMod.branchesDeleted[0]}`);

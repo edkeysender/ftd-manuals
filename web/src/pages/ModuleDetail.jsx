@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, releaseDoc, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64, ownerHref, ownerPath } from '../api.js';
+import { api, releaseDoc, askReleaseNote, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64, ownerHref, ownerPath } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
@@ -326,7 +326,7 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
           key="publish"
           className="btn btn-sm"
           title={t('Merge the correction into the released {version}', { version: d.version })}
-          onClick={() => act(() => releaseDoc(slug, d.key), t('{doc} r{rev} published', { doc: docLabel(d), rev: d.revision }))}
+          onClick={() => act(() => releaseDoc(slug, d.key, { hotfix: true }), t('{doc} r{rev} published', { doc: docLabel(d), rev: d.revision }))}
         >
           {t('Publish hotfix')}
         </button>
@@ -397,6 +397,20 @@ export function ManualsTab({ data, slug, act, reload, canCreate = true }) {
               () => api.startHotfix(slug, d.key),
               t('Hotfix of {doc} started', { doc: docLabel(d) })
             ).then(() => go('edit')),
+        });
+        more.push({
+          label: t('Revision record line…'),
+          hint: t('The line the reader sees for this release in the revision record'),
+          disabled: !!d.hotfix,
+          onClick: () => {
+            let note;
+            try {
+              note = askReleaseNote({ current: (d.revisionRecord || []).filter((r) => r.public && !r.inherited && r.rev === `r${d.revision}`).pop()?.summary || '', first: /A1\.0$/.test(d.version) });
+            } catch {
+              return;
+            }
+            act(() => api.setReleaseNote(slug, d.key, note), t('Revision record line saved'));
+          },
         });
       }
       if (d.fat) {

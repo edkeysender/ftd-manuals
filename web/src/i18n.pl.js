@@ -426,6 +426,15 @@ export const PL = {
   '{doc} released — merged to main': '{doc} wydano — scalono do main',
   '{reason} Release anyway?': '{reason} Wydać mimo to?',
   'Release cancelled': 'Wydanie anulowane',
+  'What does this correction change for the reader? This line is printed in the revision record.':
+    'Co ta poprawka zmienia dla czytelnika? Ten wiersz trafia do rejestru zmian.',
+  'What does this version change for the reader? This line is printed in the revision record.':
+    'Co ta wersja zmienia dla czytelnika? Ten wiersz trafia do rejestru zmian.',
+  'Initial issue': 'Pierwsze wydanie',
+  'A release needs its revision record line': 'Wydanie wymaga wiersza w rejestrze zmian',
+  'Revision record line…': 'Wiersz w rejestrze zmian…',
+  'The line the reader sees for this release in the revision record': 'Wiersz, który czytelnik widzi dla tego wydania w rejestrze zmian',
+  'Revision record line saved': 'Zapisano wiersz w rejestrze zmian',
   'Approve & release': 'Zatwierdź i wydaj',
   Hotfix: 'Poprawka',
   'Edit hotfix': 'Edytuj poprawkę',
