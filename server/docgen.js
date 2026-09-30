@@ -685,7 +685,8 @@ export const MANUAL_CSS = `
 /* a date or a status never wraps — the columns size themselves to that.                          */
 .manual-doc .front th, .manual-doc .front td { overflow-wrap: normal; word-break: normal; }
 .manual-doc .front td.doc-code { font-size: 11px; }
-.manual-doc .front td:first-child, .manual-doc .front td:nth-last-child(-n+3) { white-space: nowrap; }
+.manual-doc .chapter-record td:first-child, .manual-doc .chapter-record td:nth-last-child(-n+3) { white-space: nowrap; }
+.manual-doc .lep-chapters td:first-child, .manual-doc .lep-chapters td:nth-last-child(-n+3) { white-space: nowrap; }
 .manual-doc .toc li.front { font-weight: 600; }
 .manual-doc .toc li.front::before { content: none; }
 .manual-doc .chapter > h1 { font-size: 24px; border-bottom: 3px solid #16324f; padding-bottom: 8px; margin: 0 0 16px; }
@@ -717,6 +718,7 @@ export const MANUAL_CSS = `
 /* A reference to a module this manual does not carry: flagged on screen, plain words in print. */
 .manual-doc .xref-missing { background: #fff4e5; border-bottom: 1px dashed #d97706; }
 .manual-doc .lof td:first-child, .manual-doc .lof td:last-child { white-space: nowrap; }
+.manual-doc .lof { width: 100%; table-layout: auto; }
 .manual-doc a.attachment { display: inline-block; padding: 4px 10px 4px 8px; border: 1px solid #c8d1db; border-radius: 6px; background: #f6f8fb; color: #16324f; text-decoration: none; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .manual-doc a.attachment::before { content: '📎 '; }
 .manual-doc .admonition { border-left: 4px solid; border-radius: 6px; padding: 10px 14px; margin: 14px 0; }
@@ -1018,7 +1020,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
 
   const front = `<section class="front" id="ch-general"${lepAttrs(frontLep)}>
 <h2 id="revision-record">${T.revisionRecord}</h2>
-${manualRevisions}<table>
+${manualRevisions}<table class="chapter-record">
   <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.docCode}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
   <tbody>${recordRows}</tbody>
 </table>
