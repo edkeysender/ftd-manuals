@@ -1116,7 +1116,7 @@ ${c.html}
       c.isDraft ? `<span class="draft-flag">${esc(T.draftFlag(c.doc.version, c.doc.revision))}</span>` : '',
       c.langFallback ? `<span class="draft-flag lang-flag">${esc(T.langFallback)}</span>` : '',
     ].join('');
-    return `<div class="manual-doc" lang="${esc(lang)}">
+    return `<div class="manual-doc single" lang="${esc(lang)}">
 <div class="print-header">${headerBox(manual, logoHtml, T, head)}</div>
 <div class="print-footer">${esc(footerText)}</div>
 <div class="manual">
@@ -1218,6 +1218,8 @@ body { font-family: ${FONT}; }
 .manual-doc .cover-image img { max-height: 105mm; }
 .manual-doc .cover .head-box { display: none; }
 .manual-doc .chapter { break-before: page; border-top: none; margin-top: 0; padding-top: 0; }
+/* a doc printed on its own starts on page 1 — nothing comes before it to break from */
+.manual-doc.single .chapter { break-before: auto; }
 .manual-doc .doc-footer { display: none; }
 .manual-doc .lep-chapters, .manual-doc .lep-note { display: none; }
 .manual-doc .lep-pages { display: table; }
