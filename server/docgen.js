@@ -795,11 +795,11 @@ function numberHeadings(html, ch) {
     if (isH2) {
       s2 += 1;
       s3 = 0;
-      num = `${ch}.${s2}`;
+      num = ch ? `${ch}.${s2}` : `${s2}`;
       id = `c${ch}-s${s2}`;
     } else {
       s3 += 1;
-      num = `${ch}.${s2}.${s3}`;
+      num = ch ? `${ch}.${s2}.${s3}` : `${s2}.${s3}`;
       id = `c${ch}-s${s2}-${s3}`;
     }
     items.push({ level: isH2 ? 2 : 3, title, num, id });
@@ -858,7 +858,7 @@ function numberFigures(html, ch, T) {
   const figures = [];
   const out = String(html || '').replace(/<figure\b([^>]*)>([\s\S]*?)<\/figure>/gi, (m, attrs, inner) => {
     k += 1;
-    const num = `${ch}.${k}`;
+    const num = ch ? `${ch}.${k}` : `${k}`;
     const id = `fig-${ch}-${k}`;
     let caption = '';
     const body = inner.replace(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i, (_, c) => {
@@ -954,7 +954,7 @@ function headerBox(manual, logoHtml, T, head = {}) {
  * Effective Pages per printed page; the web view shows the per-chapter table.
  * opts: { logoUrl, coverUrl, footerText }
  */
-export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = null }, opts = {}) {
+export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = null, single = false }, opts = {}) {
   const { logoUrl = null, coverUrl = null, footerText = FOOTER_TEXT } = opts;
   const T = strings(lang);
   const date = new Date().toISOString().slice(0, 10);
@@ -963,8 +963,11 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   // moved since — or it was never released — the pages say so: the next revision, marked as a
   // draft and dated today. A printed page never claims a released revision for text nobody released.
   const rel = state?.released;
-  const frontLep =
-    rel && !state.changed
+  // A doc printed on its own (a draft checked on paper) carries its own version and revision.
+  const one = single ? chapters[0] : null;
+  const frontLep = one
+    ? { issue: one.doc.version, rev: `r${one.doc.revision}${one.isDraft ? ` (${T.draft})` : ''}`, date: fmtDots(one.doc.releasedAt || one.doc.updatedAt) }
+    : rel && !state.changed
       ? { issue: String(rel.issue), rev: String(rel.revision), date: fmtDots(String(rel.date).slice(0, 10)) }
       : state
         ? { issue: String(state.next.issue), rev: `${state.next.revision} (${T.draft})`, date: fmtDots(date) }
@@ -986,7 +989,7 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   // the company and safety text is written as a module. Module chapters are the chapters.
   const targets = xrefTargets(chapters);
   const processed = chapters.map((c, i) => {
-    const num = i + 1;
+    const num = single ? null : i + 1;
     const lep = c.missing ? frontLep : docEffectivity(c.doc);
     if (c.missing) return { ...c, num, lep, html: '', items: [], figures: [] };
     const body = markChecklists(resolveXrefs(fillManualVars(dropPlaceholderSections(c.content), manual), targets, T));
@@ -1104,6 +1107,27 @@ ${c.html}
 </section>`;
     })
     .join('\n');
+
+  if (single) {
+    // The doc as its own mini-manual: the header on every page and its sections, numbered from 1 —
+    // no cover, no front matter, no thumb tab.
+    const c = processed[0];
+    const flags = [
+      c.isDraft ? `<span class="draft-flag">${esc(T.draftFlag(c.doc.version, c.doc.revision))}</span>` : '',
+      c.langFallback ? `<span class="draft-flag lang-flag">${esc(T.langFallback)}</span>` : '',
+    ].join('');
+    return `<div class="manual-doc" lang="${esc(lang)}">
+<div class="print-header">${headerBox(manual, logoHtml, T, head)}</div>
+<div class="print-footer">${esc(footerText)}</div>
+<div class="manual">
+<section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(frontLep)}>
+<h1>${esc(c.title || c.module.name)}${kindBadge(c, T)}${flags}</h1>
+${c.html}
+</section>
+<footer class="doc-footer">${esc(footerText)}</footer>
+</div>
+</div>`;
+  }
 
   const cover = coverUrl
     ? `<div class="cover-image"><img src="${esc(coverUrl)}" alt="${esc(manual.name)}"></div>`

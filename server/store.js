@@ -2971,6 +2971,40 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   return { manual, chapters, lang, missingAssets, missingRefs, state: manualState(manual, chapters, missingAssets) };
 }
 
+/**
+ * One doc compiled on its own, as the editor shows it — a draft, an open hotfix or a released
+ * version — so it can be printed and checked before it goes into any manual. It is the doc's own
+ * mini-manual (sections 1–3 generated with its revision record, then its body), framed like a
+ * manual page by `manualBodyHtml(…, single)`. Returns null when there is no such doc.
+ */
+export async function compileDocPreview(ref, key, { lang = DEFAULT_LANG } = {}) {
+  lang = langOf(lang);
+  const hit = await findDoc(ref, key);
+  if (!hit) return null;
+  const { entry, doc } = hit;
+  let content = lang === DEFAULT_LANG ? null : await repo.show(doc.ref, contentLangIn(doc.dir, lang));
+  const langFallback = lang !== DEFAULT_LANG && !content;
+  if (!content) content = (await repo.show(doc.ref, contentIn(doc.dir))) || '';
+  const module = entry.module;
+  const manual = {
+    slug: module.slug,
+    name: module.name,
+    code: doc.docCode || module.code || null,
+    manual: doc.manual,
+    modules: [module.slug],
+  };
+  const chapter = {
+    slug: module.slug,
+    module,
+    doc,
+    generated: generatedSections(module, doc, lang, { relatedHardware: await relatedHardware(module) }),
+    content,
+    isDraft: doc.status !== 'released' || !!doc.hotfix,
+    langFallback,
+  };
+  return { manual, chapters: [chapter], lang, single: true };
+}
+
 /* ------------------------------------------------------------------ */
 /* Releasing an assembled manual: its own issue and revision            */
 /* ------------------------------------------------------------------ */
