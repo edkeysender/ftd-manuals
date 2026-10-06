@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, releaseDoc, readFileAsBase64, timeAgo, manualType, LANGUAGES, language, ownerHref } from '../api.js';
+import { api, releaseDoc, readFileAsBase64, timeAgo, manualType, LANGUAGES, language, ownerHref, ownerPath } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
+import ActionMenu from '../components/ActionMenu.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { attachTableResize } from '../components/tableResize.js';
 import XrefPicker from '../components/XrefPicker.jsx';
@@ -211,6 +212,9 @@ const loadSnapshot = (slug, version) => {
     return null;
   }
 };
+/** Which side panes the author folded away — one setting for every doc. */
+const PANES_KEY = 'ftd-editor-panes';
+
 const saveSnapshot = (slug, version, data) => {
   try {
     localStorage.setItem(snapshotKey(slug, version), JSON.stringify(data));
@@ -572,6 +576,64 @@ export default function Editor({ review: reviewProp = false }) {
     }, 2000);
     return () => clearTimeout(t);
   }, [dirty, html, editable]);
+
+  /* ---------- export: this doc on its own, as it prints (drafts included) ---------- */
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const exportBase = `${ownerPath(slug)}/docs/${encodeURIComponent(version)}`;
+  const exportQuery = lang !== 'en' ? `lang=${lang}` : '';
+  /** Unsaved edits go in first, so the pages show what is on screen. */
+  async function flushEdits() {
+    if (!dirty || !editable) return;
+    const meta = await api.saveContent(slug, version, htmlRef.current, false, '', lang);
+    setDocMeta(meta);
+    noteLanguageSaved(meta);
+    setSavedAt(new Date().toISOString());
+    setDirty(false);
+  }
+  async function exportPdf() {
+    setPdfBusy(true);
+    try {
+      await flushEdits();
+      const res = await fetch(`${exportBase}/export.pdf${exportQuery ? `?${exportQuery}` : ''}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `${res.status} ${res.statusText}`);
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || `${version}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+  async function openExport(download) {
+    try {
+      await flushEdits();
+    } catch (e) {
+      return toast(e.message, 'err');
+    }
+    const q = [download ? 'download' : '', exportQuery].filter(Boolean).join('&');
+    window.open(`${exportBase}/export.html${q ? `?${q}` : ''}`, '_blank');
+  }
+
+  /* ---------- side panes: outline (left) and AI / comments (right) fold away ---------- */
+  const [hidePanes, setHidePanes] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(PANES_KEY) || 'null') || { left: false, right: false };
+    } catch {
+      return { left: false, right: false };
+    }
+  });
+  const togglePane = (side) =>
+    setHidePanes((p) => {
+      const next = { ...p, [side]: !p[side] };
+      try {
+        localStorage.setItem(PANES_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
   useEffect(() => {
     const t = setInterval(() => forceTick((x) => x + 1), 1000);
@@ -1184,6 +1246,14 @@ export default function Editor({ review: reviewProp = false }) {
       <header className="editor-head">
         <div className="editor-title">
           <Link to={backHref} className="back">←</Link>
+          <button
+            className={`btn btn-sm pane-toggle ${hidePanes.left ? '' : 'active'}`}
+            title={hidePanes.left ? t('Show the document outline') : t('Hide the document outline')}
+            aria-pressed={!hidePanes.left}
+            onClick={() => togglePane('left')}
+          >
+            ◧
+          </button>
           <strong>{data.module.name}</strong>
           <span className={`manual-tag ${docMeta.manual || 'customer'}`} title={t(manualType(docMeta.manual).desc)}>
             {t(manualType(docMeta.manual).label)}
@@ -1269,6 +1339,27 @@ export default function Editor({ review: reviewProp = false }) {
               {t('Approve & release')}
             </button>
           )}
+          {tab === 'manual' && (
+            <ActionMenu
+              className="btn btn-sm"
+              label={pdfBusy ? t('Printing…') : t('Export')}
+              title={t('This doc on its own, as it prints — drafts included, in the language shown')}
+              disabled={pdfBusy}
+              items={[
+                { label: t('PDF'), hint: t('The document as it prints: A4 pages with the header on each'), onClick: exportPdf },
+                { label: t('HTML'), hint: t('One standalone file, pictures included'), onClick: () => openExport(true) },
+                { label: t('Print'), hint: t('Opens the document in a new tab — print it from the browser'), onClick: () => openExport(false) },
+              ]}
+            />
+          )}
+          <button
+            className={`btn btn-sm pane-toggle ${hidePanes.right ? '' : 'active'}`}
+            title={hidePanes.right ? t('Show the side panel') : t('Hide the side panel')}
+            aria-pressed={!hidePanes.right}
+            onClick={() => togglePane('right')}
+          >
+            ◨
+          </button>
         </div>
       </header>
 
@@ -1283,7 +1374,7 @@ export default function Editor({ review: reviewProp = false }) {
         </button>
       )}
 
-      <div className="editor-panes">
+      <div className={`editor-panes ${hidePanes.left ? 'no-left' : ''} ${hidePanes.right ? 'no-right' : ''}`}>
         {/* left: outline */}
         <aside className="pane outline">
           <div className="pane-title">{t('Document outline')}</div>

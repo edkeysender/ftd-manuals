@@ -1087,4 +1087,9 @@ export const PL = {
   "Reset": "Wyzeruj",
   "Fit the diagram back in view": "Dopasuj schemat do widoku",
   "Relations diagram — drag to move, scroll to zoom": "Schemat powiązań — przeciągnij, aby przesunąć, przewiń, aby przybliżyć",
+  "This doc on its own, as it prints — drafts included, in the language shown": "Ten dokument osobno, tak jak się drukuje — także wersja robocza, w wyświetlanym języku",
+  "Show the document outline": "Pokaż spis dokumentu",
+  "Hide the document outline": "Ukryj spis dokumentu",
+  "Show the side panel": "Pokaż panel boczny",
+  "Hide the side panel": "Ukryj panel boczny",
 };

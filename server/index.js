@@ -862,16 +862,34 @@ app.delete('/api/manuals/:slug', wrap(async (req, res) => {
 async function manualExportDocument(ref, lang) {
   const compiled = await store.compileManual(ref, { lang: lang || DEFAULT_LANG });
   if (!compiled) return null;
-  const opts = await manualRenderOpts(ref, compiled.manual);
+  return exportDocument(compiled, await manualRenderOpts(ref, compiled.manual));
+}
+
+/** One doc on its own — the draft as the editor shows it — as the same standalone document. */
+async function docExportDocument(ref, key, lang) {
+  const compiled = await store.compileDocPreview(ref, key, { lang: lang || DEFAULT_LANG });
+  if (!compiled) return null;
+  const logo = await store.getBrandLogo();
+  const out = await exportDocument(compiled, { logoUrl: logo ? '/api/settings/logo' : null });
+  const doc = compiled.chapters[0].doc;
+  return { ...out, name: `${compiled.manual.slug}-${doc.manual}-${doc.version}-r${doc.revision}${compiled.lang !== DEFAULT_LANG ? `-${compiled.lang}` : ''}` };
+}
+
+async function exportDocument(compiled, opts) {
   let html = manualExportHtml(compiled, opts);
-  const refs = [...new Set([...html.matchAll(/\/api\/(?:modules\/[^/"']+\/assets\/[^"' >)?]+|settings\/logo|manuals\/[^/"']+\/cover)(?:\?[^"' >)]*)?/g)].map((m) => m[0]))];
+  const refs = [
+    ...new Set(
+      [...html.matchAll(/\/api\/(?:(?:modules|software)\/[^/"']+\/assets\/[^"' >)?]+|settings\/logo|manuals\/[^/"']+\/cover)(?:\?[^"' >)]*)?/g)].map((m) => m[0])
+    ),
+  ];
   for (const r of refs) {
     const clean = r.split('?')[0];
     let file = null;
     let m;
-    if ((m = /^\/api\/modules\/([^/]+)\/assets\/(.+)$/.exec(clean))) {
-      const name = decodeURIComponent(m[2]);
-      const buf = await store.getAsset(m[1], name);
+    if ((m = /^\/api\/(modules|software)\/([^/]+)\/assets\/(.+)$/.exec(clean))) {
+      const owner = m[1] === 'software' ? `sw:${store.slugify(decodeURIComponent(m[2]))}` : m[2];
+      const name = decodeURIComponent(m[3]);
+      const buf = await store.getAsset(owner, name);
       if (buf) file = { name, buffer: buf };
     } else if (clean === '/api/settings/logo') {
       file = await store.getBrandLogo();
@@ -903,6 +921,25 @@ app.get('/api/manuals/:slug/export.pdf', wrap(async (req, res) => {
   res.set('Content-Type', 'application/pdf');
   res.set('Content-Length', String(pdf.length));
   res.set('Content-Disposition', `${req.query.inline !== undefined ? 'inline' : 'attachment'}; filename="${doc.name}.pdf"`);
+  res.send(pdf);
+}));
+
+// One doc printed on its own — a draft included — to check it on paper before it goes into a manual.
+app.get(docPaths('/export.html'), wrap(async (req, res) => {
+  const out = await docExportDocument(ownerRef(req), req.params.version, req.query.lang);
+  if (!out) return res.status(404).json({ error: 'Doc not found' });
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  if (req.query.download !== undefined) res.set('Content-Disposition', `attachment; filename="${out.name}.html"`);
+  res.send(out.html);
+}));
+
+app.get(docPaths('/export.pdf'), wrap(async (req, res) => {
+  const out = await docExportDocument(ownerRef(req), req.params.version, req.query.lang);
+  if (!out) return res.status(404).json({ error: 'Doc not found' });
+  const pdf = await htmlToPdf(out.html);
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Length', String(pdf.length));
+  res.set('Content-Disposition', `${req.query.inline !== undefined ? 'inline' : 'attachment'}; filename="${out.name}.pdf"`);
   res.send(pdf);
 }));
 

@@ -966,6 +966,15 @@ try {
     'the doc reads through the software, with the software as its subject');
   ok(ownDoc.generated.includes('Panel Tool') && !ownDoc.generated.includes('>Hardware<'),
     'its generated sections name the software and list no hardware');
+  // a draft prints on its own from the editor: the doc's own pages, no cover, flagged as a draft
+  const draftExp = await fetch(BASE + '/api/software/Panel%20Tool/docs/software-customer:A1.0/export.html');
+  const draftHtml = await draftExp.text();
+  ok(
+    draftExp.ok && draftHtml.startsWith('<!doctype html>') && !draftHtml.includes('class="cover"') && draftHtml.includes('class="draft-flag"') &&
+      draftHtml.includes('pagedjs_pages'),
+    'a draft doc exports on its own, paginated and flagged as a draft'
+  );
+  ok((await fetch(BASE + '/api/software/Panel%20Tool/docs/software-customer:A9.9/export.html')).status === 404, 'exporting a doc that does not exist is a 404');
   // the editor's side chat names a software owner as {software: name}; it must find the doc
   const swChat = await req('POST', '/api/ai/chat', {
     slug: { software: 'Panel Tool' },
