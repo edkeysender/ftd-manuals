@@ -5,11 +5,14 @@ import ModulePicker from '../components/ModulePicker.jsx';
 import ActionMenu from '../components/ActionMenu.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
+import { usePresence, PresenceBar } from '../components/Presence.jsx';
 
 export default function ManualView() {
   const { slug } = useParams();
   const [data, setData] = useState(null);
   const [editing, setEditing] = useState(false);
+  // who else has this manual open — a warning when two people edit its chapters at once
+  const others = usePresence(slug ? `manual:${slug}` : null, editing ? 'edit' : 'view');
   const [lang, setLang] = useState(() => (LANGUAGES.some((L) => L.code === locale()) ? locale() : 'en')); // follows the console language
   const toast = useToast();
   const { isAdmin, canEdit } = useAuth();
@@ -71,6 +74,7 @@ export default function ManualView() {
       <div className="crumbs">
         <Link to="/manuals">{t('Manuals')}</Link> / {manual.name}
       </div>
+      <PresenceBar others={others} mode={editing ? 'edit' : 'view'} what="manual" />
       <div className="page-head">
         <div>
           <h1>

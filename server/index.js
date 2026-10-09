@@ -28,6 +28,7 @@ import * as images from './images.js';
 import * as sources from './sources.js';
 import { templateChecklist, checklistBodyHtml, fatProtocolBodyHtml, checklistExportHtml, CHECKLIST_CSS } from './checklist.js';
 import * as auth from './auth.js';
+import * as presence from './presence.js';
 import * as oauth from './oauth.js';
 
 const PORT = process.env.PORT || 5179;
@@ -64,6 +65,19 @@ app.get('/api/auth/me', auth.requireAuth, (req, res) => res.json({ user: auth.pu
 
 app.use('/api', auth.requireAuth);
 app.use('/api', auth.viewerGuard); // viewers read and comment in reviews, nothing else
+
+/** Who else has this doc or manual open: a heartbeat every 15 s returns the others on the item. */
+app.post('/api/presence', (req, res) => {
+  const { item, tab, mode } = req.body || {};
+  if (!presence.validPresence(item, tab)) return res.status(400).json({ error: 'item and tab are required' });
+  // a viewer can only ever be looking
+  res.json({ others: presence.beat(item, tab, req.user, req.user.role === 'viewer' && mode === 'edit' ? 'view' : mode) });
+});
+app.post('/api/presence/leave', (req, res) => {
+  const { item, tab } = req.body || {};
+  if (presence.validPresence(item, tab)) presence.leave(item, tab);
+  res.json({ ok: true });
+});
 app.delete('/api/*', auth.requireAdmin);
 /**
  * Docs hang off an owner: a module (/api/modules/<slug>/…) or a software documented on its own

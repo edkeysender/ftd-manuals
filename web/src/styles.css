@@ -775,3 +775,14 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .picker-order li.dragging { opacity: 0.45; }
 .picker-order li.drop-target { box-shadow: inset 0 2px 0 var(--accent); }
 .picker-order .drag-handle { color: var(--muted, #94a3b8); margin-right: 6px; letter-spacing: -2px; }
+
+/* Who else has this doc / manual open (Presence.jsx); orange when someone else edits it too. */
+.presence-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 6px 12px; margin: 0 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel, #f8fafc); font-size: 12.5px; }
+.presence-bar.clash { background: #fff4e5; border-color: #f0b46a; }
+.presence-label { color: var(--muted, #64748b); }
+.presence-warn { color: #9a4a00; font-weight: 600; margin-right: 4px; }
+.presence-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: #fff; }
+.presence-dot { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }
+.presence-chip.m-edit .presence-dot { background: #e07a10; }
+.presence-chip.m-review .presence-dot { background: #2563eb; }
+.presence-chip.m-view .presence-dot { background: #16a34a; }
