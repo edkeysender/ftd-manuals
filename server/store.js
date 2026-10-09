@@ -28,6 +28,7 @@ import {
   langOf,
   cleanBodyHtml,
   missingCrossRefs,
+  docMainPageDefault,
   hasPendingEdits,
   TODO_MARKER_RE,
 } from './docgen.js';
@@ -123,6 +124,8 @@ const docDir = (ref, manual, version) => `${ownerRoot(ref)}/docs/${manual}/${ver
 const docJson = (dir) => `${dir}/doc.json`;
 const contentIn = (dir) => `${dir}/content.html`;
 /** Translation of the body: content.<lang>.html next to the English content.html. */
+/** A doc's main page (its title page when printed on its own), per language like the body. */
+const mainPageIn = (dir, lang) => (langOf(lang) === DEFAULT_LANG ? `${dir}/main-page.html` : `${dir}/main-page.${langOf(lang)}.html`);
 const contentLangIn = (dir, lang) => (langOf(lang) === DEFAULT_LANG ? contentIn(dir) : `${dir}/content.${langOf(lang)}.html`);
 const contentHash = (html) => createHash('sha1').update(String(html || '')).digest('hex').slice(0, 12);
 const checklistIn = (dir) => `${dir}/checklist.json`;
@@ -1167,7 +1170,33 @@ export async function getDoc(slug, key, { lang = DEFAULT_LANG } = {}) {
     generated: generatedSections(entry.module, doc, lang, { relatedHardware: hardware }),
     relatedHardware: hardware,
     checklist,
+    // the main page as the author wrote it, or null while it is the default — and a translation
+    // without one starts from the English page, as its export does
+    mainPage: (await repo.show(doc.ref, mainPageIn(doc.dir, lang))) || null,
+    mainPageDefault:
+      (lang !== DEFAULT_LANG && (await repo.show(doc.ref, mainPageIn(doc.dir, DEFAULT_LANG)))) || docMainPageDefault(lang),
   };
+}
+
+/**
+ * Save (or, with empty html, reset to the default) the main page of a Draft/In-review doc or an
+ * open hotfix — the title page it prints with when exported on its own.
+ */
+export async function saveMainPage(ref, key, html, { lang = DEFAULT_LANG } = {}) {
+  lang = langOf(lang);
+  const { branch, dir, meta } = await loadDraftDoc(ref, key);
+  const text = cleanBodyHtml(String(html || '')).trim();
+  const file = mainPageIn(dir, lang);
+  const before = await repo.show(branch, file);
+  if ((before || '') === text) return { mainPage: text || null };
+  await mutate(async () => {
+    await repo.checkout(branch);
+    if (text) await repo.writeFile(file, text + '\n');
+    else await repo.removePath(file);
+    await repo.commitAll(`${meta.version}: main page${lang === DEFAULT_LANG ? '' : ` (${lang})`}${text ? '' : ' reset to the default'}`);
+    await repo.checkout('main');
+  });
+  return { mainPage: text || null };
 }
 
 /**
@@ -1373,6 +1402,12 @@ export async function createNextDocVersion(ref, manual = DEFAULT_MANUAL, bump = 
     (await repo.show('main', contentIn(latest.dir))) ||
     blankContent(entry.module.name, entry.module.hardwareItems, type.id, entry.module.softwares);
   const checklist = latest.fat ? await repo.show('main', checklistIn(latest.dir)) : null;
+  // The main page the author wrote travels with the content, in every language it exists in.
+  const mainPages = [];
+  for (const code of [DEFAULT_LANG, ...Object.keys(latest.languages || {})]) {
+    const html = await repo.show('main', mainPageIn(latest.dir, code));
+    if (html) mainPages.push({ code, html });
+  }
   // Translations travel with the content: the new version starts with the same English body, so
   // their basedOnHash still matches and they are not stale until English is edited again.
   const translations = [];
@@ -1416,6 +1451,7 @@ export async function createNextDocVersion(ref, manual = DEFAULT_MANUAL, bump = 
     await repo.writeFile(docJson(dir), JSON.stringify(doc, null, 2) + '\n');
     await repo.writeFile(contentIn(dir), content);
     for (const t of translations) await repo.writeFile(contentLangIn(dir, t.code), t.html);
+    for (const p of mainPages) await repo.writeFile(mainPageIn(dir, p.code), p.html);
     if (checklist) await repo.writeFile(checklistIn(dir), checklist);
     await repo.commitAll(`${entry.module.slug}: create ${type.label.toLowerCase()} ${version} r1 (draft)${coversLabel ? ` for ${coversLabel}` : ''}`);
     await repo.checkout('main');
@@ -2995,10 +3031,13 @@ export async function compileDocPreview(ref, key, { lang = DEFAULT_LANG } = {}) 
     manual: doc.manual,
     modules: [module.slug],
   };
+  // the main page in this language, else the English one, else the default (null)
+  const mainPage = (await repo.show(doc.ref, mainPageIn(doc.dir, lang))) || (lang !== DEFAULT_LANG ? await repo.show(doc.ref, mainPageIn(doc.dir, DEFAULT_LANG)) : null) || null;
   const chapter = {
     slug: module.slug,
     module,
     doc,
+    mainPage,
     generated: generatedSections(module, doc, lang, { relatedHardware: await relatedHardware(module) }),
     content,
     isDraft: doc.status !== 'released' || !!doc.hotfix,

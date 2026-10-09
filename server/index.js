@@ -295,6 +295,13 @@ app.put(docPaths('/content'), wrap(async (req, res) => {
   res.json(await store.saveDraftContent(ownerRef(req), req.params.version, html, { bump, summary, lang: lang || DEFAULT_LANG }));
 }));
 
+// The doc's main page (its title page when exported on its own); empty html resets it to the default.
+app.put(docPaths('/main-page'), wrap(async (req, res) => {
+  const { html, lang } = req.body || {};
+  if (typeof html !== 'string') throw new Error('html is required');
+  res.json(await store.saveMainPage(ownerRef(req), req.params.version, html, { lang: lang || DEFAULT_LANG }));
+}));
+
 /**
  * Translate the English body into `lang` with the AI (replaces an existing translation) and
  * return the doc as GET ?lang= would. `html` may be given instead to store a translation made

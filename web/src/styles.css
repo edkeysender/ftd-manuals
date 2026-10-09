@@ -334,6 +334,19 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .doc-page table:has(tr > :nth-child(9)) { font-size: 11px; }
 .doc-page table:has(tr > :nth-child(9)) th, .doc-page table:has(tr > :nth-child(9)) td { padding: 4px 5px; }
 .doc-page figure { margin: 16px 0; text-align: center; }
+/* The doc's main page (title page of a doc printed on its own), edited above the revision record. */
+.main-page-block { margin: 0 0 28px; padding: 14px 18px 18px; border: 1px dashed var(--line); border-radius: 8px; background: var(--panel, #f8fafc); }
+.main-page-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.main-page-label { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted, #64748b); }
+.main-page-head .btn { margin-left: auto; }
+.main-page-edit { text-align: center; outline: none; min-height: 80px; padding: 8px; border-radius: 6px; }
+.main-page-edit[contenteditable="true"]:focus { background: #fff; box-shadow: 0 0 0 2px var(--accent); }
+.main-page-edit .mp-code { font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: #475569; margin: 0; }
+.main-page-edit .mp-title { font-size: 28px; font-weight: 700; line-height: 1.2; color: #0f172a; margin: 6px 0; }
+.main-page-edit .mp-type { font-size: 16px; color: #334155; margin: 0 0 8px; }
+.main-page-edit table { margin: 12px auto 0; border-collapse: collapse; text-align: left; font-size: 13px; }
+.main-page-edit th, .main-page-edit td { border: 0; border-bottom: 1px solid var(--line); padding: 4px 12px; background: none; }
+.main-page-edit th { color: var(--muted, #64748b); font-weight: 400; }
 .doc-page img { max-width: 100%; height: auto; }
 .doc-page figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; min-height: 60px; background: #f6f8fb; }
 /* The printed width an author set (⤢ Size), shown as it will print. */

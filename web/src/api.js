@@ -101,6 +101,9 @@ export const api = {
   manualTypes: () => request('/api/manual-types'),
   /** lang: 'en' (source) or a translation code — content is '' when that translation does not exist yet. */
   doc: (slug, version, lang = 'en') => request(`${ownerPath(slug)}/docs/${version}${lang && lang !== 'en' ? `?lang=${lang}` : ''}`),
+  /** The doc's main page (title page when exported on its own); '' resets it to the default. */
+  saveMainPage: (slug, version, html, lang = 'en') =>
+    request(`${ownerPath(slug)}/docs/${version}/main-page`, { method: 'PUT', body: { html, lang } }),
   saveContent: (slug, version, html, bump = false, summary = '', lang = 'en') =>
     request(`${ownerPath(slug)}/docs/${version}/content`, {
       method: 'PUT',

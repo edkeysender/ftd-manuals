@@ -970,6 +970,19 @@ try {
   const draftExp = await fetch(BASE + '/api/software/Panel%20Tool/docs/software-customer:A1.0/export.html');
   const draftHtml = await draftExp.text();
   const draftBody = draftHtml.slice(draftHtml.indexOf('<div id="source"'));
+  // the main page (title page of a doc printed on its own) is the author's to edit
+  const mpDoc = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
+  ok(mpDoc.mainPage === null && /\{\{doc\.revision\}\}/.test(mpDoc.mainPageDefault), 'a doc starts with the default main page, its revision a build variable');
+  const mpSaved = await req('PUT', '/api/software/Panel%20Tool/docs/software-customer:A1.0/main-page', { html: '<p class="mp-title">Panel Tool operator guide</p><p>Printed at {{doc.version}} {{doc.revision}}</p>' });
+  const mpExport = await (await fetch(BASE + '/api/software/Panel%20Tool/docs/software-customer:A1.0/export.html')).text();
+  const mpCover = mpExport.slice(mpExport.indexOf('<div id="source"')).match(/<section class="cover"[\s\S]*?<\/section>/)?.[0] || '';
+  ok(
+    mpSaved.mainPage.includes('Panel Tool operator guide') && mpCover.includes('Panel Tool operator guide') && /Printed at A1\.0 r\d+/.test(mpCover) && !mpCover.includes('{{doc.'),
+    'the edited main page prints as the title page, with the version and revision filled in'
+  );
+  ok((await req('PUT', '/api/software/Panel%20Tool/docs/software-customer:A1.0/main-page', { html: '' })).mainPage === null &&
+    (await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0')).mainPage === null,
+    'an empty main page goes back to the default');
   ok(
     draftExp.ok && draftHtml.startsWith('<!doctype html>') && draftHtml.includes('pagedjs_pages') &&
       draftBody.indexOf('class="cover"') < draftBody.indexOf('id="toc"') && draftBody.indexOf('id="toc"') < draftBody.indexOf('class="chapter"') &&
