@@ -197,6 +197,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   (`fillDocVars`), filled when printed, so an edited page never goes stale; the issuer block stays fixed.
   The header logo is the one set in Settings, else the colour FTD.aero logo shipped in `server/brand/ftd-logo.png`
   (`getBrandLogo`).
+- **Presence** (`server/presence.js`, `web/src/components/Presence.jsx`): every open editor / review view and manual
+  page beats `POST /api/presence {item, tab, mode}` every 15 s (`item` = `doc:<owner>:<key>` or `manual:<slug>`,
+  one `tab` id per browser tab, `mode` edit / review / view) and gets the others back; entries expire after 45 s,
+  `POST /api/presence/leave` on page hide. In memory only. `PresenceBar` lists them and turns orange when someone
+  else edits what this tab edits (saves are last-write-wins). Viewers may beat (`VIEWER_WRITE`), never as editors.
 - Document codes start with the owner's code or slug, and that start is unique across modules and softwares that
   own manuals (`assertUniqueCodeBase` in `store.js`: create, code change, own manual, software rename).
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,

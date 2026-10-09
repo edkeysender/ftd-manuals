@@ -247,8 +247,9 @@ export function verifyMcpAccessToken(header) {
 
 /* ---------- viewer guard ---------- */
 
-/** Paths (relative to /api) a viewer may write to: review comments and replies. */
-const VIEWER_WRITE = new RegExp('^/modules/[^/]+/docs/[^/]+/comments(/[^/]+/replies)?$');
+/** Paths (relative to /api) a viewer may write to: review comments and replies (on a module's or a
+ *  software's doc), and the presence heartbeat that says they have the item open. */
+const VIEWER_WRITE = new RegExp('^/(modules|software)/[^/]+/docs/[^/]+/comments(/[^/]+/replies)?$|^/presence(/leave)?$');
 
 /** After requireAuth: viewers are read-only except for review comments. */
 export function viewerGuard(req, res, next) {

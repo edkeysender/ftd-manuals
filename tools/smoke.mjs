@@ -970,6 +970,20 @@ try {
   const draftExp = await fetch(BASE + '/api/software/Panel%20Tool/docs/software-customer:A1.0/export.html');
   const draftHtml = await draftExp.text();
   const draftBody = draftHtml.slice(draftHtml.indexOf('<div id="source"'));
+  // presence: who else has the same doc open — here one person in two tabs, one editing
+  const pItem = 'doc:sw:panel-tool:software-customer:A1.0';
+  const pEdit = await req('POST', '/api/presence', { item: pItem, tab: 'smoke-tab-edit', mode: 'edit' });
+  const pView = await req('POST', '/api/presence', { item: pItem, tab: 'smoke-tab-view', mode: 'view' });
+  ok(
+    pEdit.others.length === 0 && pView.others.length === 1 && pView.others[0].mode === 'edit' && pView.others[0].self === true &&
+      (await req('POST', '/api/presence', { item: pItem, tab: 'smoke-tab-edit', mode: 'edit' })).others.some((o) => o.mode === 'view'),
+    'a doc shows who else has it open, and in what mode'
+  );
+  await req('POST', '/api/presence/leave', { item: pItem, tab: 'smoke-tab-edit' });
+  ok((await req('POST', '/api/presence', { item: pItem, tab: 'smoke-tab-view', mode: 'view' })).others.length === 0, 'leaving the page takes you off the item at once');
+  const pBad = await req('POST', '/api/presence', { item: 'nonsense', tab: 'x' }).catch((e) => e);
+  ok(pBad instanceof Error, 'presence needs a real item and tab');
+  await req('POST', '/api/presence/leave', { item: pItem, tab: 'smoke-tab-view' });
   // the main page (title page of a doc printed on its own) is the author's to edit
   const mpDoc = await req('GET', '/api/software/Panel%20Tool/docs/software-customer:A1.0');
   ok(mpDoc.mainPage === null && /\{\{doc\.revision\}\}/.test(mpDoc.mainPageDefault), 'a doc starts with the default main page, its revision a build variable');

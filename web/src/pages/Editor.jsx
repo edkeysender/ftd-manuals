@@ -7,6 +7,7 @@ import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { attachTableResize } from '../components/tableResize.js';
 import XrefPicker from '../components/XrefPicker.jsx';
 import MainPageEditor from '../components/MainPageEditor.jsx';
+import { usePresence, PresenceBar } from '../components/Presence.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
 
@@ -297,6 +298,9 @@ export default function Editor({ review: reviewProp = false }) {
 
   const docOpen = docMeta && (docMeta.status === 'draft' || docMeta.status === 'in-review' || !!docMeta.hotfix);
   const editable = docOpen && !review;
+  // who else has this doc version open — a warning when someone else edits it as well
+  const presenceMode = review ? 'review' : editable ? 'edit' : 'view';
+  const others = usePresence(version ? `doc:${ownerId}:${version}` : null, presenceMode);
   // read by the table-column drag on every gesture, so it always sees the current state
   const columnsResizable = useRef(false);
   columnsResizable.current = editable && !pending;
@@ -1504,6 +1508,7 @@ export default function Editor({ review: reviewProp = false }) {
               )}
             </div>
           )}
+          <PresenceBar others={others} mode={presenceMode} />
           <div className="doc-scroll" style={tab === 'fat' ? { display: 'none' } : undefined} onMouseUp={onPageMouseUp}>
             <div className="doc-page" ref={pageRef}>
               <MainPageEditor
