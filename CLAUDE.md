@@ -185,6 +185,8 @@ The functional spec lives in this file's history and in the Modules spec provide
 - Page order of an assembled manual: title page (cover) → Table of contents (+ List of figures) → Revision record →
   List of Effective Pages (each of the last two on a new page) → chapters → a ruled **Notes** page (print only).
   The page number is printed once, in the header box's page field — the footer carries none (no `@bottom-right`).
+  The title page (first page) carries neither header nor footer (`@page :first`); every other page has both.
+  A picture pasted or dropped onto a doc's main page is uploaded to its assets first (`MainPageEditor`).
   A doc printed on its own (`single`, editor Export) gets the same frame: a title page (doc code, title, manual
   type, version / revision / date, issuer), its contents, then the doc with its LEP right after 1.1 Revision record,
   every body `<h2>` on a new page, no badge or draft flag in the title (the header says both), and the Notes page.

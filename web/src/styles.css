@@ -347,6 +347,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .main-page-edit table { margin: 12px auto 0; border-collapse: collapse; text-align: left; font-size: 13px; }
 .main-page-edit th, .main-page-edit td { border: 0; border-bottom: 1px solid var(--line); padding: 4px 12px; background: none; }
 .main-page-edit th { color: var(--muted, #64748b); font-weight: 400; }
+.main-page-edit img { max-width: 100%; max-height: 260px; }
+.main-page-edit .mp-picture { margin: 10px 0; }
 .doc-page img { max-width: 100%; height: auto; }
 .doc-page figure img { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; min-height: 60px; background: #f6f8fb; }
 /* The printed width an author set (⤢ Size), shown as it will print. */

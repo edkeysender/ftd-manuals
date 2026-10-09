@@ -668,6 +668,9 @@ export const MANUAL_CSS = `
 .manual-doc .main-page .mp-code { font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: #475569; margin: 0; }
 .manual-doc .main-page .mp-title { font-size: 30px; font-weight: 700; line-height: 1.2; color: #0f172a; margin: 6px 0; }
 .manual-doc .main-page .mp-type { font-size: 16px; color: #334155; margin: 0 0 6px; }
+/* a picture the author put on the main page (logo, device drawing) keeps to the page */
+.manual-doc .main-page img { max-width: 100%; max-height: 110mm; }
+.manual-doc .main-page .mp-picture { margin: 12px 0; }
 .manual-doc .cover-facts { margin: 18px auto 0; width: auto; min-width: 55%; border-collapse: collapse; font-size: 13px; text-align: left; }
 .manual-doc .cover-facts th, .manual-doc .cover-facts td { border: 0; border-bottom: 1px solid #d5dce4; padding: 5px 12px; background: none; }
 .manual-doc .cover-facts th { color: #64748b; font-weight: 400; width: 40%; }
@@ -1254,6 +1257,11 @@ export const PAGED_CSS = `
   @top-center { content: element(pageHeader); width: 100%; vertical-align: top; }
   @bottom-center { content: element(pageFooter); width: 100%; vertical-align: top; }
   /* The page number is printed once, in the header's page field — never again in the footer. */
+}
+/* The title page stands on its own: no header box, no proprietary footer — every other page has both. */
+@page :first {
+  @top-center { content: none; }
+  @bottom-center { content: none; }
 }
 body { font-family: ${FONT}; }
 .pagedjs_pages, .pagedjs_margin-content { font-family: ${FONT}; }

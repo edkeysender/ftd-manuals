@@ -438,6 +438,7 @@ export const PL = {
   'Training organisation': 'Organizacja szkoleniowa',
   'Drag to reorder': 'Przeciągnij, aby zmienić kolejność',
   'Cross-reference': 'Odsyłacz',
+  'Pictures from a web page are not pasted — save the picture and paste or drop the file': 'Obrazki ze strony internetowej nie są wklejane — zapisz obrazek i wklej lub upuść plik',
   'Main page': 'Strona główna',
   'The title page when the doc is exported on its own. Version, revision and date fields are filled in when it is printed.': 'Strona tytułowa, gdy dokument jest eksportowany samodzielnie. Pola wersji, rewizji i daty są uzupełniane przy druku.',
   'Reset to default': 'Przywróć domyślną',

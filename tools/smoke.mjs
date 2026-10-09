@@ -1268,7 +1268,7 @@ try {
     'front matter order: title page, table of contents, revision record, List of Effective Pages');
   // the stylesheet of the export, not the inlined paged.js (which names every margin box)
   const exportCss = ((await (await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html')).text()).match(/<style id="manual-css">([\s\S]*?)<\/style>/) || [])[1] || '';
-  ok(exportCss.includes('@page') && !/@bottom-right/.test(exportCss) && !/@bottom-right/.test(compiled.css),
+  ok(exportCss.includes('@page') && /@page :first \{\s*@top-center \{ content: none; \}\s*@bottom-center \{ content: none; \}/.test(exportCss) && !/@bottom-right/.test(exportCss) && !/@bottom-right/.test(compiled.css),
     'the footer carries no page number — the header’s page field does');
   // a picture the owner no longer has is reported with the chapter it sits in, not silently printed
   ok(Array.isArray(compiled.missingAssets) && compiled.missingAssets.length === 0, 'nothing missing while every picture is there');
