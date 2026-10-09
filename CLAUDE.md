@@ -182,6 +182,14 @@ The functional spec lives in this file's history and in the Modules spec provide
   "Yes / No" ("Tak / Nie") prints as a **checklist** (`markChecklists`): tick boxes, the number column kept whole,
   one-cell caution / note rows left as written. Table cells break long words only when they overflow
   (`overflow-wrap: break-word`, never `anywhere`, which squeezed number columns to one digit).
+- Page order of an assembled manual: title page (cover) → Table of contents (+ List of figures) → Revision record →
+  List of Effective Pages (each of the last two on a new page) → chapters → a ruled **Notes** page (print only).
+  The page number is printed once, in the header box's page field — the footer carries none (no `@bottom-right`).
+  A doc printed on its own (`single`, editor Export) gets the same frame: a title page (doc code, title, manual
+  type, version / revision / date, issuer), its contents, then the doc with its LEP right after 1.1 Revision record,
+  every body `<h2>` on a new page, no badge or draft flag in the title (the header says both), and the Notes page.
+  The header logo is the one set in Settings, else the colour FTD.aero logo shipped in `server/brand/ftd-logo.png`
+  (`getBrandLogo`).
 - Document codes start with the owner's code or slug, and that start is unique across modules and softwares that
   own manuals (`assertUniqueCodeBase` in `store.js`: create, code change, own manual, software rename).
 - Images over MCP: bytes never go through the model. Agents look at assets (`get_asset` → image content,

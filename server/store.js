@@ -1,5 +1,7 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { GitRepo } from './git.js';
 import {
   blankContent,
@@ -3182,7 +3184,18 @@ export async function deleteStyleExemplar(name) {
   });
 }
 
-export const getBrandLogo = () => readSingleton('settings', 'logo');
+/**
+ * The logo every header carries: the one set in Settings, else the colour FTD.aero logo shipped with
+ * the console (server/brand/ftd-logo.png), so a page never falls back to a drawn placeholder.
+ */
+const BUILT_IN_LOGO = { name: 'ftd-logo.png', file: fileURLToPath(new URL('./brand/ftd-logo.png', import.meta.url)) };
+let builtInLogo;
+export const getBrandLogo = async () => {
+  const set = await readSingleton('settings', 'logo');
+  if (set) return set;
+  if (builtInLogo === undefined) builtInLogo = await readFile(BUILT_IN_LOGO.file).then((buffer) => ({ name: BUILT_IN_LOGO.name, buffer }), () => null);
+  return builtInLogo;
+};
 export const saveBrandLogo = (name, buffer) => saveSingleton('settings', 'logo', name, buffer, 'settings: update logo');
 export const getManualCover = (slug) => readSingleton(`manuals/${slug}`, 'cover');
 export const saveManualCover = (slug, name, buffer) =>
