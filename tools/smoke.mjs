@@ -969,10 +969,13 @@ try {
   // a draft prints on its own from the editor: the doc's own pages, no cover, flagged as a draft
   const draftExp = await fetch(BASE + '/api/software/Panel%20Tool/docs/software-customer:A1.0/export.html');
   const draftHtml = await draftExp.text();
+  const draftBody = draftHtml.slice(draftHtml.indexOf('<div id="source"'));
   ok(
-    draftExp.ok && draftHtml.startsWith('<!doctype html>') && !draftHtml.includes('class="cover"') && draftHtml.includes('class="draft-flag"') &&
-      draftHtml.includes('pagedjs_pages'),
-    'a draft doc exports on its own, paginated and flagged as a draft'
+    draftExp.ok && draftHtml.startsWith('<!doctype html>') && draftHtml.includes('pagedjs_pages') &&
+      draftBody.indexOf('class="cover"') < draftBody.indexOf('id="toc"') && draftBody.indexOf('id="toc"') < draftBody.indexOf('class="chapter"') &&
+      /data-auto="1">[\s\S]*?<\/section>\s*<section class="auto-section lep-section">/.test(draftBody) &&
+      !/<h1>[^<]*<span class="(?:kind-badge|draft-flag)/.test(draftBody) && draftBody.includes('(draft)') && draftBody.includes('class="notes-page"'),
+    'a draft doc exports on its own: title page, contents, the LEP after its revision record, a clean title (the header says draft), a notes page at the end'
   );
   ok((await fetch(BASE + '/api/software/Panel%20Tool/docs/software-customer:A9.9/export.html')).status === 404, 'exporting a doc that does not exist is a 404');
   // the editor's side chat names a software owner as {software: name}; it must find the doc
@@ -1173,7 +1176,7 @@ try {
   await req('POST', `/api/modules/starting-panel/docs/${techNext.key}/discard`);
   ok(techCompiled.chapters[0].doc.key === 'technician:A1.0' && !techCompiled.chapters[0].isDraft && techCompiled.html.includes('Set the static IP.') && techCompiled.manual.manual === 'technician',
     'technician manual compiles the released technician docs');
-  const techFront = techCompiled.html.slice(0, techCompiled.html.indexOf('id="toc"'));
+  const techFront = techCompiled.html.slice(0, techCompiled.html.indexOf('id="lep"'));
   const techChapter = techCompiled.html.slice(techCompiled.html.indexOf('id="ch-starting-panel"'));
   ok(
     /<td class="doc-code">[A-Z0-9-]+-TECH-HW</.test(techFront) && !techChapter.includes('>Manual type<') && !techChapter.includes('>Introduction<'),
@@ -1248,8 +1251,12 @@ try {
     'compiled html has chapter, TOC and module content');
   ok(compiled.html.includes('class="front"') && compiled.html.includes('List of Effective Pages') && !compiled.html.includes('office@ftd.aero'),
     'the manual opens with unnumbered front matter, not a General chapter');
-  ok(compiled.html.indexOf('id="ch-general"') < compiled.html.indexOf('id="revision-record"') && compiled.html.indexOf('id="revision-record"') < compiled.html.indexOf('id="toc"') && compiled.html.indexOf('id="toc"') < compiled.html.indexOf('id="lep"'),
-    'front matter order: revision record, table of contents, List of Effective Pages');
+  ok(compiled.html.indexOf('id="cover"') < compiled.html.indexOf('id="toc"') && compiled.html.indexOf('id="toc"') < compiled.html.indexOf('id="revision-record"') && compiled.html.indexOf('id="revision-record"') < compiled.html.indexOf('id="lep"'),
+    'front matter order: title page, table of contents, revision record, List of Effective Pages');
+  // the stylesheet of the export, not the inlined paged.js (which names every margin box)
+  const exportCss = ((await (await fetch(BASE + '/api/manuals/b737-simulator-manual/export.html')).text()).match(/<style id="manual-css">([\s\S]*?)<\/style>/) || [])[1] || '';
+  ok(exportCss.includes('@page') && !/@bottom-right/.test(exportCss) && !/@bottom-right/.test(compiled.css),
+    'the footer carries no page number — the header’s page field does');
   // a picture the owner no longer has is reported with the chapter it sits in, not silently printed
   ok(Array.isArray(compiled.missingAssets) && compiled.missingAssets.length === 0, 'nothing missing while every picture is there');
   const gapMod = await req('POST', '/api/modules', { name: 'Picture Gap', code: 'GAP', category: 'misc' });

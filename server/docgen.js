@@ -360,7 +360,7 @@ const STRINGS = {
         : `the <strong>${name}</strong> module (${detail})`,
     intro1: (typeLabel, subject, audience) => `This document is the <strong>${typeLabel}</strong> for ${subject} of the FTD.aero flight simulation training device. ${audience}`,
     // assembled manual
-    tableOfContents: 'Table of contents', listOfFigures: 'List of figures', fig: 'Fig.', caption: 'Caption', pageAbbr: 'p.', chapterRef: (n) => `chapter ${n}`, chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
+    tableOfContents: 'Table of contents', notes: 'Notes', listOfFigures: 'List of figures', fig: 'Fig.', caption: 'Caption', pageAbbr: 'p.', chapterRef: (n) => `chapter ${n}`, chapter: 'Ch.', docVersion: 'Doc version', status: 'Status', noDocumentation: 'no documentation', noDocumentationYet: 'This module has no documentation yet.',
     draftFlag: (version, rev) => `draft ${version} r${rev} — not released`, langFallback: 'English — not translated', draft: 'draft',
     // chapter 1 — General (FTD manual template)
     frontMatter: 'Front matter', manualRevisions: 'Manual revisions', chapterRevisions: 'Chapters',
@@ -387,7 +387,7 @@ const STRINGS = {
           : `oprogramowania modułu <strong>${name}</strong> (${detail})`
         : `modułu <strong>${name}</strong> (${detail})`,
     intro1: (typeLabel, subject, audience) => `Niniejszy dokument to <strong>${typeLabel}</strong> ${subject} urządzenia do szkolenia lotniczego FTD.aero. ${audience}`,
-    tableOfContents: 'Spis treści', listOfFigures: 'Spis rysunków', fig: 'Rys.', caption: 'Podpis', pageAbbr: 's.', chapterRef: (n) => `rozdział ${n}`, chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
+    tableOfContents: 'Spis treści', notes: 'Notatki', listOfFigures: 'Spis rysunków', fig: 'Rys.', caption: 'Podpis', pageAbbr: 's.', chapterRef: (n) => `rozdział ${n}`, chapter: 'Rozdz.', docVersion: 'Wersja dok.', status: 'Status', noDocumentation: 'brak dokumentacji', noDocumentationYet: 'Ten moduł nie ma jeszcze dokumentacji.',
     draftFlag: (version, rev) => `wersja robocza ${version} r${rev} — niewydana`, langFallback: 'wersja angielska — brak tłumaczenia', draft: 'robocza',
     frontMatter: 'Strony wstępne', manualRevisions: 'Rewizje instrukcji', chapterRevisions: 'Rozdziały',
     lep: 'Wykaz obowiązujących stron', page: 'Strona', issue: 'Wydanie', rev: 'Rew.', serialNumber: 'Numer seryjny', operatorName: 'Operator', issueRev: 'Wydanie / rewizja', issuedBy: 'Wydawca', hardwareKind: 'Sprzęt', softwareKind: 'Oprogramowanie', effectiveDate: 'Data obowiązywania',
@@ -635,6 +635,8 @@ export const MANUAL_CSS = `
 .manual-doc .hb-page { font-family: Arial, 'Liberation Sans', Helvetica, 'DejaVu Sans', sans-serif; font-size: 10pt; text-align: center; }
 .manual-doc .hb-lbl, .manual-doc .hb-val { font-size: 6pt; text-align: center; line-height: 1.3; }
 .manual-doc .cover { text-align: center; padding: 10px 0 40px; }
+/* the notes page exists on paper only (the export shows it) */
+.manual-doc .notes-page { display: none; }
 .manual-doc .cover-image img { max-width: 92%; max-height: 420px; margin: 18px auto 10px; display: block; }
 .manual-doc .cover-title { margin: 28px 0 8px; }
 .manual-doc .cover-code { font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: #475569; }
@@ -993,7 +995,16 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
     const lep = c.missing ? frontLep : docEffectivity(c.doc);
     if (c.missing) return { ...c, num, lep, html: '', items: [], figures: [] };
     const body = markChecklists(resolveXrefs(fillManualVars(dropPlaceholderSections(c.content), manual), targets, T));
-    const { html, items } = numberHeadings(`${c.generated}\n${body}`, num);
+    // A doc printed on its own lists its effective pages right after its revision record.
+    const generated = single
+      ? String(c.generated || '').replace(
+          /(<section class="auto-section" data-auto="1">[\s\S]*?<\/section>)/,
+          `$1\n<section class="auto-section lep-section"><h2>${esc(T.lep)}</h2>\n<table class="lep-pages">\n<thead><tr>${[1, 2, 3]
+            .map(() => `<th>${T.page}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th>`)
+            .join('')}</tr></thead>\n<tbody></tbody>\n</table>\n</section>`
+        )
+      : c.generated;
+    const { html, items } = numberHeadings(`${generated}\n${body}`, num);
     return { ...c, num, lep, items, ...numberFigures(html, num, T) };
   });
   const allFigures = processed.flatMap((c) => c.figures);
@@ -1009,9 +1020,9 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
     .join('\n');
 
   const generalItems = [
-    ['revision-record', T.revisionRecord],
     ['toc', T.tableOfContents],
     ...(allFigures.length ? [['lof', T.listOfFigures]] : []),
+    ['revision-record', T.revisionRecord],
     ['lep', T.lep],
   ];
   // Every figure of the manual, by the number the build gave it; the page is written in once the
@@ -1070,15 +1081,17 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
 `
     : '';
 
+  // The order of a manual's opening pages: the contents right after the title page (with the list
+  // of figures), then the revision record, and the List of Effective Pages right after it.
   const front = `<section class="front" id="ch-general"${lepAttrs(frontLep)}>
-<h2 id="revision-record">${T.revisionRecord}</h2>
+<h2 id="toc">${T.tableOfContents}</h2>
+<div class="toc"><ol>${toc}</ol></div>
+${lof}<h2 id="revision-record">${T.revisionRecord}</h2>
 ${manualRevisions}<table class="chapter-record">
   <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.docCode}</th><th>${T.docVersion}</th><th>${T.status}</th><th>${T.date}</th></tr></thead>
   <tbody>${recordRows}</tbody>
 </table>
-<h2 id="toc">${T.tableOfContents}</h2>
-<div class="toc"><ol>${toc}</ol></div>
-${lof}<h2 id="lep">${esc(T.lep)}</h2>
+<h2 id="lep">${esc(T.lep)}</h2>
 <p class="lep-note">${T.lepNote}</p>
 <table class="lep-chapters">
 <thead><tr><th>${T.chapter}</th><th>${T.module}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th></tr></thead>
@@ -1108,27 +1121,6 @@ ${c.html}
     })
     .join('\n');
 
-  if (single) {
-    // The doc as its own mini-manual: the header on every page and its sections, numbered from 1 —
-    // no cover, no front matter, no thumb tab.
-    const c = processed[0];
-    const flags = [
-      c.isDraft ? `<span class="draft-flag">${esc(T.draftFlag(c.doc.version, c.doc.revision))}</span>` : '',
-      c.langFallback ? `<span class="draft-flag lang-flag">${esc(T.langFallback)}</span>` : '',
-    ].join('');
-    return `<div class="manual-doc" lang="${esc(lang)}">
-<div class="print-header">${headerBox(manual, logoHtml, T, head)}</div>
-<div class="print-footer">${esc(footerText)}</div>
-<div class="manual">
-<section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(frontLep)}>
-<h1>${esc(c.title || c.module.name)}${kindBadge(c, T)}${flags}</h1>
-${c.html}
-</section>
-<footer class="doc-footer">${esc(footerText)}</footer>
-</div>
-</div>`;
-  }
-
   const cover = coverUrl
     ? `<div class="cover-image"><img src="${esc(coverUrl)}" alt="${esc(manual.name)}"></div>`
     : `<div class="cover-placeholder">Cover illustration — set one via Edit manual</div>`;
@@ -1151,6 +1143,50 @@ ${c.html}
     .join('')}</tbody></table>`;
   const coverCompany = `<div class="cover-company"><span class="cover-logo">${logoHtml}</span><span>${esc(T.issuedBy)}<br><strong>FTD.aero Sp. z o.o.</strong></span></div>`;
 
+  if (single) {
+    // The doc as its own mini-manual: a title page, its table of contents, then the doc itself —
+    // 1.1 Revision record followed by its List of Effective Pages, and every section of the body on a
+    // page of its own. The chapter title carries no badge or draft flag: the header says both.
+    const c = processed[0];
+    const tocItems = c.items
+      .map(
+        (it) =>
+          `<li class="${it.level === 3 ? 'l3' : 'l2'}"><a href="#${it.id}"><span class="num">1.${it.num}</span>${esc(it.title)}</a></li>`
+      )
+      .join('');
+    const docFacts = [
+      [T.docVersion, c.doc.version],
+      [T.revision, frontLep.rev],
+      [T.date, frontLep.date],
+    ];
+    return `<div class="manual-doc single" lang="${esc(lang)}">
+<div class="print-header">${headerBox(manual, logoHtml, T, head)}</div>
+<div class="print-footer">${esc(footerText)}</div>
+<div class="manual">
+<section class="cover" id="cover"${lepAttrs(frontLep)}>
+  ${headerBox(manual, logoHtml, T, head)}
+  <div class="cover-title">
+    ${manual.code ? `<div class="cover-code">${esc(manual.code)}</div>` : ''}
+    <div class="cover-name">${esc(c.title || c.module.name)}</div>
+    <div class="cover-device">${esc(T.manualTypes[manualTypeOf(c.doc.manual).id])}</div>
+  </div>
+  <table class="cover-facts"><tbody>${docFacts.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+  ${coverCompany}
+</section>
+<section class="front" id="ch-general"${lepAttrs(frontLep)}>
+<h2 id="toc">${T.tableOfContents}</h2>
+<div class="toc"><ol><li><a href="#ch-${esc(c.slug)}"><span class="num">1</span>${esc(c.title || c.module.name)}</a><ol>${tocItems}</ol></li></ol></div>
+</section>
+<section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(frontLep)}>
+<h1>${esc(c.title || c.module.name)}</h1>
+${c.html}
+</section>
+<section class="notes-page"${lepAttrs(frontLep)}><div class="notes-title">${esc(T.notes)}</div><div class="note-lines">${'<div class="note-line"></div>'.repeat(27)}</div></section>
+<footer class="doc-footer">${esc(footerText)}</footer>
+</div>
+</div>`;
+  }
+
   return `<div class="manual-doc" lang="${esc(lang)}">
 <div class="print-header">${headerBox(manual, logoHtml, T, head)}</div>
 <div class="print-footer">${esc(footerText)}</div>
@@ -1164,6 +1200,7 @@ ${c.html}
 </section>
 ${front}
 ${body}
+<section class="notes-page"${lepAttrs(frontLep)}><div class="notes-title">${esc(T.notes)}</div><div class="note-lines">${'<div class="note-line"></div>'.repeat(27)}</div></section>
 <footer class="doc-footer">${esc(footerText)}</footer>
 </div>
 </div>`;
@@ -1190,7 +1227,7 @@ export const PAGED_CSS = `
   margin: 24mm 10mm 15mm 15mm;
   @top-center { content: element(pageHeader); width: 100%; vertical-align: top; }
   @bottom-center { content: element(pageFooter); width: 100%; vertical-align: top; }
-  @bottom-right { content: counter(page) " / " counter(pages); font-family: ${FONT}; font-size: 9px; color: #64748b; vertical-align: top; white-space: nowrap; border-top: 1px solid #c8d1db; padding-top: 4px; text-align: right; }
+  /* The page number is printed once, in the header's page field — never again in the footer. */
 }
 body { font-family: ${FONT}; }
 .pagedjs_pages, .pagedjs_margin-content { font-family: ${FONT}; }
@@ -1218,6 +1255,15 @@ body { font-family: ${FONT}; }
 .manual-doc .cover-image img { max-height: 105mm; }
 .manual-doc .cover .head-box { display: none; }
 .manual-doc .chapter { break-before: page; border-top: none; margin-top: 0; padding-top: 0; }
+/* The contents open the page after the title page; the revision record and the List of Effective */
+/* Pages each start a page of their own.                                                            */
+.manual-doc .front > h2#revision-record, .manual-doc .front > h2#lep { break-before: page; }
+/* A doc printed on its own: every section of its body (Overview, Operation, …) opens a new page. */
+.manual-doc.single .chapter > h2 { break-before: page; }
+/* The last page is left for the reader's own notes: a title and ruled lines down to the footer. */
+.manual-doc .notes-page { display: block; break-before: page; }
+.manual-doc .notes-title { font-size: 16px; font-weight: 700; color: #16324f; border-bottom: 2px solid #16324f; padding-bottom: 4px; margin-bottom: 6mm; }
+.manual-doc .note-line { height: 8mm; border-bottom: 0.4pt solid #9aa6b2; }
 .manual-doc .doc-footer { display: none; }
 .manual-doc .lep-chapters, .manual-doc .lep-note { display: none; }
 .manual-doc .lep-pages { display: table; }
@@ -1334,8 +1380,8 @@ const LEP_SCRIPT = `
       var v = info[cells[k].getAttribute('data-p')];
       if (f !== 'page') cells[k].textContent = v ? v[f] : '';
     }
-    // counter(pages) stays 0 in a print, so the number of pages is written in: the PAGE field
-    // of the header box and the page footer, on every page that came out.
+    // counter(pages) stays 0 in a print, so the number of pages is written in: the PAGE field of
+    // the header box, on every page that came out (the footer carries no page number).
     var out = mount.querySelectorAll('.pagedjs_page');
     // Thumb index: every page of a chapter carries a tab on its outer edge with the chapter number,
     // one step lower per chapter, so a closed binder opens at the chapter wanted.
@@ -1346,8 +1392,6 @@ const LEP_SCRIPT = `
     for (var p = 0; p < out.length; p++) {
       var pg = out[p].querySelector('.hb-page .pg');
       if (pg) { pg.textContent = (p + 1) + '/' + flow.total; pg.className += ' filled'; }
-      var foot = out[p].querySelector('.pagedjs_margin-bottom-right .pagedjs_margin-content');
-      if (foot) { foot.textContent = (p + 1) + ' / ' + flow.total; foot.className += ' filled'; }
       var ch = out[p].querySelector('.pagedjs_page_content [data-ch]');
       if (ch) {
         var n = +ch.getAttribute('data-ch');
