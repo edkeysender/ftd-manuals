@@ -6,6 +6,7 @@ import ActionMenu from '../components/ActionMenu.jsx';
 import ChecklistEditor from '../components/ChecklistEditor.jsx';
 import { attachTableResize } from '../components/tableResize.js';
 import XrefPicker from '../components/XrefPicker.jsx';
+import MainPageEditor from '../components/MainPageEditor.jsx';
 import { useToast, useAuth } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
 
@@ -1505,6 +1506,14 @@ export default function Editor({ review: reviewProp = false }) {
           )}
           <div className="doc-scroll" style={tab === 'fat' ? { display: 'none' } : undefined} onMouseUp={onPageMouseUp}>
             <div className="doc-page" ref={pageRef}>
+              <MainPageEditor
+                slug={slug}
+                version={version}
+                lang={lang}
+                mainPage={data.mainPage}
+                mainPageDefault={data.mainPageDefault}
+                editable={editable}
+              />
               <div
                 className="generated"
                 title={t('Sections 1–3 are generated from module data and the revision record')}

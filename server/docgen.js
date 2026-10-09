@@ -580,6 +580,27 @@ export function fillManualVars(html, manual) {
   return String(html || '').replace(/\{\{\s*manual\.(title|code)\s*\}\}/g, (_, k) => esc(MANUAL_VARS[k](manual) || ''));
 }
 
+/**
+ * The main page of a doc printed on its own — its title page. The author edits it (main-page.html
+ * next to the body); until then it is this default. What changes with every revision is written as
+ * a build variable — {{doc.code}}, {{doc.title}}, {{doc.type}}, {{doc.version}}, {{doc.revision}},
+ * {{doc.date}} — so an edited page never goes stale.
+ */
+export function docMainPageDefault(lang = DEFAULT_LANG) {
+  const T = strings(lang);
+  return `<p class="mp-code">{{doc.code}}</p>
+<p class="mp-title">{{doc.title}}</p>
+<p class="mp-type">{{doc.type}}</p>
+<table class="cover-facts"><tbody>
+<tr><th>${esc(T.docVersion)}</th><td>{{doc.version}}</td></tr>
+<tr><th>${esc(T.revision)}</th><td>{{doc.revision}}</td></tr>
+<tr><th>${esc(T.date)}</th><td>{{doc.date}}</td></tr>
+</tbody></table>`;
+}
+export function fillDocVars(html, values) {
+  return String(html || '').replace(/\{\{\s*doc\.(code|title|type|version|revision|date)\s*\}\}/g, (_, k) => esc(values[k] ?? ''));
+}
+
 const PLACEHOLDER_TEXT = /^(?:[\s—–\-.…]*|n\/?a\.?|not applicable\.?|none\.?|refer to [^.]{1,40}\.?)$/i;
 const TODO_SENTENCE = /\bTODO(?:\([^)]*\))?\s*:.*?(?:[.!?](?=\s|$)|$)/gi;
 export function dropPlaceholderSections(html) {
@@ -642,6 +663,11 @@ export const MANUAL_CSS = `
 .manual-doc .cover-code { font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: #475569; }
 .manual-doc .cover-name { font-size: 30px; font-weight: 700; line-height: 1.2; color: #0f172a; margin: 6px 0; }
 .manual-doc .cover-device { font-size: 16px; color: #334155; }
+/* A doc's own main page (its title page): what the author wrote, centred like the cover. */
+.manual-doc .main-page { margin: 28px 0 8px; }
+.manual-doc .main-page .mp-code { font-size: 14px; font-weight: 700; letter-spacing: 0.12em; color: #475569; margin: 0; }
+.manual-doc .main-page .mp-title { font-size: 30px; font-weight: 700; line-height: 1.2; color: #0f172a; margin: 6px 0; }
+.manual-doc .main-page .mp-type { font-size: 16px; color: #334155; margin: 0 0 6px; }
 .manual-doc .cover-facts { margin: 18px auto 0; width: auto; min-width: 55%; border-collapse: collapse; font-size: 13px; text-align: left; }
 .manual-doc .cover-facts th, .manual-doc .cover-facts td { border: 0; border-bottom: 1px solid #d5dce4; padding: 5px 12px; background: none; }
 .manual-doc .cover-facts th { color: #64748b; font-weight: 400; width: 40%; }
@@ -1154,23 +1180,23 @@ ${c.html}
           `<li class="${it.level === 3 ? 'l3' : 'l2'}"><a href="#${it.id}"><span class="num">1.${it.num}</span>${esc(it.title)}</a></li>`
       )
       .join('');
-    const docFacts = [
-      [T.docVersion, c.doc.version],
-      [T.revision, frontLep.rev],
-      [T.date, frontLep.date],
-    ];
+    // The title page is the doc's main page as its author wrote it (or the default), with the
+    // revision it is printed at filled in; the issuer block stays FTD.aero's.
+    const mainPage = fillDocVars(c.mainPage || docMainPageDefault(lang), {
+      code: manual.code || '',
+      title: c.title || c.module.name,
+      type: T.manualTypes[manualTypeOf(c.doc.manual).id],
+      version: c.doc.version,
+      revision: frontLep.rev,
+      date: frontLep.date,
+    });
     return `<div class="manual-doc single" lang="${esc(lang)}">
 <div class="print-header">${headerBox(manual, logoHtml, T, head)}</div>
 <div class="print-footer">${esc(footerText)}</div>
 <div class="manual">
 <section class="cover" id="cover"${lepAttrs(frontLep)}>
   ${headerBox(manual, logoHtml, T, head)}
-  <div class="cover-title">
-    ${manual.code ? `<div class="cover-code">${esc(manual.code)}</div>` : ''}
-    <div class="cover-name">${esc(c.title || c.module.name)}</div>
-    <div class="cover-device">${esc(T.manualTypes[manualTypeOf(c.doc.manual).id])}</div>
-  </div>
-  <table class="cover-facts"><tbody>${docFacts.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+  <div class="main-page">${mainPage}</div>
   ${coverCompany}
 </section>
 <section class="front" id="ch-general"${lepAttrs(frontLep)}>

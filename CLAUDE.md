@@ -188,6 +188,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   A doc printed on its own (`single`, editor Export) gets the same frame: a title page (doc code, title, manual
   type, version / revision / date, issuer), its contents, then the doc with its LEP right after 1.1 Revision record,
   every body `<h2>` on a new page, no badge or draft flag in the title (the header says both), and the Notes page.
+  That title page is the doc's **main page**: editable in the editor above the revision record (`MainPageEditor`,
+  `PUT …/docs/:key/main-page {html, lang}`, empty = back to the default), stored as `main-page.html` /
+  `main-page.<lang>.html` next to the body (copied into the next doc version, released with the doc). The
+  default (`docMainPageDefault`) and any edit use build variables `{{doc.code|title|type|version|revision|date}}`
+  (`fillDocVars`), filled when printed, so an edited page never goes stale; the issuer block stays fixed.
   The header logo is the one set in Settings, else the colour FTD.aero logo shipped in `server/brand/ftd-logo.png`
   (`getBrandLogo`).
 - Document codes start with the owner's code or slug, and that start is unique across modules and softwares that
