@@ -30,6 +30,7 @@ import {
   TODO_MARKER_RE,
 } from './docgen.js';
 import { normalizeChecklist } from './checklist.js';
+import { diffBodies } from './diff.js';
 import { validateAsset, isImageName } from './images.js';
 import { expandDocuments } from './extract.js';
 import * as inbox from './inbox.js';
@@ -3050,6 +3051,122 @@ export async function releaseManual(slug, { newIssue = false, note = '', by = nu
     await repo.commitAll(`manuals: release ${slug} issue ${stamp.issue} rev ${stamp.revision}`);
   });
   return { manual: saved, released: { issue: stamp.issue, revision: stamp.revision, date: ts, note: record.note } };
+}
+
+/* ------------------------------------------------------------------ */
+/* Older releases of a manual, and what changed between two versions   */
+/* ------------------------------------------------------------------ */
+
+/** A release is named "<issue>-<revision>" in URLs; "current" is the manual as it compiles today. */
+const releaseId = (r) => `${r.issue}-${r.revision}`;
+
+/**
+ * The commit a manual release was recorded in. Every chapter of a release was a released doc on
+ * main at that moment (a release is refused otherwise), so that commit holds exactly the text that
+ * went out — a later hotfix or new version does not change what the release printed.
+ */
+async function releaseCommit(slug, rec) {
+  if (rec.commit) return rec.commit;
+  const out = await repo.raw(['log', 'main', '-1', '--format=%H', '--fixed-strings', `--grep=manuals: release ${slug} issue ${rec.issue} rev ${rec.revision}`]);
+  return String(out || '').trim() || null;
+}
+
+/**
+ * Compile a manual as it was released: the chapters and doc revisions the release recorded, read
+ * from the commit it was made in. Same shape as compileManual, stamped with that release — so the
+ * web view, the export and the PDF all show the older version as it went out.
+ */
+export async function compileManualRelease(slug, id, { lang = DEFAULT_LANG } = {}) {
+  lang = langOf(lang);
+  const current = await getManual(slug);
+  if (!current) return null;
+  const releases = current.releases || [];
+  const at = releases.findIndex((r) => releaseId(r) === id);
+  if (at < 0) throw Object.assign(new Error(`${current.name} has no release ${id.replace('-', ' Rev ')}`), { status: 404 });
+  const rec = releases[at];
+  const commit = await releaseCommit(slug, rec);
+  if (!commit) throw new Error(`The commit of ${current.name} Issue ${rec.issue} Rev ${rec.revision} is not in the history`);
+  const manual = { ...((await readJson(commit, manualFile(slug))) || current), slug, releases: releases.slice(0, at + 1) };
+  manual.manual = manualTypeOf(manual.manual || current.manual).id;
+  const { modules, softwareOwners } = await collectAll();
+  const chapters = [];
+  for (const ch of rec.chapters || []) {
+    // "<module>--software" is the module's own software manual, "<module>--sw-<software>" one it
+    // inherits from a software that documents itself; anything else is the module's chapter.
+    const inh = /^(.+)--sw-(.+)$/.exec(ch.slug);
+    const own = /^(.+)--software$/.exec(ch.slug);
+    const entry = inh
+      ? softwareOwners.find((o) => o.module.slug === inh[2])
+      : modules.find((m) => m.module.slug === (own ? own[1] : ch.slug));
+    const docRec = entry && ch.key ? entry.docs.find((d) => d.key === ch.key) : null;
+    const meta = docRec ? await readJson(commit, docJson(docRec.dir)) : null;
+    if (!meta) {
+      chapters.push({ slug: ch.slug, module: entry?.module || { slug: ch.slug, name: ch.slug }, missing: true, reason: 'no longer in the console' });
+      continue;
+    }
+    const doc = { ...meta, manual: docRec.manual, key: docRec.key, dir: docRec.dir, ref: commit };
+    let content = lang === DEFAULT_LANG ? null : await repo.show(commit, contentLangIn(docRec.dir, lang));
+    const langFallback = lang !== DEFAULT_LANG && !content;
+    if (!content) content = (await repo.show(commit, contentIn(docRec.dir))) || '';
+    const owner = entry.module;
+    const title = inh
+      ? owner.name
+      : own
+        ? (modules.find((m) => m.module.slug === own[1])?.module.softwares || []).map((sw) => sw.name).join(' · ') || `${owner.name} — software`
+        : undefined;
+    chapters.push({
+      slug: ch.slug,
+      module: owner,
+      doc,
+      generated: generatedSections(owner, doc, lang, { assembled: true, relatedHardware: await relatedHardware(owner) }),
+      content,
+      isDraft: false,
+      langFallback,
+      ...(inh || own ? { software: true, title } : {}),
+      ...(inh ? { inheritedFrom: owner.name } : {}),
+    });
+  }
+  const last ={ issue: rec.issue, revision: rec.revision, date: rec.date, note: rec.note || '' };
+  const state = {
+    released: last,
+    changed: false,
+    next: { issue: rec.issue, revision: rec.revision + 1 },
+    nextIssue: { issue: rec.issue + 1, revision: 0 },
+    blockers: [],
+    releases: manual.releases.map(({ signature, chapters: _c, ...r }) => r),
+  };
+  return { manual, chapters, lang, missingAssets: [], missingRefs: missingCrossRefs(chapters), state, release: releaseId(rec), commit };
+}
+
+/**
+ * What changed between two versions of a manual — each a release id ("1-0") or "current". Chapters
+ * are matched by their place in the manual (slug); each is added, removed, changed (the text a
+ * reader sees differs, shown block by block) or unchanged.
+ */
+export async function compareManual(slug, from, to = 'current', { lang = DEFAULT_LANG, unchanged } = {}) {
+  const load = (id) => (id === 'current' ? compileManual(slug, { lang }) : compileManualRelease(slug, id, { lang }));
+  const [a, b] = await Promise.all([load(from), load(to)]);
+  if (!a || !b) return null;
+  const label = (c, id) =>
+    id === 'current'
+      ? { id, current: true, released: c.state.released && !c.state.changed ? c.state.released : null }
+      : { id, issue: c.state.released.issue, revision: c.state.released.revision, date: c.state.released.date, note: c.state.released.note };
+  const byA = new Map(a.chapters.map((c, i) => [c.slug, { c, num: i + 1 }]));
+  const byB = new Map(b.chapters.map((c, i) => [c.slug, { c, num: i + 1 }]));
+  const order = [...b.chapters.map((c) => c.slug), ...a.chapters.map((c) => c.slug).filter((s) => !byB.has(s))];
+  const docOf = (c) => (c && !c.missing ? { key: c.doc.key, version: c.doc.version, revision: c.doc.revision, status: c.doc.status } : null);
+  const chapters = order.map((s) => {
+    const x = byA.get(s);
+    const y = byB.get(s);
+    const c = (y || x).c;
+    const base = { slug: s, title: c.title || c.module?.name || s, from: x ? { num: x.num, ...docOf(x.c) } : null, to: y ? { num: y.num, ...docOf(y.c) } : null };
+    if (!x) return { ...base, status: 'added' };
+    if (!y) return { ...base, status: 'removed' };
+    const d = diffBodies(x.c.missing ? '' : x.c.content, y.c.missing ? '' : y.c.content, unchanged ? { unchanged } : {});
+    const moved = x.num !== y.num;
+    return { ...base, status: d.html ? 'changed' : moved ? 'moved' : 'same', ...d };
+  });
+  return { manual: { slug, name: b.manual.name }, from: label(a, from), to: label(b, to), chapters };
 }
 
 /* ------------------------------------------------------------------ */

@@ -802,8 +802,18 @@ async function manualRenderOpts(slug, manual) {
   };
 }
 
+/**
+ * The manual as it compiles today, or — with ?release=<issue>-<revision> — as that release went out,
+ * rebuilt from the commit it was recorded in. The view, the HTML export and the PDF all take it.
+ */
+function compileFor(ref, { release, lang } = {}) {
+  return release && release !== 'current'
+    ? store.compileManualRelease(ref, String(release), { lang: lang || DEFAULT_LANG })
+    : store.compileManual(ref, { lang: lang || DEFAULT_LANG });
+}
+
 app.get('/api/manuals/:slug', wrap(async (req, res) => {
-  const compiled = await store.compileManual(ownerRef(req), { lang: req.query.lang || DEFAULT_LANG });
+  const compiled = await compileFor(ownerRef(req), req.query);
   if (!compiled) return res.status(404).json({ error: 'Manual not found' });
   const opts = await manualRenderOpts(ownerRef(req), compiled.manual);
   res.json({ ...compiled, hasCover: !!opts.coverUrl, hasLogo: !!opts.logoUrl, css: MANUAL_CSS, html: manualBodyHtml(compiled, opts) });
@@ -859,8 +869,8 @@ app.delete('/api/manuals/:slug', wrap(async (req, res) => {
  * The standalone manual document: compiled, with every console-served picture inlined as a data
  * URI, so it opens and prints the same anywhere. Returns null when there is no such manual.
  */
-async function manualExportDocument(ref, lang) {
-  const compiled = await store.compileManual(ref, { lang: lang || DEFAULT_LANG });
+async function manualExportDocument(ref, lang, release) {
+  const compiled = await compileFor(ref, { lang, release });
   if (!compiled) return null;
   const opts = await manualRenderOpts(ref, compiled.manual);
   let html = manualExportHtml(compiled, opts);
@@ -882,13 +892,26 @@ async function manualExportDocument(ref, lang) {
     const mime = MIME[path.extname(file.name).toLowerCase()] || 'application/octet-stream';
     html = html.split(r).join(`data:${mime};base64,${file.buffer.toString('base64')}`);
   }
-  const suffix = compiled.lang && compiled.lang !== DEFAULT_LANG ? `-${compiled.lang}` : '';
+  const suffix = `${compiled.release ? `-issue${compiled.release.replace('-', '-rev')}` : ''}${compiled.lang && compiled.lang !== DEFAULT_LANG ? `-${compiled.lang}` : ''}`;
   return { compiled, html, name: `${compiled.manual.slug}${suffix}` };
 }
 
+// What changed between two versions of a manual: ?from=<issue>-<rev> &to=<issue>-<rev>|current.
+app.get('/api/manuals/:slug/compare', wrap(async (req, res) => {
+  const from = String(req.query.from || '');
+  if (!from) return res.status(400).json({ error: 'Say which version to compare from (?from=1-0)' });
+  const pl = req.query.ui === 'pl';
+  const out = await store.compareManual(ownerRef(req), from, String(req.query.to || 'current'), {
+    lang: req.query.lang || DEFAULT_LANG,
+    unchanged: (n) => (pl ? `bez zmian: ${n}` : `${n} unchanged`),
+  });
+  if (!out) return res.status(404).json({ error: 'Manual not found' });
+  res.json(out);
+}));
+
 // Standalone HTML export with images inlined as data URIs.
 app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
-  const doc = await manualExportDocument(ownerRef(req), req.query.lang);
+  const doc = await manualExportDocument(ownerRef(req), req.query.lang, req.query.release);
   if (!doc) return res.status(404).json({ error: 'Manual not found' });
   res.set('Content-Type', 'text/html; charset=utf-8');
   if (req.query.download !== undefined) res.set('Content-Disposition', `attachment; filename="${doc.name}.html"`);
@@ -897,7 +920,7 @@ app.get('/api/manuals/:slug/export.html', wrap(async (req, res) => {
 
 // The same document, printed to PDF by the browser on this machine — the pages paged.js laid out.
 app.get('/api/manuals/:slug/export.pdf', wrap(async (req, res) => {
-  const doc = await manualExportDocument(ownerRef(req), req.query.lang);
+  const doc = await manualExportDocument(ownerRef(req), req.query.lang, req.query.release);
   if (!doc) return res.status(404).json({ error: 'Manual not found' });
   const pdf = await htmlToPdf(doc.html);
   res.set('Content-Type', 'application/pdf');

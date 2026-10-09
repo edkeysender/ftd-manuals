@@ -1346,6 +1346,22 @@ try {
   );
   const newIssue = await req('POST', '/api/manuals/b737-simulator-manual/release', { newIssue: true, note: 'Software chapter' });
   ok(newIssue.released.issue === 2 && newIssue.released.revision === 0, 'a new issue starts again at Rev 0');
+  // an older release can be opened as it went out, and compared with a later one
+  const issue1 = await req('GET', '/api/manuals/b737-simulator-manual?release=1-0');
+  ok(
+    issue1.release === '1-0' && issue1.chapters.length === 1 && issue1.state.released.issue === 1 && !issue1.state.changed &&
+      issue1.html.includes('data-lep-issue="1" data-lep-rev="0"') && !issue1.html.includes('Software chapter') &&
+      !issue1.html.includes('id="ch-starting-panel--software"'),
+    `Issue 1 Rev 0 opens as it was released: its one chapter, its stamp, its own revision record`
+  );
+  const cmp = await req('GET', '/api/manuals/b737-simulator-manual/compare?from=1-0&to=2-0');
+  ok(
+    cmp.from.issue === 1 && cmp.to.issue === 2 && cmp.chapters.find((c) => c.slug === 'starting-panel--software')?.status === 'added' &&
+      ['same', 'changed'].includes(cmp.chapters.find((c) => c.slug === 'starting-panel')?.status),
+    `comparing Issue 1 with Issue 2 shows the software chapter added: ${JSON.stringify(cmp.chapters.map((c) => [c.slug, c.status]))}`
+  );
+  const missingRel = await req('GET', '/api/manuals/b737-simulator-manual?release=9-9').catch((e) => e);
+  ok(missingRel instanceof Error && /no release/.test(missingRel.message), 'a release that does not exist is refused');
   const fatRes = await fetch(BASE + '/api/manuals/b737-simulator-manual/fat.html');
   const fatHtml = await fatRes.text();
   ok(fatRes.status === 200 && fatHtml.includes('Factory Acceptance Test protocol') && fatHtml.includes('id="fat-starting-panel"') && fatHtml.includes('Modules under test'),
