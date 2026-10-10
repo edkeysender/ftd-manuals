@@ -139,9 +139,21 @@ export async function htmlToPdf(html, { timeoutMs = 240000 } = {}) {
       deadline
     );
     if (!settled) await sleep(2000);
+    // The headings become the PDF's bookmarks, so a reader can jump through the sections from the
+    // viewer's sidebar; the outline needs a tagged PDF. A browser too old for either option ignores it.
     const { data } = await cdp.send(
       'Page.printToPDF',
-      { printBackground: true, preferCSSPageSize: true, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0, transferMode: 'ReturnAsBase64' },
+      {
+        printBackground: true,
+        preferCSSPageSize: true,
+        marginTop: 0,
+        marginBottom: 0,
+        marginLeft: 0,
+        marginRight: 0,
+        generateTaggedPDF: true,
+        generateDocumentOutline: true,
+        transferMode: 'ReturnAsBase64',
+      },
       sessionId
     );
     const pdf = Buffer.from(data, 'base64');
