@@ -991,7 +991,7 @@ try {
   const mpExport = await (await fetch(BASE + '/api/software/Panel%20Tool/docs/software-customer:A1.0/export.html')).text();
   const mpCover = mpExport.slice(mpExport.indexOf('<div id="source"')).match(/<section class="cover"[\s\S]*?<\/section>/)?.[0] || '';
   ok(
-    mpSaved.mainPage.includes('Panel Tool operator guide') && mpCover.includes('Panel Tool operator guide') && /Printed at A1\.0 r\d+/.test(mpCover) && !mpCover.includes('{{doc.'),
+    mpSaved.mainPage.includes('Panel Tool operator guide') && mpCover.includes('Panel Tool operator guide') && /Printed at A1\.0 r\.0</.test(mpCover) && !mpCover.includes('{{doc.'),
     'the edited main page prints as the title page, with the version and revision filled in'
   );
   ok((await req('PUT', '/api/software/Panel%20Tool/docs/software-customer:A1.0/main-page', { html: '' })).mainPage === null &&
