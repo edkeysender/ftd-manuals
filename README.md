@@ -1,175 +1,296 @@
 # FTD Documentation Console
 
-One space for creating, managing and exporting FTD.aero flight simulator manuals.
-Current scope: the **Modules** section — modules list, new-module-doc wizard, and the manual editor
-(rich text ↔ HTML source, AI assistant, git-backed drafts and releases).
+One place to write, review, release and export the manuals of FTD.aero flight simulators.
 
-## Run
+A simulator is built from **modules** (a cockpit panel, an IOS station, a camera kit…) and runs
+**software** (the IOS, gateways, tools). The console documents each of them as small, versioned
+manuals — for the **customer** (the operator) and for the **technician** (installation, wiring,
+configuration, servicing) — and assembles them into the simulator manual that ships with a device:
+cover, revision record, table of contents, List of Effective Pages, one chapter per module, printed
+to A4 PDF with the company header on every page.
+
+Everything is stored in a git repository the server manages itself: every save is a commit, a draft is
+a branch, a release is a merge to `main`. Nobody edits files by hand.
+
+## What it does
+
+- **Modules, software and hardware** — a module list with the hardware catalog it is built from and the
+  software it runs; a Software page with release feeds and which manuals cover which release.
+- **Manuals per audience** — up to four doc streams per module (`customer`, `technician`,
+  `software-customer`, `software-technician`), each with its own versions (`A1.0`, `A1.1`…), revisions,
+  draft branch and section template. Sections 1–3 (revision record, introduction, general information)
+  are generated from the module data; authors write the rest.
+- **Editor** — three panes: document outline · the page (rich text or HTML source) · an AI assistant and
+  review comments. Both side panes fold away. Autosave, figures, tables, cross-references to other
+  modules, attachments (configs, firmware), FAT checklists.
+- **AI assistant (optional, OpenAI)** — first drafts, edits proposed as tracked changes you accept or
+  discard, Polish translation, picture description, photos redrawn as technical line-art in the house style.
+- **Review** — a read-only review link; reviewers select text and comment; the author answers, resolves or
+  asks the AI to propose the change.
+- **Release** — *Submit for review* → *Approve & release*; hotfixes correct a released version in place.
+  Assembled manuals are released on their own (Issue / Revision).
+- **Export** — a self-paginating standalone HTML document and a PDF printed by the browser on the server
+  (bookmarks for every heading), for a whole simulator manual, for a single doc (drafts included) and for
+  the FAT protocol. English is the source language; Polish translations export with `?lang=pl`.
+- **Agents over MCP** — Claude, ChatGPT or any MCP client can read and edit documentation through the
+  `/mcp` endpoint (OAuth sign-in), import pictures from Word / PowerPoint / PDF files without the bytes
+  passing through the model, and handle review comments.
+- **Accounts** — sign-in with roles: **admin** (everything, including deleting), **moderator** (writes,
+  may connect MCP agents), **viewer** (reads and comments in reviews).
+- **UI in English and Polish** (EN | PL switch, top right).
+
+## Requirements
+
+| | |
+| --- | --- |
+| **Node.js 22.9 or newer** | the server starts with `--env-file-if-exists` (production runs Node 24) |
+| **git** on the `PATH` | the document store is a git repository driven through the `git` binary |
+| **A 64-bit OS** | `sharp` (image resizing) ships 64-bit builds only — on a Raspberry Pi use 64-bit Raspberry Pi OS |
+| **Chromium, Chrome or Edge** *(for PDF)* | PDF export prints with the browser already on the machine; without one, PDF is refused and the HTML export still prints from any browser. Override the path with `FTD_CHROME` |
+| **OpenAI API key** *(optional)* | enables the AI assistant, translation, image description and illustration |
+| **cloudflared** *(optional)* | to publish the console on a public URL (needed for claude.ai / ChatGPT connectors) |
+
+Runs on Windows, Linux and macOS. Production today: a Raspberry Pi 5 (64-bit Raspberry Pi OS, Node 24,
+`/usr/bin/chromium`), about 250 MB of documents.
+
+## Install
 
 ```bash
+git clone https://github.com/edkeysender/ftd-manuals.git
+cd ftd-manuals
 npm install
-npm run dev        # API on :5179 + Vite dev server on :5173
+npm run build          # builds the web app into web/dist
 ```
 
-Production style:
+Create `.env` in the project folder (never commit it):
+
+```ini
+# sign-in: the administrator created on first start, when there are no users yet
+FTD_ADMIN_EMAIL=you@ftd.aero
+FTD_ADMIN_PASSWORD=choose-a-strong-one
+
+# optional
+OPENAI_API_KEY=sk-…                 # AI features
+PORT=5179                           # default 5179
+FTD_PUBLIC_URL=https://…            # base of links handed to users (upload links, MCP)
+FTD_SECURE_COOKIE=1                 # mark the session cookie Secure (when served over HTTPS)
+FTD_IMPORT_ROOTS=/srv/share;/home/me/Documents   # folders agents may import files from (';'-separated)
+FTD_URL_CREDENTIALS=nas.local=basic:user:pass     # credentials for protected picture hosts
+FTD_CHROME=/usr/bin/chromium        # the browser that prints PDFs, if not found automatically
+MCP_TOKEN=…                         # master token for MCP tooling without OAuth (OpenAI Responses API)
+```
+
+All settings:
+
+| variable | default | |
+| --- | --- | --- |
+| `PORT` | `5179` | HTTP port (UI + API + `/mcp`) |
+| `FTD_DATA_DIR` | `data/repo` | the document repository |
+| `FTD_AUTH_DIR` | parent of `FTD_DATA_DIR` | `users.json`, `oauth.json`, `auth-secret` |
+| `FTD_INBOX_DIR` | `data/inbox` | files dropped for import |
+| `FTD_IMPORT_ROOTS` | — | extra folders agents may import from |
+| `FTD_ADMIN_EMAIL` / `FTD_ADMIN_PASSWORD` | built-in | the administrator seeded on first start — set them, then change the password in Settings |
+| `FTD_SECURE_COOKIE` | off | `1` = Secure session cookie |
+| `FTD_PUBLIC_URL` | request host | public base URL |
+| `FTD_URL_CREDENTIALS` | — | `host=basic:user:pass;host=bearer:TOKEN` |
+| `FTD_CHROME` | auto | browser used for PDF |
+| `MCP_TOKEN` | — | master bearer token for `/mcp` |
+| `OPENAI_API_KEY` | — | enables AI |
+| `OPENAI_MODEL` | `gpt-5` | chat / editing model |
+| `OPENAI_REASONING_EFFORT` | `low` | |
+| `OPENAI_IMAGE_MODEL` / `OPENAI_IMAGE_QUALITY` | `gpt-image-2` / `medium` | illustrations |
+| `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-transcribe` | speech to text in the chat box |
+
+Start it:
 
 ```bash
-npm run build      # builds web/dist
-npm start          # serves UI + API on :5179
+npm start              # UI + API on http://localhost:5179
 ```
 
-`.env` (kept out of git):
+On first start the server creates `data/` (the document repository and the user store) and the
+administrator from `FTD_ADMIN_*`. Sign in, change the password (Settings → *Your password*) and add the
+other users (Settings → *Users*).
 
-```
-OPENAI_API_KEY=…   # enables the AI assistant, AI first drafts, translations, describe_asset (vision)
-OPENAI_MODEL=gpt-5 # optional override
-FTD_URL_CREDENTIALS=host=basic:user:pass;other.host=bearer:TOKEN   # optional: protected image hosts (NAS share links)
-FTD_PUBLIC_URL=https://…trycloudflare.com   # optional: base of links handed to users (request_upload)
-FTD_ADMIN_EMAIL=… / FTD_ADMIN_PASSWORD=…     # optional: the administrator seeded on first start (defaults below)
-FTD_SECURE_COOKIE=1                          # optional: mark the session cookie Secure (HTTPS only)
-```
+### Run as a service (Linux)
 
-## Login
+`/etc/systemd/system/ftd-docs.service`:
 
-The console requires a sign-in. Users live in `data/users.json` (scrypt-hashed passwords, next to the
-document repo — not inside it) and sessions are an HMAC-signed cookie (`data/auth-secret`, 30 days).
-On first start, when there are no users yet, the default administrator is created:
+```ini
+[Unit]
+Description=FTD Documentation Console
+After=network.target
 
-```
-l.wicenciak@ftd.aero / Simulation01
-```
+[Service]
+User=sim
+Group=sim
+WorkingDirectory=/home/sim/ftd-manuals
+ExecStart=/usr/bin/node --env-file-if-exists=.env server/index.js
+Restart=always
+RestartSec=3
 
-Change that password in Settings → *Your password*. Two roles: **administrator** — everything, including
-deleting (manuals, drafts, assets, inbox files, comment threads, users); **editor** — everything except
-deleting. Every `DELETE` route and the draft *discard* answer `403` for editors, and the UI hides those buttons.
-Administrators manage accounts in Settings → *Users* (add, change role, reset password, delete; the last
-administrator cannot be removed). Roles: **admin** (everything, incl. deleting), **moderator** (writes
-manuals, may connect MCP agents), **viewer** (reads and comments in reviews — no MCP, no editing).
-
-The **/mcp endpoint is authorized with OAuth** (authorization code + PKCE, dynamic client registration):
-when an MCP client connects it opens the console's sign-in/consent page and gets short-lived access
-tokens (1 h) plus a rotating refresh token — approve as admin or moderator. `MCP_TOKEN` in `.env`
-stays honoured as a master token for local tooling.
-
-Connecting clients (endpoint = `http://localhost:5179/mcp`, or `https://<tunnel>/mcp` from `npm run tunnel`):
-
-- **Claude Code**: `claude mcp add --transport http ftd-docs <endpoint>` — the browser opens the sign-in page on first use.
-- **Claude (claude.ai)**: Settings → Connectors → *Add custom connector* → paste the endpoint → Authorize.
-- **ChatGPT**: Settings → Apps & Connectors → *Advanced settings* → enable **Developer mode**, then
-  *Create* a connector with the endpoint as MCP server URL and **OAuth** authentication (Plus/Pro/Business/
-  Enterprise plans; enable it per chat under Developer mode / Deep research tools).
-- **OpenAI API (Responses)**: no interactive sign-in there — set `MCP_TOKEN` in `.env` and pass
-  `tools: [{ "type": "mcp", "server_label": "ftd_docs", "server_url": "<endpoint>", "authorization": "<MCP_TOKEN>" }]`.
-
-## How documents are stored
-
-`data/repo/` is a real git repository managed by the server (created on first start) and mirrors the
-target layout of `github.com/ftd-aero/docs` — one module = one folder:
-
-```
-modules/<slug>/module.json                          # identity + hardware/software relations
-modules/<slug>/docs/<manual>/A1.0/doc.json          # one doc stream per manual type (see below)
-modules/<slug>/docs/<manual>/A1.0/content.html      # sections 4–7 (semantic HTML)
-modules/<slug>/docs/<manual>/A1.0/checklist.json    # optional FAT checklist
-modules/<slug>/assets/                              # images, shared by every manual of the module
-manuals/<slug>/manual.json                          # assembled manual: modules + which manual type
-hardware.json                                       # shared hardware catalog
-softwares.json                                      # software release feed (manual-affecting flags)
+[Install]
+WantedBy=multi-user.target
 ```
 
-### Manual types — one module, two audiences
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now ftd-docs
+```
 
-A module is documented for the **customer** (the operator of the simulator) and for the **technician**
-(installation, wiring, configuration, servicing). When the module is linked to a software, the software
-gets the same split. Each manual is its own doc stream with its own versions, revision record, draft
-branch and section template:
+`User` must be an account that exists on the machine. The service does not watch files: restart it after
+every update of the server code.
 
-| type | audience | sections 4–7 |
-| --- | --- | --- |
-| `customer` | operator | Description · Operation · Maintenance · Appendixes |
-| `technician` | installer / service | Installation · Configuration · Maintenance · Appendixes |
-| `software-customer` | operator | Overview · Operation · Troubleshooting · Appendixes |
-| `software-technician` | installer / service | Installation · Configuration · Administration · Appendixes |
+### Public URL (optional)
 
-A doc is addressed by its key `<manual>:<version>` — `technician:A1.0` — in URLs, the API and MCP.
-A bare `A1.0` means the customer manual; docs created before the split (`modules/<slug>/docs/A1.0/`)
-are read as customer manuals and never moved. Over MCP every doc tool (edit, assets, illustrations,
-checklist, review/release) takes `manual` + `version` (or just `manual` for its latest open draft).
+The claude.ai and ChatGPT connectors need an HTTPS address. The quickest is a Cloudflare quick tunnel:
 
-### Languages
+```bash
+cloudflared tunnel --url http://localhost:5179 --no-autoupdate
+```
 
-English is the source language of every doc. A Polish translation is optional and lives next to it
-(`content.pl.html`): in the editor switch **EN | PL**, then **Translate to Polski with AI** (OpenAI, keeps the
-HTML structure) or copy the English text and translate by hand; PL is edited like any body (autosave, revisions
-tagged `(PL)`, AI chat answers in Polish). When the English body changes the translation is flagged **stale**
-until re-translated. Sections 1–3 and the assembled-manual frame render in the chosen language; a manual can
-be viewed/exported in PL (`?lang=pl`) with untranslated chapters falling back to English and flagged. MCP:
-`lang` on `get_doc` and the edit tools, `translate_doc`.
+It prints a `https://<random>.trycloudflare.com` address, which changes every time the tunnel restarts
+(a named Cloudflare tunnel keeps a fixed one). Set `FTD_SECURE_COOKIE=1` when users sign in over it.
 
-### Images over MCP — bytes never pass through the model
+### Connect an AI agent (MCP)
 
-Agents **see** assets (`get_asset` returns a downscaled JPEG as image content, `list_assets {thumbnails}`
-a strip of thumbnails, assets are also MCP resources `ftd://modules/<slug>/assets/<file>`) and get pictures
-in without bytes in the chat: `upload_photo_from_url` (public links; hosts in `FTD_URL_CREDENTIALS`
-`host=basic:user:pass;host=bearer:TOKEN` are fetched with credentials), `request_upload` hands the user
-the Assets-tab drop link for files on their own device or behind a login (then `list_inbox` +
-`import_local_files`), `generate_illustration` / `convert_to_line_art` draw them. **Documents are a source
-of pictures:** a Word / PowerPoint / PDF / zip file dropped anywhere (inbox, Assets tab, chat attachment,
-`import_local_files` path) is expanded into the pictures inside it (`server/extract.js` — OOXML media,
-PDF image XObjects: JPEG as-is, Flate + PNG predictor, Indexed palettes) and a Word file also leaves
-`<doc>.html` — its content as semantic HTML: headings (custom heading styles resolved via `styles.xml`),
-strong/em/u/sup/sub, hyperlinks, nested lists, tables with col/rowspans and `th` header rows, text boxes,
-and `[figure: …]` markers naming the extracted pictures (`read_inbox_text`) — so an agent can recreate
-the document faithfully over MCP: write the sections from the HTML, `import_local_files` the pictures,
-`attach_figure` each one at its marker. Point `FTD_IMPORT_ROOTS` at the
-document share and no dropping is needed at all. `attach_figure` inserts a
-proper `<figure>` after a phrase in a section and stamps `applies_to`; `describe_asset` asks the vision
-model for caption / alt / visible text / which unit is shown. The asset route serves `?w=<px>` resized
-variants (thumbnails in the Assets tab).
+Endpoint: `http://localhost:5179/mcp`, or `https://<public-url>/mcp`. Sign-in is OAuth — the client opens the
+console's sign-in page; approve as an admin or moderator.
 
-### Review comments
+- **Claude Code**: `claude mcp add --transport http ftd-docs <endpoint>`
+- **claude.ai**: Settings → Connectors → *Add custom connector* → the endpoint → Authorize
+- **ChatGPT**: Settings → Apps & Connectors → Advanced → **Developer mode** → *Create* a connector with the
+  endpoint and **OAuth** authentication
+- **OpenAI Responses API**: no interactive sign-in — set `MCP_TOKEN` and pass it as `authorization` on the
+  `mcp` tool
 
-**Review link** in the editor gives reviewers a read-only view of a draft (`…/review`): they select text,
-click **Comment** and leave a thread (name asked once per browser). Threads are committed on the draft
-branch (`comments.json`) and highlighted in the document. In the editor's **Comments** tab the author
-replies, resolves, or clicks **Ask AI to propose** — the AI applies the requested change as a pending edit;
-accepting it commits a revision and resolves the thread with a note. MCP agents see threads with
-`list_comments` and close them with `resolve_comment` after editing the quoted passage.
+## Update
 
-The **Software** page lists every linked software with its modules, their software customer / technician
-manuals (create, edit, new version), the release feed with coverage and a **Delete** per software
-(unlinks it from every module and drops it with its releases from the feed; docs keep their covered
-ranges; open software-manual drafts on a module with no other software are released first);
-`list_software`, `register_software_release`, `cover_release` and `delete_software` expose the same
-over MCP. A module can be deleted from its detail page (`DELETE /api/modules/:slug`, MCP
-`delete_module`): draft branches, folder on main and its chapter in every manual go; the hardware
-catalog and the release feed stay. Both deletes are meant for administrators once login lands.
+```bash
+git pull
+npm install            # dependencies may have changed
+npm run build
+sudo systemctl restart ftd-docs      # or stop and start `npm start`
+```
 
-- Drafts live on `draft/<slug>-<manual>-a1.0` branches (one open draft per manual type); every save is a
-  commit; accepted changes bump `r1 → r2 …`.
-- **Submit for review** flags the doc In review; **Approve & release** merges the branch into `main`,
-  freezes the revision counter, supersedes older released versions of the same manual type and deletes
-  the branch.
-- Every assembled manual opens with chapter 1 *General*: 1.1 General Info (document statement + manufacturer
-  address), 1.2 revision record, 1.3 table of contents, 1.4 List of Effective Pages. Module chapters number
-  from 2. *Open / print* and *Export HTML* produce a self-paginating A4 document (paged.js inlined, works
-  offline) with the header box and proprietary text on every page, page / pages, and the List of Effective
-  Pages filled per printed page (issue.rev = doc version `A<issue>.<rev>`, effective date = release date).
-- Only Released doc versions are compiled into simulator manuals. An assembled manual has a manual type:
-  an *IOS technician manual* takes the technician manual of every chapter module. When a chapter module
-  also has a released software manual of the same audience (customer → software-customer, technician →
-  software-technician), it compiles as an extra chapter right after the module's own, titled after the
-  linked software — picking the module brings both sections into the manual.
-- A manual-affecting software release must be covered by every manual type the module maintains
-  (orange dot until each has a version for it).
-- Sections 1–3 (revision record, introduction, general information) are generated from module data —
-  never hand-edited.
+The web app is live as soon as it is built; server changes need the restart. Updates never rewrite your
+documents: older layouts are read where they are (see *Data compatibility*).
 
-## Layout
+## Where the data lives
+
+Everything that is yours is in `data/` (gitignored), plus `.env`:
 
 ```
-server/   Express API: store (git), docgen (templates + auto sections), ai (OpenAI)
-web/      React + Vite frontend (modules list, wizard, 3-pane editor)
-data/     runtime document store (gitignored)
-tools/    smoke.mjs — end-to-end API exercise
+data/
+  repo/          the document repository — a git repo the server manages (all modules, docs, assets,
+                 manuals, software feed, hardware catalog, settings, logo, illustration style)
+  users.json     accounts (scrypt-hashed passwords)
+  auth-secret    signs the session cookies — keep it to keep users signed in
+  oauth.json     MCP clients and their refresh tokens — keep it to keep agents connected
+  inbox/         files dropped for import (transient)
+```
+
+Inside `data/repo`, one module is one folder:
+
+```
+modules/<slug>/module.json                          identity, hardware and software links
+modules/<slug>/docs/<manual>/A1.0/doc.json          one doc: version, revisions, status
+modules/<slug>/docs/<manual>/A1.0/content.html      the body (semantic HTML); content.pl.html = Polish
+modules/<slug>/docs/<manual>/A1.0/main-page.html    the doc's own title page, when edited
+modules/<slug>/docs/<manual>/A1.0/checklist.json    FAT checklist (optional)
+modules/<slug>/assets/                              pictures and attachments of the module
+software/<slug>/…                                   a software that owns its manuals — same layout
+manuals/<slug>/manual.json                          an assembled simulator manual + its releases
+hardware.json                                       shared hardware catalog
+softwares.json                                      software release feed
+settings/                                           AI guidelines, illustration style, logo
+```
+
+`main` holds what is released; open drafts live on `draft/<slug>-<manual>-a<maj>.<min>` branches. The
+history of every document is the git history of this repository. **Never edit it by hand** — go through
+the UI, the API or MCP so every change is a commit and the server's view stays consistent.
+
+## Back up
+
+The repository is plain git, so a backup is one file:
+
+```bash
+cd data/repo
+git bundle create ../../ftd-docs-$(date +%F).bundle --all     # every branch: released + drafts
+```
+
+Also keep `data/users.json`, `data/auth-secret`, `data/oauth.json` and `.env`. A simple full backup with
+the service stopped:
+
+```bash
+sudo systemctl stop ftd-docs
+tar czf ftd-docs-data-$(date +%F).tgz data .env
+sudo systemctl start ftd-docs
+```
+
+## Migrate to another machine
+
+1. **On the new machine:** install the requirements and the app (*Install* above), but do not start it.
+2. **On the old machine:** stop the console (`sudo systemctl stop ftd-docs`, or stop `npm start`) so nothing
+   writes mid-copy, then archive the data:
+   ```bash
+   tar czf ftd-docs-data.tgz data .env
+   ```
+3. Copy `ftd-docs-data.tgz` across and unpack it in the project folder of the new machine:
+   ```bash
+   tar xzf ftd-docs-data.tgz
+   ```
+   Check the paths in `.env` (`FTD_IMPORT_ROOTS`, `FTD_CHROME`, `FTD_DATA_DIR`…) — Windows paths do not
+   work on Linux and the other way round.
+4. Start the console and sign in with the existing accounts. Open a module, a doc and a manual, and export
+   one PDF to confirm pictures and printing work.
+5. If the public URL changed, re-point the MCP connectors (claude.ai / ChatGPT) to the new `…/mcp` address.
+   Keeping `oauth.json` and `auth-secret` keeps users and agents signed in; without them everyone simply
+   signs in again.
+
+Moving only the documents (no accounts) — from a bundle:
+
+```bash
+git clone --mirror ftd-docs-2026-10-10.bundle data/repo/.git
+cd data/repo && git config --bool core.bare false && git checkout main
+```
+
+then start the console: the administrator from `FTD_ADMIN_*` is created as on a fresh install.
+
+## Data compatibility
+
+The console reads older layouts in place and never migrates them:
+
+- docs created before the customer / technician split (`modules/<slug>/docs/A1.0/`) are read as customer manuals;
+- modules with an inline `hardware` object still resolve; older category values keep their labels;
+- softwares documented as *own-software modules* keep working, and writing their manual again adopts them;
+- a version released before release notes existed prints one "Released." line until a note is set.
+
+So an update or a move never needs a conversion step — copy `data/` and start.
+
+## Bringing in existing documentation
+
+- **Word / PowerPoint / PDF / zip** — drop them on a module's Assets tab (or into the inbox): the pictures
+  inside become assets and a Word file also yields its content as HTML, which an AI agent can rebuild as
+  doc sections over MCP (`read_inbox_text`, `import_local_files`, `attach_figure`).
+- **Simulator configuration** — `POST /api/manuals/import` with a configuration file creates one assembled
+  manual per `simulator` / `ios` section, listing its modules.
+
+## Develop
+
+```bash
+npm run dev            # API on :5179 (restarts on change) + Vite dev server on :5173
+npm run build && npm run smoke     # the check before every merge: build, then an end-to-end API run
+```
+
+`npm run smoke` starts its own server on a temporary data folder (port 5197, `SMOKE_PORT` to change it)
+and exercises the API, MCP, exports and PDF. Work on `console/<topic>` branches and merge to `main` by pull request.
+[`CLAUDE.md`](CLAUDE.md) holds the detailed domain rules (versions, releases, manual assembly, print rules).
+
+```
+server/   Express API · store.js + git.js (document store) · docgen.js (templates, generated sections,
+          manual frame, export) · pdf.js (PDF via the browser) · mcp.js · auth.js + oauth.js · ai.js ·
+          illustrate.js · extract.js (pictures from Word/PDF) · images.js
+web/      React + Vite single-page app (modules, software, manuals, editor, settings)
+tools/    smoke.mjs — end-to-end test
+data/     runtime data (gitignored)
 ```
