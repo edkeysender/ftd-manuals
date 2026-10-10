@@ -818,7 +818,12 @@ function kindBadge(c, T) {
   return `<span class="kind-badge sw">${esc([T.softwareKind, ...covered].join(' · '))}</span>`;
 }
 
-function numberHeadings(html, ch) {
+/**
+ * Number the sections and return the outline. `literal` writes each number into its heading as text
+ * (a doc printed on its own, whose numbers must read exactly as its contents and the editor's
+ * outline do) instead of leaving it to the stylesheet's chapter counters.
+ */
+function numberHeadings(html, ch, { literal = false } = {}) {
   let s2 = 0;
   let s3 = 0;
   const items = [];
@@ -827,6 +832,12 @@ function numberHeadings(html, ch) {
     const isH2 = tag.toLowerCase() === 'h2';
     let id;
     let num;
+    if (/\sdata-nonum\b/i.test(attrs || '')) {
+      // a heading the build adds (the LEP of a doc printed on its own) is not one of the doc's sections
+      id = `c${ch}-x${items.length}`;
+      items.push({ level: isH2 ? 2 : 3, title, num: '', id });
+      return `<${tag}${(attrs || '').replace(/\sid="[^"]*"/i, '')} id="${id}">${inner}</${tag}>`;
+    }
     if (isH2) {
       s2 += 1;
       s3 = 0;
@@ -839,7 +850,7 @@ function numberHeadings(html, ch) {
     }
     items.push({ level: isH2 ? 2 : 3, title, num, id });
     const cleanAttrs = (attrs || '').replace(/\sid="[^"]*"/i, '');
-    return `<${tag}${cleanAttrs} id="${id}">${inner}</${tag}>`;
+    return `<${tag}${cleanAttrs} id="${id}">${literal ? `<span class="hnum">${num}</span>` : ''}${inner}</${tag}>`;
   });
   return { html: out, items };
 }
@@ -1035,12 +1046,12 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
     const generated = single
       ? String(c.generated || '').replace(
           /(<section class="auto-section" data-auto="1">[\s\S]*?<\/section>)/,
-          `$1\n<section class="auto-section lep-section"><h2>${esc(T.lep)}</h2>\n<table class="lep-pages">\n<thead><tr>${[1, 2, 3]
+          `$1\n<section class="auto-section lep-section"><h2 class="nonum" data-nonum>${esc(T.lep)}</h2>\n<table class="lep-pages">\n<thead><tr>${[1, 2, 3]
             .map(() => `<th>${T.page}</th><th>${T.issue}</th><th>${T.rev}</th><th>${T.effectiveDate}</th>`)
             .join('')}</tr></thead>\n<tbody></tbody>\n</table>\n</section>`
         )
       : c.generated;
-    const { html, items } = numberHeadings(`${generated}\n${body}`, num);
+    const { html, items } = numberHeadings(`${generated}\n${body}`, num, { literal: single });
     return { ...c, num, lep, items, ...numberFigures(html, num, T) };
   });
   const allFigures = processed.flatMap((c) => c.figures);
@@ -1182,13 +1193,14 @@ ${c.html}
 
   if (single) {
     // The doc as its own mini-manual: a title page, its table of contents, then the doc itself —
-    // 1.1 Revision record followed by its List of Effective Pages, and every section of the body on a
-    // page of its own. The chapter title carries no badge or draft flag: the header says both.
+    // 1 Revision record followed by its List of Effective Pages, and every section of the body on a
+    // page of its own. Sections number as the editor's outline does (1, 2, 3 generated, the body from
+    // 4), never under a chapter number, and the build's LEP takes none. The chapter title carries no badge or draft flag: the header says both.
     const c = processed[0];
     const tocItems = c.items
       .map(
         (it) =>
-          `<li class="${it.level === 3 ? 'l3' : 'l2'}"><a href="#${it.id}"><span class="num">1.${it.num}</span>${esc(it.title)}</a></li>`
+          `<li class="${it.level === 3 ? 'l3' : 'l2'}"><a href="#${it.id}"><span class="num">${it.num}</span>${esc(it.title)}</a></li>`
       )
       .join('');
     // The title page is the doc's main page as its author wrote it (or the default), with the
@@ -1212,7 +1224,7 @@ ${c.html}
 </section>
 <section class="front" id="ch-general"${lepAttrs(frontLep)}>
 <h2 id="toc">${T.tableOfContents}</h2>
-<div class="toc"><ol><li><a href="#ch-${esc(c.slug)}"><span class="num">1</span>${esc(c.title || c.module.name)}</a><ol>${tocItems}</ol></li></ol></div>
+<div class="toc"><ol><li><a href="#ch-${esc(c.slug)}"><span class="num"></span>${esc(c.title || c.module.name)}</a><ol>${tocItems}</ol></li></ol></div>
 </section>
 <section class="chapter" id="ch-${esc(c.slug)}"${lepAttrs(frontLep)}>
 <h1>${esc(c.title || c.module.name)}</h1>
@@ -1302,6 +1314,9 @@ body { font-family: ${FONT}; }
 .manual-doc .front > h2#revision-record, .manual-doc .front > h2#lep { break-before: page; }
 /* A doc printed on its own: every section of its body (Overview, Operation, …) opens a new page. */
 .manual-doc.single .chapter > h2 { break-before: page; }
+.manual-doc.single .chapter > h1::before { content: none; }
+.manual-doc.single .chapter h2::before, .manual-doc.single .chapter h3::before { content: none; }
+.manual-doc.single .chapter .hnum { color: #16324f; margin-right: 0.6em; }
 /* The last page is left for the reader's own notes: a title and ruled lines down to the footer. */
 .manual-doc .notes-page { display: block; break-before: page; }
 .manual-doc .notes-title { font-size: 16px; font-weight: 700; color: #16324f; border-bottom: 2px solid #16324f; padding-bottom: 4px; margin-bottom: 6mm; }
