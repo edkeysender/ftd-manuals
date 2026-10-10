@@ -342,6 +342,8 @@ export function langOf(l) {
 const STRINGS = {
   en: {
     manualTypes: { customer: 'Customer manual', technician: 'Technician manual', 'software-customer': 'Software customer manual', 'software-technician': 'Software technician manual' },
+    // What a doc printed on its own calls itself on its title page — the audience is not part of it.
+    docKinds: { software: 'Software manual', hardware: 'Hardware manual' }, docType: 'Doc type',
     groups: GROUP_LABELS,
     categories: CATEGORY_LABELS,
     audiences: { customer: 'customer', technician: 'technician' },
@@ -370,6 +372,7 @@ const STRINGS = {
   },
   pl: {
     manualTypes: { customer: 'Instrukcja użytkownika', technician: 'Instrukcja techniczna', 'software-customer': 'Instrukcja użytkownika oprogramowania', 'software-technician': 'Instrukcja techniczna oprogramowania' },
+    docKinds: { software: 'Instrukcja oprogramowania', hardware: 'Instrukcja sprzętu' }, docType: 'Typ dokumentu',
     groups: { SIM: 'Instrukcja symulatora', IOS: 'Instrukcja IOS', RACK: 'Instrukcja szaf RACK' },
     categories: { ios: 'IOS', cockpit: 'Kokpit', misc: 'Różne', software: 'Oprogramowanie', 'cockpit-hardware': 'Sprzęt kokpitu', structure: 'Konstrukcja', peripherals: 'Urządzenia peryferyjne', 'instructor-station': 'Stanowisko instruktora', rack: 'Rack' },
     audiences: { customer: 'klient', technician: 'technik' },
@@ -590,8 +593,8 @@ export function docMainPageDefault(lang = DEFAULT_LANG) {
   const T = strings(lang);
   return `<p class="mp-code">{{doc.code}}</p>
 <p class="mp-title">{{doc.title}}</p>
-<p class="mp-type">{{doc.type}}</p>
 <table class="cover-facts"><tbody>
+<tr><th>${esc(T.docType)}</th><td>{{doc.type}}</td></tr>
 <tr><th>${esc(T.docVersion)}</th><td>{{doc.version}}</td></tr>
 <tr><th>${esc(T.revision)}</th><td>{{doc.revision}}</td></tr>
 <tr><th>${esc(T.date)}</th><td>{{doc.date}}</td></tr>
@@ -675,6 +678,7 @@ export const MANUAL_CSS = `
 .manual-doc .cover-facts th, .manual-doc .cover-facts td { border: 0; border-bottom: 1px solid #d5dce4; padding: 5px 12px; background: none; }
 .manual-doc .cover-facts th { color: #64748b; font-weight: 400; width: 40%; }
 .manual-doc .cover-company { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 28px; font-size: 12px; color: #334155; text-align: left; }
+.manual-doc .cover-web { text-align: center; font-size: 12px; color: #334155; margin: 8px 0 0; }
 .manual-doc .cover-logo img, .manual-doc .cover-logo svg { height: 34px; width: auto; display: block; }
 /* What kind of chapter this is: hardware, or software with the releases it covers. */
 .manual-doc .kind-badge { display: inline-block; vertical-align: middle; margin-left: 10px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; border: 1px solid; }
@@ -997,7 +1001,10 @@ export function manualBodyHtml({ manual, chapters, lang = DEFAULT_LANG, state = 
   // A doc printed on its own (a draft checked on paper) carries its own version and revision.
   const one = single ? chapters[0] : null;
   const frontLep = one
-    ? { issue: one.doc.version, rev: `r${one.doc.revision}${one.isDraft ? ` (${T.draft})` : ''}`, date: fmtDots(one.doc.releasedAt || one.doc.updatedAt) }
+    ? // The printed revision is the version's own (A1.0 → r.0, A1.3 → r.3); the working revisions a
+      // draft goes through (r1, r2…) are console history and never print. The header and LEP mark an
+      // unreleased one as a draft; the title page names the revision alone.
+      { issue: one.doc.version, rev: `r.${parseDocVersion(one.doc.version)?.minor ?? 0}${one.isDraft ? ` (${T.draft})` : ''}`, date: fmtDots(one.doc.releasedAt || one.doc.updatedAt) }
     : rel && !state.changed
       ? { issue: String(rel.issue), rev: String(rel.revision), date: fmtDots(String(rel.date).slice(0, 10)) }
       : state
@@ -1170,7 +1177,8 @@ ${c.html}
   const coverFacts = `<table class="cover-facts"><tbody>${facts
     .map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`)
     .join('')}</tbody></table>`;
-  const coverCompany = `<div class="cover-company"><span class="cover-logo">${logoHtml}</span><span>${esc(T.issuedBy)}<br><strong>FTD.aero Sp. z o.o.</strong></span></div>`;
+  const coverCompany = `<div class="cover-company"><span class="cover-logo">${logoHtml}</span><span>${esc(T.issuedBy)}<br><strong>FTD.aero Sp. z o.o.</strong></span></div>
+  <p class="cover-web"><em>www.FTD.aero</em></p>`;
 
   if (single) {
     // The doc as its own mini-manual: a title page, its table of contents, then the doc itself —
@@ -1188,9 +1196,9 @@ ${c.html}
     const mainPage = fillDocVars(c.mainPage || docMainPageDefault(lang), {
       code: manual.code || '',
       title: c.title || c.module.name,
-      type: T.manualTypes[manualTypeOf(c.doc.manual).id],
+      type: T.docKinds[manualTypeOf(c.doc.manual).id.startsWith('software') ? 'software' : 'hardware'],
       version: c.doc.version,
-      revision: frontLep.rev,
+      revision: `r.${parseDocVersion(c.doc.version)?.minor ?? 0}`,
       date: frontLep.date,
     });
     return `<div class="manual-doc single" lang="${esc(lang)}">

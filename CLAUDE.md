@@ -194,7 +194,10 @@ The functional spec lives in this file's history and in the Modules spec provide
   `PUT …/docs/:key/main-page {html, lang}`, empty = back to the default), stored as `main-page.html` /
   `main-page.<lang>.html` next to the body (copied into the next doc version, released with the doc). The
   default (`docMainPageDefault`) and any edit use build variables `{{doc.code|title|type|version|revision|date}}`
-  (`fillDocVars`), filled when printed, so an edited page never goes stale; the issuer block stays fixed.
+  (`fillDocVars`), filled when printed, so an edited page never goes stale; the issuer block stays fixed
+  (logo, Issued by FTD.aero Sp. z o.o., *www.FTD.aero* under it — also on a manual cover). `doc.type` is the kind,
+  not the audience: *Software manual* / *Hardware manual* (`STRINGS.docKinds`), a row of the default table; `doc.revision`
+  is the version’s own (A1.0 → `r.0`) — the working revisions r1, r2… never print; the header adds `(draft)` until released.
   The header logo is the one set in Settings, else the colour FTD.aero logo shipped in `server/brand/ftd-logo.png`
   (`getBrandLogo`).
 - **Presence** (`server/presence.js`, `web/src/components/Presence.jsx`): every open editor / review view and manual
