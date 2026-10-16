@@ -15,6 +15,7 @@
     "tunnel": "cloudflared.exe tunnel --url http://localhost:5179 --no-autoupdate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "elkjs": "^0.9.3",
     "express": "^4.21.2",

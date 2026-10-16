@@ -9,6 +9,8 @@ import { manualTypeOf, DEFAULT_MANUAL, LANGUAGES, DEFAULT_LANG, langOf } from '.
 const API_URL = 'https://api.openai.com/v1/chat/completions';
 const TRANSCRIBE_URL = 'https://api.openai.com/v1/audio/transcriptions';
 const MODEL = process.env.OPENAI_MODEL || 'gpt-5';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5-5';
+const ANTHROPIC_EFFORT = process.env.ANTHROPIC_EFFORT || 'medium'; // low | medium | high | xhigh | max
 const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
 
 /**
@@ -55,8 +57,100 @@ async function apiFetch(url, init, { attempts = 3, label = 'The AI service' } = 
   throw new Error(`${label} could not be reached: ${networkReason(last)}`);
 }
 
+/* ------------------------------------------------------------------ */
+/* Providers — Claude through the Anthropic SDK, or OpenAI chat          */
+/* completions. Text and vision calls go to whichever key is set         */
+/* (ANTHROPIC_API_KEY wins; AI_PROVIDER=openai|anthropic overrides).     */
+/* Image generation and speech-to-text are OpenAI-only models.           */
+/* ------------------------------------------------------------------ */
+
+export function providerOf(env = process.env) {
+  const want = env.AI_PROVIDER;
+  if (want === 'anthropic' && env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (want === 'openai' && env.OPENAI_API_KEY) return 'openai';
+  if (env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (env.OPENAI_API_KEY) return 'openai';
+  return 'none';
+}
 export function aiAvailable() {
-  return !!process.env.OPENAI_API_KEY;
+  return providerOf() !== 'none';
+}
+/** The parts that need an OpenAI model regardless of the chat provider: images and transcription. */
+export const openaiAvailable = () => !!process.env.OPENAI_API_KEY;
+export const aiModel = () => (providerOf() === 'anthropic' ? ANTHROPIC_MODEL : MODEL);
+
+const DATA_URL = /^data:([^;,]+);base64,(.*)$/s;
+/**
+ * The console builds requests in the chat-completions shape (a system message, text or
+ * image_url parts). For Claude: system messages become the `system` string, image data URLs
+ * become base64 image blocks, and JSON mode becomes an instruction (the reply is then trimmed
+ * to its JSON by jsonFromText).
+ */
+export function toAnthropicRequest(messages, { json = false } = {}) {
+  const system = [];
+  const out = [];
+  for (const m of messages) {
+    if (m.role === 'system') {
+      system.push(typeof m.content === 'string' ? m.content : (m.content || []).map((p) => p.text || '').join('\n'));
+      continue;
+    }
+    const role = m.role === 'assistant' ? 'assistant' : 'user';
+    if (typeof m.content === 'string') out.push({ role, content: m.content });
+    else {
+      const content = [];
+      for (const part of m.content || []) {
+        if (part.type === 'text') content.push({ type: 'text', text: part.text });
+        else if (part.type === 'image_url') {
+          const url = part.image_url?.url || '';
+          const d = DATA_URL.exec(url);
+          content.push(d ? { type: 'image', source: { type: 'base64', media_type: d[1], data: d[2] } } : { type: 'image', source: { type: 'url', url } });
+        }
+      }
+      out.push({ role, content });
+    }
+  }
+  if (json) system.push('Respond with a single JSON object and nothing else — no prose, no code fences.');
+  return { system: system.length ? system.join('\n\n') : undefined, messages: out };
+}
+
+/** The JSON object in a reply that may carry prose or a code fence around it. */
+export function jsonFromText(text) {
+  const t = String(text || '').trim();
+  const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(t);
+  const body = fence ? fence[1].trim() : t;
+  if (body.startsWith('{') || body.startsWith('[')) return body;
+  const i = body.search(/[{[]/);
+  return i >= 0 ? body.slice(i) : body;
+}
+
+let anthropicClient = null;
+async function callClaude(messages, { json = false } = {}) {
+  if (!anthropicClient) {
+    const { default: Anthropic } = await import('@anthropic-ai/sdk');
+    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 240000 });
+  }
+  const { system, messages: msgs } = toAnthropicRequest(messages, { json });
+  const params = { model: ANTHROPIC_MODEL, max_tokens: 64000, output_config: { effort: ANTHROPIC_EFFORT }, ...(system ? { system } : {}), messages: msgs };
+  let res;
+  try {
+    // streaming keeps long manual bodies clear of request timeouts; the server-side fallback
+    // re-runs a declined request on another model inside the same call
+    res = await anthropicClient.beta.messages.stream({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }).finalMessage();
+  } catch (e) {
+    if (e?.status === 400 && /fallback|betas/i.test(e.message || '')) res = await anthropicClient.messages.stream(params).finalMessage();
+    else throw e;
+  }
+  if (res.stop_reason === 'refusal') throw new Error(`The model declined this request${res.stop_details?.explanation ? `: ${res.stop_details.explanation}` : ''}`);
+  const text = res.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+  return json ? jsonFromText(text) : text;
+}
+
+/** One call for every text and vision request of the console, on whichever provider is configured. */
+export async function callModel(messages, opts = {}) {
+  const provider = providerOf();
+  if (provider === 'anthropic') return callClaude(messages, opts);
+  if (provider === 'openai') return callOpenAI(messages, opts);
+  throw new Error('No AI key is set — put ANTHROPIC_API_KEY (or OPENAI_API_KEY) in .env');
 }
 
 /**
@@ -65,7 +159,7 @@ export function aiAvailable() {
  * Polish is markedly better with it. Returns the plain transcript.
  */
 export async function transcribe(buffer, filename = 'speech.webm', lang = '') {
-  if (!aiAvailable()) throw new Error('OPENAI_API_KEY is not set — speech to text is unavailable');
+  if (!openaiAvailable()) throw new Error('Speech to text needs OPENAI_API_KEY (an OpenAI audio model)');
   if (!buffer?.length) throw new Error('No audio to transcribe');
   const form = new FormData();
   form.append('file', new Blob([buffer]), filename);
@@ -273,7 +367,7 @@ Respond with a JSON object: {"reply": "<short answer for the chat, 1-3 sentences
     role: 'user',
     content: `CURRENT DOCUMENT BODY:\n${content}\n\n(Answer or edit per the conversation above — the last user message is the active instruction.)`,
   };
-  const raw = await callOpenAI([{ role: 'system', content: sys }, ...convo, user], { json: true });
+  const raw = await callModel([{ role: 'system', content: sys }, ...convo, user], { json: true });
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -307,7 +401,7 @@ const IMAGE_QUALITY = process.env.OPENAI_IMAGE_QUALITY || 'medium';
  * by style exemplars); otherwise plain generation. Returns a PNG Buffer.
  */
 export async function generateImage({ prompt, reference = null, references = [] }) {
-  if (!aiAvailable()) throw new Error('OPENAI_API_KEY is not set');
+  if (!openaiAvailable()) throw new Error('Image generation needs OPENAI_API_KEY (an OpenAI image model) — the chat itself runs on the Anthropic key');
   const headers = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
   const inputs = [reference, ...references].filter((r) => r && r.buffer && r.buffer.length);
   let res;
@@ -439,7 +533,7 @@ export async function describeImage({ buffer, mimeType = 'image/jpeg', module, n
     units.length ? `. Hardware units of this module (id: name): ${units.join('; ')}` : ''
   }. File name: ${name || '—'}.
 Return JSON: {"kind": "photo"|"screenshot"|"drawing"|"diagram"|"other", "caption": "<figure caption in operating-manual English, one sentence, no marketing>", "alt": "<short alt text>", "description": "<what is visible: components, labels, connectors, on-screen text — 2-4 sentences, facts only>", "shows": [<ids of the hardware units visible, from the list, or empty>], "suggestedName": "<kebab-case file name with extension>", "text": "<any readable on-screen or label text, verbatim, or empty>"}.`;
-  const raw = await callOpenAI(
+  const raw = await callModel(
     [
       {
         role: 'user',
@@ -474,5 +568,3 @@ export async function downloadImage(url, { minBytes = 4096, headers = {} } = {})
   return { name, buffer };
 }
 
-/** The chat-completions call other modules build on (schematic chat). */
-export const callModel = callOpenAI;

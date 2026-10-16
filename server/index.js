@@ -1001,9 +1001,11 @@ app.get('/api/manuals/:slug/fat.pdf', wrap(async (req, res) => {
 app.get('/api/settings/ai', wrap(async (req, res) => {
   res.json({
     guidelines: await store.getAiGuidelines(),
-    model: process.env.OPENAI_MODEL || 'gpt-5',
-    reasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'low',
+    provider: ai.providerOf(),
+    model: ai.aiModel(),
+    reasoningEffort: ai.providerOf() === 'anthropic' ? process.env.ANTHROPIC_EFFORT || 'medium' : process.env.OPENAI_REASONING_EFFORT || 'low',
     available: ai.aiAvailable(),
+    imagesAvailable: ai.openaiAvailable(),
   });
 }));
 
@@ -1127,5 +1129,6 @@ await inbox.ensureInbox();
 await auth.initAuth();
 app.listen(PORT, () => {
   console.log(`FTD Documentation Console API on http://localhost:${PORT}`);
-  if (!ai.aiAvailable()) console.log('Note: OPENAI_API_KEY not set — AI assistant disabled.');
+  if (!ai.aiAvailable()) console.log('Note: no ANTHROPIC_API_KEY or OPENAI_API_KEY — AI assistant disabled.');
+  else console.log(`AI: ${ai.providerOf()} · ${ai.aiModel()}${ai.openaiAvailable() ? '' : ' · image generation and dictation off (OPENAI_API_KEY not set)'}`);
 });
