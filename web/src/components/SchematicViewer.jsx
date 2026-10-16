@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, schematicSvgUrl } from '../api.js';
 import { fitView, zoomAt, centerOn } from './schematicView.js';
+import { cableKindsFor, portOf, cableAt, compatibleTargets } from './schematicLib.js';
+import { useToast } from '../App.jsx';
 import { t, locale } from '../i18n.jsx';
 
 const SELECTABLE = '.sch-device[data-id], .sch-block[data-id], .sch-cable[data-id]';
@@ -12,8 +14,12 @@ const endOf = (e) => (e.block ? { kind: 'block', id: e.block, port: e.port } : {
  * the cursor, with a device, block or cable selected by a click — highlighted with everything it is
  * connected to, and described in the card beside it. No editing here: that is the Phase 2 canvas.
  */
-export default function SchematicViewer({ owner, data, v = 0, location = '' }) {
+export default function SchematicViewer({ owner, data, v = 0, location = '', canEdit = false, onChanged }) {
   const { state, schedule, view: scope } = data; // `scope` = one location's ids when the panel filters by rack
+  const editable = canEdit && data.editable;
+  const toast = useToast();
+  const [connecting, setConnecting] = useState(null); // { from: {device, port}, to?: {device, port} } → ConnectDialog
+  const [wire, setWire] = useState(null); // a wire being dragged from a port: { from, x1, y1, x2, y2 }
   const [svg, setSvg] = useState('');
   const [size, setSize] = useState({ w: 1, h: 1 });
   const [view, setView] = useState({ x: 0, y: 0, z: 1 });
@@ -66,14 +72,46 @@ export default function SchematicViewer({ owner, data, v = 0, location = '' }) {
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
+  // a port under the pointer: its device id and port id, or null
+  const portAt = (el) => {
+    const g = el?.closest ? el.closest('.sch-port') : null;
+    const dev = g?.closest('.sch-device[data-id]');
+    return g && dev ? { device: dev.getAttribute('data-id'), port: g.getAttribute('data-port') } : null;
+  };
+  const toContent = (clientX, clientY) => {
+    const r = boxRef.current.getBoundingClientRect();
+    return { x: (clientX - r.left - view.x) / view.z, y: (clientY - r.top - view.y) / view.z };
+  };
+  const markTargets = (from) => {
+    const root = contentRef.current;
+    root?.querySelectorAll('.sch-port-ok').forEach((el) => el.classList.remove('sch-port-ok'));
+    if (!from || !lib) return;
+    for (const tgt of compatibleTargets(lib, state, from.device, from.port)) {
+      root?.querySelector(`.sch-device[data-id="${CSS.escape(tgt.device)}"] .sch-port[data-port="${CSS.escape(tgt.port)}"]`)?.classList.add('sch-port-ok');
+    }
+  };
   const onPointerDown = (e) => {
     if (e.button !== 0) return;
-    drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, target: e.target };
+    const from = editable ? portAt(e.target) : null;
+    if (from) {
+      // dragging a wire out of a port, not panning
+      const p = toContent(e.clientX, e.clientY);
+      drag.current = { wire: true, from };
+      setWire({ from, x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+      markTargets(from);
+    } else {
+      drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, target: e.target };
+    }
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e) => {
     const d = drag.current;
     if (!d) return;
+    if (d.wire) {
+      const p = toContent(e.clientX, e.clientY);
+      setWire((w) => (w ? { ...w, x2: p.x, y2: p.y } : w));
+      return;
+    }
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
@@ -82,9 +120,36 @@ export default function SchematicViewer({ owner, data, v = 0, location = '' }) {
   const onPointerUp = (e) => {
     const d = drag.current;
     drag.current = null;
-    if (!d || d.moved) return;
+    if (!d) return;
+    if (d.wire) {
+      setWire(null);
+      markTargets(null);
+      const to = portAt(document.elementFromPoint(e.clientX, e.clientY));
+      if (!to || (to.device === d.from.device && to.port === d.from.port)) return;
+      if (to.device === d.from.device) return toast(t('A cable cannot join two ports of the same device'), 'err');
+      if (cableAt(state, to.device, to.port)) return toast(t('That port already has a cable — disconnect it first'), 'err');
+      const a = portOf(lib, state, d.from.device, d.from.port);
+      const b = portOf(lib, state, to.device, to.port);
+      if (!a || !b || !cableKindsFor(lib, a.connector, b.connector).length) return toast(t('No cable kind joins {a} to {b}', { a: a?.connector || '?', b: b?.connector || '?' }), 'err');
+      setConnecting({ from: d.from, to });
+      return;
+    }
+    if (d.moved) return;
     const hit = d.target.closest ? d.target.closest(SELECTABLE) : null;
     setSelected(hit ? { kind: kindOf(hit), id: hit.getAttribute('data-id') } : null);
+  };
+  const applyOps = async (ops, msg) => {
+    try {
+      await api.schematicOps(owner, ops, { summary: msg });
+      toast(msg);
+      onChanged?.();
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+  };
+  const disconnect = (c) => {
+    if (!window.confirm(t('Remove cable {name}?', { name: c.label || c.id }))) return;
+    applyOps([{ op: 'disconnect', id: c.id }], t('Cable {name} removed', { name: c.label || c.id }));
   };
   useEffect(() => {
     const esc = (e) => { if (e.key === 'Escape') setSelected(null); };
@@ -149,11 +214,16 @@ export default function SchematicViewer({ owner, data, v = 0, location = '' }) {
           <button className="btn btn-sm" onClick={() => setView((vw) => centerOn(vw, boxSize(), { x: size.w / 2, y: size.h / 2 }, 1))}>100%</button>
           {selected && <button className="btn btn-sm" onClick={() => centerSelected()}>{t('Centre on selection')}</button>}
         </div>
-        <span className="hint">{t('Scroll to zoom, drag to pan, click a device or cable to select it, Esc to clear.')}</span>
+        <span className="hint">{editable ? t('Scroll to zoom, drag to pan, click to select, Esc to clear — drag from a port stub to another port to connect them.') : t('Scroll to zoom, drag to pan, click a device or cable to select it, Esc to clear.')}</span>
       </div>
       <div className="sch-stage">
         <div ref={boxRef} className="sch-viewport" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => (drag.current = null)}>
           <div ref={contentRef} className="sch-content" style={{ width: size.w, height: size.h, transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }} dangerouslySetInnerHTML={{ __html: svg }} />
+          {wire && (
+            <svg className="sch-overlay" width={size.w} height={size.h} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>
+              <line x1={wire.x1} y1={wire.y1} x2={wire.x2} y2={wire.y2} />
+            </svg>
+          )}
           {!svg && <div className="empty">{t('Loading…')}</div>}
           <div className="sch-zoom-badge">{Math.round(view.z * 100)}%</div>
         </div>
@@ -169,16 +239,94 @@ export default function SchematicViewer({ owner, data, v = 0, location = '' }) {
                 ))}
               </div>
             )}
-            {selected && <Details selected={selected} state={state} schedule={schedule} lib={lib} onGo={go} onClose={() => setSelected(null)} />}
+            {selected && <Details selected={selected} state={state} schedule={schedule} lib={lib} onGo={go} onClose={() => setSelected(null)} editable={editable} onConnect={(from) => setConnecting({ from })} onDisconnect={disconnect} />}
           </aside>
         )}
+      </div>
+      {connecting && lib && (
+        <ConnectDialog lib={lib} state={state} from={connecting.from} to={connecting.to || null} onClose={() => setConnecting(null)}
+          onConfirm={(op) => { setConnecting(null); applyOps([op], t('Connected {a} to {b}', { a: op.from.device, b: op.to.device })); }} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Making a cable: the source port is fixed, the far end is either the port it was dragged onto or
+ * one picked here from the ports a cable kind can reach — then the kind (when several fit), a label
+ * and a length. The server validates again when the operation is posted.
+ */
+function ConnectDialog({ lib, state, from, to, onClose, onConfirm }) {
+  const nameOf = (id) => state.devices.find((d) => d.id === id)?.label || id;
+  const src = portOf(lib, state, from.device, from.port);
+  const targets = useMemo(() => compatibleTargets(lib, state, from.device, from.port), [lib, state, from]);
+  const [q, setQ] = useState('');
+  const [device, setDevice] = useState(to?.device || '');
+  const [port, setPort] = useState(to?.port || '');
+  const devices = useMemo(() => {
+    const ids = [...new Set(targets.map((x) => x.device))];
+    const qq = q.trim().toLowerCase();
+    return ids.filter((id) => !qq || `${nameOf(id)} ${id}`.toLowerCase().includes(qq));
+  }, [targets, q]);
+  // a filter that leaves one device picks it; one free port on it is picked too
+  useEffect(() => { if (devices.length === 1 && device !== devices[0]) { setDevice(devices[0]); setPort(''); } }, [devices.join('|')]);
+  const ports = targets.filter((x) => x.device === device);
+  useEffect(() => { if (ports.length === 1 && port !== ports[0].port) setPort(ports[0].port); }, [device, ports.length]);
+  const chosen = targets.find((x) => x.device === device && x.port === port) || null;
+  const kinds = chosen ? chosen.kinds : [];
+  const [kind, setKind] = useState('');
+  const [label, setLabel] = useState('');
+  const [length, setLength] = useState('');
+  useEffect(() => { setKind(kinds.length === 1 ? kinds[0] : kinds.includes(kind) ? kind : ''); }, [chosen?.device, chosen?.port]);
+  const kindLabel = (id) => lib.cables.find((c) => c.id === id)?.label || id;
+  const ok = chosen && kind;
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head"><h2>{t('New cable')}</h2></div>
+        <div className="modal-body">
+          <p><strong>{t('From')}:</strong> {nameOf(from.device)} · {src?.label || from.port} <span className="muted small">({src?.connector})</span></p>
+          {targets.length === 0 ? <p className="hint warn">{t('No free port on another device takes a cable from this connector.')}</p> : (
+            <div className="pair">
+              <label style={{ flex: 2 }}>{t('To device')}
+                <input value={q} placeholder={t('Filter…')} onChange={(e) => setQ(e.target.value)} />
+                <select size={6} value={device} onChange={(e) => { setDevice(e.target.value); setPort(''); }}>
+                  {devices.map((id) => <option key={id} value={id} onClick={() => { setDevice(id); setPort(''); }}>{nameOf(id)}</option>)}
+                </select>
+              </label>
+              <label style={{ flex: 1.4 }}>{t('Port')}
+                <select size={6} value={port} onChange={(e) => setPort(e.target.value)} disabled={!device}>
+                  {ports.map((x) => <option key={x.port} value={x.port} onClick={() => setPort(x.port)}>{x.portLabel} ({x.connector})</option>)}
+                </select>
+              </label>
+            </div>
+          )}
+          {chosen && (
+            <div className="pair">
+              <label>{t('Kind')}
+                {kinds.length === 1 ? <input value={kindLabel(kinds[0])} readOnly /> : (
+                  <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                    <option value="">{t('— choose —')}</option>
+                    {kinds.map((k) => <option key={k} value={k}>{kindLabel(k)}</option>)}
+                  </select>
+                )}
+              </label>
+              <label>{t('Label')}<input value={label} placeholder={t('e.g. PWR-12')} onChange={(e) => setLabel(e.target.value)} /></label>
+              <label style={{ flex: 0.6 }}>{t('Length (m)')}<input type="number" min="0" step="0.1" value={length} onChange={(e) => setLength(e.target.value)} /></label>
+            </div>
+          )}
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>{t('Cancel')}</button>
+          <button className="btn btn-primary" disabled={!ok} onClick={() => onConfirm({ op: 'connect', kind, from, to: { device: chosen.device, port: chosen.port }, label: label.trim(), ...(length ? { length: Number(length) } : {}) })}>{t('Connect')}</button>
+        </div>
       </div>
     </div>
   );
 }
 
 /** What the selected thing is and what hangs on it. */
-function Details({ selected, state, schedule, lib, onGo, onClose }) {
+function Details({ selected, state, schedule, lib, onGo, onClose, editable = false, onConnect, onDisconnect }) {
   const locName = (id) => state.locations.find((l) => l.id === id)?.label || id || '';
   const nameOf = (end) => (end.block ? state.blocks.find((b) => b.id === end.block)?.module || end.block : state.devices.find((d) => d.id === end.device)?.label || end.device);
   const row = (c) => schedule.find((s) => s.id === c.id) || {};
@@ -195,6 +343,7 @@ function Details({ selected, state, schedule, lib, onGo, onClose }) {
           <tr><th>{t('To')}</th><td><button className="link" onClick={() => onGo(endOf(c.to))}>{nameOf(c.to)}</button> · {s.toPort || c.to.port}</td></tr>
           {c.notes && <tr><th>{t('Notes')}</th><td>{c.notes}</td></tr>}
         </tbody></table>
+        {editable && <button className="btn btn-sm btn-danger" onClick={() => onDisconnect(c)}>{t('Remove cable')}</button>}
       </div>
     );
   }
@@ -223,7 +372,7 @@ function Details({ selected, state, schedule, lib, onGo, onClose }) {
       <div className="field-label">{t('Connections')} ({links.length})</div>
       {ports.length > 0 ? (
         <table className="table sch-table">
-          <thead><tr><th>{t('Port')}</th><th>{t('Connected to')}</th></tr></thead>
+          <thead><tr><th>{t('Port')}</th><th>{t('Connected to')}</th>{editable && <th></th>}</tr></thead>
           <tbody>
             {ports.map((p) => {
               const l = used.get(p.id);
@@ -231,6 +380,11 @@ function Details({ selected, state, schedule, lib, onGo, onClose }) {
                 <tr key={p.id} className={l ? '' : 'sch-free'}>
                   <td>{p.label} <span className="muted small">{p.connector}</span></td>
                   <td>{l ? <><button className="link" onClick={() => onGo(endOf(l.other))}>{l.otherLabel}</button> · {l.otherPort} <span className="muted small">({l.kind}, <button className="link" onClick={() => onGo({ kind: 'cable', id: l.c.id })}>{l.c.label || l.c.id}</button>)</span></> : <span className="muted">{t('free')}</span>}</td>
+                  {editable && !isBlock && (
+                    <td className="sch-act">
+                      {l ? <button className="btn btn-sm" onClick={() => onDisconnect(l.c)}>{t('Disconnect')}</button> : <button className="btn btn-sm" onClick={() => onConnect({ device: d.id, port: p.id })}>{t('Connect…')}</button>}
+                    </td>
+                  )}
                 </tr>
               );
             })}

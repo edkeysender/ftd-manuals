@@ -48,6 +48,7 @@ test('renderSvg emits one svg with a group per device, a frame per location, a p
   assert.equal((svg.match(/class="sch-frame/g) || []).length, 2);
   assert.equal((svg.match(/class="sch-cable/g) || []).length, 2);
   assert.match(svg, />Socket 1</);
+  assert.equal((svg.match(/class="sch-port-hit"/g) || []).length, (svg.match(/class="sch-port"/g) || []).length, 'every port has a hit area for dragging');
   assert.match(svg, />PWR-01</);
   assert.match(svg, /font-family="Verdana/);
   assert.match(svg, /stroke-dasharray="6 3"/, 'audio prints dashed');

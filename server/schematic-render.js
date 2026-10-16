@@ -151,7 +151,7 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
         const y2 = pt.y + (side === 'top' ? -STUB : side === 'bottom' ? STUB : 0);
         const tx = side === 'left' ? pt.x + 4 : side === 'right' ? pt.x - 4 : pt.x;
         const anchor = side === 'left' ? 'start' : side === 'right' ? 'end' : 'middle';
-        return `<g class="sch-port" data-port="${esc(p.id)}"><line x1="${box.x + pt.x}" y1="${box.y + pt.y}" x2="${box.x + x2}" y2="${box.y + y2}" stroke="${col}" stroke-width="1.5"/><text x="${box.x + tx}" y="${box.y + pt.y + 3}" font-size="7" text-anchor="${anchor}">${esc(p.label)}</text></g>`;
+        return `<g class="sch-port" data-port="${esc(p.id)}"><circle class="sch-port-hit" cx="${box.x + x2}" cy="${box.y + y2}" r="7" fill="transparent"/><line x1="${box.x + pt.x}" y1="${box.y + pt.y}" x2="${box.x + x2}" y2="${box.y + y2}" stroke="${col}" stroke-width="1.5"/><text x="${box.x + tx}" y="${box.y + pt.y + 3}" font-size="7" text-anchor="${anchor}">${esc(p.label)}</text></g>`;
       })
     );
     parts.push(`<g class="sch-${n.block ? 'block' : 'device'}" data-id="${esc(n.id)}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="#fff" stroke="#000" stroke-width="${n.block ? 1.6 : 1}"/><text x="${box.x + box.w / 2}" y="${box.y + 13}" font-size="9" font-weight="bold" text-anchor="middle">${esc(label)}</text>${sub ? `<text x="${box.x + box.w / 2}" y="${box.y + HEAD_H - 2}" font-size="6.5" text-anchor="middle" fill="#444">${esc(sub)}</text>` : ''}${ports.join('')}</g>`);

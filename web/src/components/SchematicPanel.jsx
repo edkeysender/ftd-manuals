@@ -156,7 +156,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
         <button className={tab === 'checks' ? 'active' : ''} onClick={() => setTab('checks')}>{t('Checks')}{errors + warnings ? ` (${errors + warnings})` : ''}</button>
       </div>
 
-      {tab === 'drawing' && <SchematicViewer owner={owner} data={data} v={v} location={location} />}
+      {tab === 'drawing' && <SchematicViewer owner={owner} data={data} v={v} location={location} canEdit={canEdit} onChanged={changed} />}
       {tab === 'cables' && (
         schedule.length === 0 ? <div className="empty">{t('No cables yet.')}</div> : (
           <table className="table">
