@@ -889,4 +889,8 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .rack-item.with-pic.sel { outline: 2px solid #e0007a; outline-offset: -2px; }
 .rack-item.with-pic.overlap { outline: 2px solid var(--red); outline-offset: -2px; }
 .rack-unplaced select { width: 100%; font-size: 12px; }
+.main.main-full { max-width: none; padding: 16px 18px; }
+.main-full .page.page-wide { max-width: none; }
+.main-full .sch-stage, .main-full .sch-viewport { min-height: 78vh; }
+.btn.active { background: var(--accent-soft-2); border-color: var(--accent); }
 

@@ -1285,4 +1285,8 @@ export const PL = {
   "Extra picture name, e.g. mainboard-io, gpu-io": "Nazwa dodatkowego obrazu, np. mainboard-io, gpu-io",
   "Add named picture…": "Dodaj nazwany obraz…",
   'Scroll to zoom, drag to pan, Esc to close.': 'Kółko przybliża, przeciąganie przesuwa, Esc zamyka.',
+  "Hide the rack elevation": "Ukryj widok szafy",
+  "Show the rack elevation": "Pokaż widok szafy",
+  "Hide rack view": "Ukryj widok szafy",
+  "Show rack view": "Pokaż widok szafy",
 };

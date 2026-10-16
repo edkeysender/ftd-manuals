@@ -75,6 +75,8 @@ export default function App() {
   }, []);
 
   const isEditor = /\/(edit|review)$/.test(location.pathname);
+  // an installation's schematic wants the whole window width for its drawing and rack strip
+  const isFull = /^\/installations\/[^/]+/.test(location.pathname);
   const { locale } = useLocale();
 
   if (user === undefined) return <div className="login-screen" lang={locale}><span className="muted">{t('connecting…')}</span></div>;
@@ -124,7 +126,7 @@ export default function App() {
             <LanguageSwitch />
           </header>
           {/* key: remount the page on a language switch so every string re-renders */}
-          <main className={isEditor ? 'main-editor' : 'main'} key={locale}>
+          <main className={isEditor ? 'main-editor' : `main${isFull ? ' main-full' : ''}`} key={locale}>
             <Routes>
               <Route path="/" element={<ModulesList />} />
               <Route path="/modules/:slug" element={<ModuleDetail />} />

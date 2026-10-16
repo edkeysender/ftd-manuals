@@ -22,6 +22,8 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
   const editable = canEdit && data.editable;
   const toast = useToast();
   const [face, setFace] = useState('front'); // which face of the selected rack the strip shows
+  const [showRack, setShowRack] = useState(() => { try { return localStorage.getItem('ftd-sch-rackmap') !== 'off'; } catch { return true; } });
+  const toggleRack = () => setShowRack((v) => { try { localStorage.setItem('ftd-sch-rackmap', v ? 'off' : 'on'); } catch {} return !v; });
   const [lightbox, setLightbox] = useState(null); // { src, caption } — a panel picture shown large
   const [connecting, setConnecting] = useState(null); // { from: {device, port}, to?: {device, port} } → ConnectDialog
   const [wire, setWire] = useState(null); // a wire being dragged from a port: { from, x1, y1, x2, y2 }
@@ -218,11 +220,12 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
           <button className="btn btn-sm" onClick={fit}>{t('Fit')}</button>
           <button className="btn btn-sm" onClick={() => setView((vw) => centerOn(vw, boxSize(), { x: size.w / 2, y: size.h / 2 }, 1))}>100%</button>
           {selected && <button className="btn btn-sm" onClick={() => centerSelected()}>{t('Centre on selection')}</button>}
+          {location && lib && rackMap(state, lib, location, face) && <button className={`btn btn-sm ${showRack ? 'active' : ''}`} onClick={toggleRack} title={showRack ? t('Hide the rack elevation') : t('Show the rack elevation')}>{showRack ? t('Hide rack view') : t('Show rack view')}</button>}
         </div>
         <span className="hint">{editable ? t('Scroll to zoom, drag to pan, click to select, Esc to clear — drag from a port stub to another port to connect them.') : t('Scroll to zoom, drag to pan, click a device or cable to select it, Esc to clear.')}</span>
       </div>
       <div className="sch-stage">
-        {location && lib && rackMap(state, lib, location, face) && (
+        {location && showRack && lib && rackMap(state, lib, location, face) && (
           <RackMap map={rackMap(state, lib, location, face)} rackLabel={state.locations.find((l) => l.id === location)?.label} selected={selected} editable={editable} face={face} onFace={setFace}
             onGo={(it) => go({ kind: it.kind, id: it.id })}
             onMove={(u) => selected && applyOps([{ op: 'update_device', id: selected.id, rack: { u, face } }], t('{name} moved to U{u} ({face})', { name: state.devices.find((d) => d.id === selected.id)?.label || selected.id, u, face: face === 'rear' ? t('rear') : t('front') }))} />
