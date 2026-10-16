@@ -17,6 +17,9 @@ import * as sources from './sources.js';
 import { blankContent, MANUAL_TYPES, MANUAL_ORDER, DEFAULT_MANUAL, manualTypeOf, MODULE_TYPES, moduleTypeOf, parseParts, parseDocKey, docKey, LANGUAGES, DEFAULT_LANG, langOf } from './docgen.js';
 import { templateChecklist } from './checklist.js';
 import * as inbox from './inbox.js';
+import * as sch from './schematics-store.js';
+import { renderSvg } from './schematic-render.js';
+import { OP_NAMES } from './schematic.js';
 
 const RO = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const RW = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
@@ -36,6 +39,9 @@ const LANG_PROP = {
 };
 
 /** Every doc-scoped tool addresses one manual of a module: `manual` + `version`, or a full key in `version`. */
+/** Schematic tools address a module (by slug) or an installation (by slug, name, or inst:<slug>). */
+const SCH_SLUG = { type: 'string', description: 'Module slug, or installation slug / name (or inst:<slug>). A module wins a tie. list_installations and search_modules name them.' };
+
 const SLUG_VER = {
   slug: { type: 'string', description:
       'Module slug (starting-panel), or the name of a software that owns its manuals ("UI Kiosk") — both own docs. list_modules and list_software name them.' },
@@ -764,10 +770,97 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: SLUG_VER, required: ['slug'] },
     annotations: { title: 'Start hotfix', ...RW },
   },
+  /* ---- schematics ---- */
+  {
+    name: 'list_installations',
+    description: 'List installations (one simulator delivery each): name, device, serial number, operator, and the state of its wiring schematic. An installation is the owner of the installation-level schematic that assembled manuals print.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { title: 'List installations', ...RO },
+  },
+  {
+    name: 'create_installation',
+    description: 'Create an installation with its first schematic draft (locations Rack 1, Instructor station, Cockpit unless `locations` is given). Its device / serial number / operator print on the cover of every manual that links it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' }, device: { type: 'string' }, serial_number: { type: 'string' }, operator: { type: 'string' },
+        locations: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, kind: { type: 'string', enum: ['rack', 'area'] }, unitsU: { type: 'number' } }, required: ['label'] } },
+      },
+      required: ['name'],
+    },
+    annotations: { title: 'Create installation', ...RW },
+  },
+  {
+    name: 'list_device_templates',
+    description: 'The device library: templates (id, name, category, manufacturer/model, ports with connector and direction) that schematics place. With include_rules also the connector kinds and which connector pairs each cable kind joins.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'Filter on id, name, manufacturer, model, category' }, include_rules: { type: 'boolean' } } },
+    annotations: { title: 'List device templates', ...RO },
+  },
+  {
+    name: 'create_device_template',
+    description: 'Add a device to the library. Ports: [{id?, label, connector, direction: in|out|bidir (default bidir), side: left|right|top|bottom}]. Connector ids come from list_device_templates {include_rules: true}. hardware_id links it to a hardware catalog item.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, symbol: { type: 'string' }, hardware_id: { type: 'string' }, notes: { type: 'string' },
+        ports: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, connector: { type: 'string' }, direction: { type: 'string', enum: ['in', 'out', 'bidir'] }, side: { type: 'string', enum: ['left', 'right', 'top', 'bottom'] } }, required: ['label', 'connector'] } },
+      },
+      required: ['name', 'ports'],
+    },
+    annotations: { title: 'Create device template', ...RW },
+  },
+  {
+    name: 'update_device_template',
+    description: 'Change a library device: any field of create_device_template; `ports` replaces the whole port list.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, symbol: { type: 'string' }, hardware_id: { type: 'string' }, notes: { type: 'string' }, ports: { type: 'array', items: { type: 'object' } } }, required: ['id'] },
+    annotations: { title: 'Update device template', ...RW },
+  },
+  {
+    name: 'promote_device_to_module',
+    description: 'Turn a library device into a module of its own (third-party kit with a technician manual, a catalog item, and a module schematic that exposes every port as an external port). Installation devices using the template are not converted.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string', description: 'Module name (default the template name)' }, code: { type: 'string' }, category: { type: 'string', enum: ['ios', 'cockpit', 'misc'] } }, required: ['id'] },
+    annotations: { title: 'Promote device to module', ...RW },
+  },
+  {
+    name: 'get_schematic',
+    description: 'The schematic of a module (its internal wiring and external ports) or of an installation (locations, module blocks, free devices, cables): the live state (open draft, else the released one), the released copy, validation errors/warnings, the cable schedule and, for a module, its connector face.',
+    inputSchema: { type: 'object', properties: { slug: SCH_SLUG, include_history: { type: 'boolean' } }, required: ['slug'] },
+    annotations: { title: 'Get schematic', ...RO },
+  },
+  {
+    name: 'create_schematic',
+    description: 'Start the first schematic draft (A1.0) of a module or installation, or — when one is released and none is open — the next version from it (bump minor → A1.1, major → A2.0).',
+    inputSchema: { type: 'object', properties: { slug: SCH_SLUG, bump: { type: 'string', enum: ['minor', 'major'] } }, required: ['slug'] },
+    annotations: { title: 'Create schematic', ...RW },
+  },
+  {
+    name: 'apply_schematic_ops',
+    description: `Change an open schematic with a list of operations — all applied as one commit, or none when any fails (the error names the op). Ops: ${OP_NAMES.join(', ')}. Shapes: {op:"add_device", id?, template, hardwareId?, label?, location?, rack?:{u}} · {op:"connect", id?, kind?, from:{device,port}|{block,port}, to:…, label?, length?} (kind inferred when one cable kind joins the connectors) · {op:"set_external_port", id?, label, device, port} (module) · {op:"add_location", id?, label, kind:"rack"|"area", unitsU?} · {op:"place_block", id?, module, location?, rack?} (module with a released schematic) · {op:"refresh_block", id} · {op:"remove_device"|"remove_block", id, cascade?} · {op:"disconnect"|"unset_external_port"|"remove_location", id} · {op:"update_device"|"update_cable"|"update_location", id, …fields} · {op:"move", id, x, y} · {op:"tidy", ids?}. dry_run validates and returns the would-be state without writing.`,
+    inputSchema: { type: 'object', properties: { slug: SCH_SLUG, ops: { type: 'array', items: { type: 'object' } }, summary: { type: 'string', description: 'One line for the revision history' }, dry_run: { type: 'boolean' } }, required: ['slug', 'ops'] },
+    annotations: { title: 'Apply schematic operations', ...RW },
+  },
+  { name: 'submit_schematic_for_review', description: 'Mark the open schematic draft as In review.', inputSchema: { type: 'object', properties: { slug: SCH_SLUG }, required: ['slug'] }, annotations: { title: 'Submit schematic for review', ...RW } },
+  { name: 'schematic_back_to_draft', description: 'Put an In-review schematic back to Draft.', inputSchema: { type: 'object', properties: { slug: SCH_SLUG }, required: ['slug'] }, annotations: { title: 'Schematic back to draft', ...RW } },
+  {
+    name: 'release_schematic',
+    description: 'Release the open schematic (merge to main) with the line the revision record prints. Refused while validation reports errors. On a hotfix it publishes the correction into the same version.',
+    inputSchema: { type: 'object', properties: { slug: SCH_SLUG, note: { type: 'string' } }, required: ['slug', 'note'] },
+    annotations: { title: 'Release schematic', ...RW },
+  },
+  { name: 'set_schematic_release_note', description: 'Write or correct the printed revision line of the released schematic.', inputSchema: { type: 'object', properties: { slug: SCH_SLUG, note: { type: 'string' } }, required: ['slug', 'note'] }, annotations: { title: 'Set schematic release note', ...RW } },
+  { name: 'start_schematic_hotfix', description: 'Reopen the released schematic for a correction (same version, next revision); release_schematic publishes it.', inputSchema: { type: 'object', properties: { slug: SCH_SLUG }, required: ['slug'] }, annotations: { title: 'Start schematic hotfix', ...RW } },
+  { name: 'discard_schematic', description: 'Drop the open schematic draft or hotfix. Irreversible from the API.', inputSchema: { type: 'object', properties: { slug: SCH_SLUG }, required: ['slug'] }, annotations: { title: 'Discard schematic', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false } },
+  {
+    name: 'render_schematic',
+    description: 'The schematic as a picture (PNG) — the live state, or the released one with released: true.',
+    inputSchema: { type: 'object', properties: { slug: SCH_SLUG, released: { type: 'boolean' }, lang: LANG_PROP }, required: ['slug'] },
+    annotations: { title: 'Render schematic', ...RO },
+  },
 ];
 
 /** Tools that address one doc of a module (slug + manual/version) — their `version` is resolved to a full key. */
 const DOC_SCOPED = new Set(TOOLS.filter((t) => t.inputSchema.properties?.version && t.inputSchema.properties?.manual).map((t) => t.name));
+const SCHEMATIC_TOOLS = new Set(TOOLS.filter((t) => t.inputSchema.properties?.slug === SCH_SLUG).map((t) => t.name));
 
 /**
  * Resolve the doc a call addresses to a key "<manual>:<version>":
@@ -873,9 +966,66 @@ async function callTool(name, args) {
     throw new Error('discard_doc needs an explicit version (e.g. "A1.0" with manual, or "technician:A1.0") — it is irreversible');
   }
   // `slug` may name a module or a software that owns its manuals — both are doc owners.
-  if (args && args.slug) args = { ...args, slug: await store.resolveOwnerRef(args.slug) };
-  if (DOC_SCOPED.has(name)) args = { ...args, version: await resolveDocKey(args) };
+  if (SCHEMATIC_TOOLS.has(name)) {
+    if (args && args.slug) args = { ...args, slug: await sch.resolveSchematicRef(args.slug) };
+  } else {
+    if (args && args.slug) args = { ...args, slug: await store.resolveOwnerRef(args.slug) };
+    if (DOC_SCOPED.has(name)) args = { ...args, version: await resolveDocKey(args) };
+  }
   switch (name) {
+    case 'list_installations':
+      return await sch.listInstallations();
+    case 'create_installation':
+      return await sch.createInstallation({ name: args.name, device: args.device, serialNumber: args.serial_number, operator: args.operator, locations: args.locations });
+    case 'list_device_templates': {
+      const lib = await sch.getLibrary();
+      const q = (args.query || '').toLowerCase().trim();
+      const devices = q ? lib.devices.filter((d) => [d.id, d.name, d.manufacturer, d.model, d.category].some((s) => String(s || '').toLowerCase().includes(q))) : lib.devices;
+      return args.include_rules ? { devices, connectors: lib.connectors, cables: lib.cables } : devices;
+    }
+    case 'create_device_template':
+      return await sch.createDeviceTemplate({ ...args, heightU: args.height_u, hardwareId: args.hardware_id });
+    case 'update_device_template': {
+      const { id, height_u, hardware_id, ...rest } = args;
+      const patch = { ...rest };
+      if (height_u !== undefined) patch.heightU = height_u;
+      if (hardware_id !== undefined) patch.hardwareId = hardware_id;
+      return await sch.updateDeviceTemplate(id, patch);
+    }
+    case 'promote_device_to_module':
+      return await sch.promoteDeviceToModule(args.id, { name: args.name, code: args.code, category: args.category });
+    case 'get_schematic': {
+      const s = await sch.getSchematic(args.slug);
+      if (!s) throw new Error(`"${args.slug}" has no schematic — create_schematic starts one (or the owner does not exist)`);
+      if (!args.include_history) delete s.history;
+      return s;
+    }
+    case 'create_schematic':
+      return await sch.createSchematic(args.slug, { bump: args.bump || 'minor' });
+    case 'apply_schematic_ops':
+      return await sch.applySchematicOps(args.slug, args.ops, { summary: args.summary, dryRun: !!args.dry_run });
+    case 'submit_schematic_for_review':
+      return await sch.setSchematicStatus(args.slug, 'in-review');
+    case 'schematic_back_to_draft':
+      return await sch.setSchematicStatus(args.slug, 'draft');
+    case 'release_schematic':
+      return await sch.releaseSchematic(args.slug, { note: args.note });
+    case 'set_schematic_release_note':
+      return await sch.setSchematicReleaseNote(args.slug, args.note);
+    case 'start_schematic_hotfix':
+      return await sch.startSchematicHotfix(args.slug);
+    case 'discard_schematic':
+      return await sch.discardSchematic(args.slug);
+    case 'render_schematic': {
+      const s = await sch.getSchematic(args.slug);
+      if (!s) throw new Error(`"${args.slug}" has no schematic`);
+      const state = args.released ? s.released : s.state;
+      if (!state) throw new Error('No released schematic yet');
+      const svg = await renderSvg(state, await sch.schematicContext(), { lang: langOf(args.lang || DEFAULT_LANG), title: s.owner.name });
+      const png = await images.rasterizeWide(svg, 1600);
+      const info = images.sniff(png);
+      return richContent([{ type: 'image', data: png.toString('base64'), mimeType: 'image/png' }, { type: 'text', text: JSON.stringify({ owner: s.owner, version: state.version, revision: state.revision, status: state.status, width: info?.width, height: info?.height }) }]);
+    }
     case 'list_manual_types':
       return MANUAL_ORDER.map((id) => MANUAL_TYPES[id]);
     case 'list_software': {
