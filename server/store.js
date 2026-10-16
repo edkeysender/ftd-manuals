@@ -2621,6 +2621,18 @@ export async function linkReleaseToDoc(slug, docKeyOrVersion, swName, swVersion)
 
 const AI_GUIDELINES_FILE = 'settings/ai-guidelines.md';
 
+/* ------------------------------------------------------------------ */
+/* Schematics hook — schematics-store.js registers how a module's       */
+/* released wiring is rendered; the store never imports that module.   */
+/* ------------------------------------------------------------------ */
+let schematicProvider = null;
+/** { forManual({module, manual, lang}), installationChapter(manualRecord, lang) } — set by schematics-store.js */
+export function setSchematicProvider(p) {
+  schematicProvider = p;
+}
+const schematicFor = (args) => (schematicProvider ? schematicProvider.forManual(args) : Promise.resolve(null));
+const installationChapter = (manual, lang) => (schematicProvider ? schematicProvider.installationChapter(manual, lang) : Promise.resolve(null));
+
 export async function getAiGuidelines() {
   return (await repo.show('main', AI_GUIDELINES_FILE)) || '';
 }

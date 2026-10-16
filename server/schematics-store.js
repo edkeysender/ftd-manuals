@@ -196,16 +196,106 @@ export async function deleteInstallation(slug) {
   return { slug, branchesDeleted: branches };
 }
 
-/* ---- schematic lifecycle (Task 5 fills these in) ---- */
+/* ------------------------------------------------------------------ */
+/* Schematic lifecycle                                                 */
+/* ------------------------------------------------------------------ */
+
 const schematicFile = (ref) => (isInstRef(ref) ? `installations/${refSlug(ref)}/schematic.json` : `modules/${refSlug(ref)}/schematic.json`);
 const branchPrefix = (ref) => `draft/${isInstRef(ref) ? `inst/${refSlug(ref)}` : refSlug(ref)}-schematic-`;
 const branchFor = (ref, version) => `${branchPrefix(ref)}${String(version).toLowerCase()}`;
+const MODULE_SCH_RE = /^modules\/([^/]+)\/schematic\.json$/;
+const isOpen = (s) => s.status === 'draft' || s.status === 'in-review';
+const isEditable = (s) => isOpen(s) || !!s.hotfix;
+
+export function dropCaches() {
+  libCache = null;
+}
+
+/** The owner a ref names, shaped alike for both kinds, or null. */
+async function ownerOf(ref) {
+  if (isInstRef(ref)) {
+    const rec = await getInstallation(refSlug(ref));
+    return rec ? { ref, kind: 'installation', slug: rec.slug, name: rec.name, record: rec } : null;
+  }
+  const m = await store.getModule(ref);
+  if (!m || m.module.kind === 'software') return null;
+  return { ref, kind: 'module', slug: m.module.slug, name: m.module.name, module: m.module };
+}
+
+/** What a caller wrote — a module slug, an installation slug or name, or inst:<slug>. Modules win. */
+export async function resolveSchematicRef(ref) {
+  ref = str(ref);
+  if (!ref || isInstRef(ref)) return ref;
+  if ((await store.listModules()).some((m) => m.slug === ref)) return ref;
+  const slug = slugify(ref);
+  const inst = (await listInstallationRecords()).find((i) => i.slug === slug || i.name === ref);
+  return inst ? instRef(inst.slug) : ref;
+}
+
+async function listInstallationRecords() {
+  const files = (await repo.lsFiles('main', 'installations')).filter((f) => INST_FILE_RE.test(f));
+  const recs = await readJsonMany(files.map((file) => ({ ref: 'main', file })));
+  return files.map((f) => recs.get(`main:${f}`)).filter(Boolean);
+}
 
 async function readLive(ref) {
   const prefix = branchPrefix(ref);
   const branch = (await repo.branches()).find((b) => b.startsWith(prefix)) || null;
   const draftState = branch ? await readJson(branch, schematicFile(ref)) : null;
   return { draft: draftState ? { state: draftState, branch } : null, main: await readJson('main', schematicFile(ref)) };
+}
+
+export async function releasedSchematicOf(slug) {
+  const s = await readJson('main', schematicFile(slug));
+  return s && s.status === 'released' ? s : null;
+}
+
+/** Every released module schematic on main, by slug. */
+async function releasedModuleSchematics() {
+  const files = (await repo.lsFiles('main', 'modules')).filter((f) => MODULE_SCH_RE.test(f));
+  const recs = await readJsonMany(files.map((file) => ({ ref: 'main', file })));
+  const map = new Map();
+  for (const f of files) {
+    const s = recs.get(`main:${f}`);
+    if (s && s.status === 'released') map.set(MODULE_SCH_RE.exec(f)[1], s);
+  }
+  return map;
+}
+
+export async function schematicContext() {
+  const [library, catalog, modules, releasedSchematics] = await Promise.all([getLibrary(), store.listHardware(), store.listModules(), releasedModuleSchematics()]);
+  return { library, catalog, modules: modules.map((m) => ({ slug: m.slug, name: m.name })), releasedSchematics };
+}
+
+export async function getSchematic(ref) {
+  const owner = await ownerOf(ref);
+  if (!owner) return null;
+  const live = await readLive(ref);
+  const state = live.draft?.state || live.main;
+  if (!state) return null;
+  const ctx = await schematicContext();
+  const released = live.main && live.main.status === 'released' ? live.main : null;
+  const history = [];
+  const seen = new Set();
+  for (const r of [live.draft?.branch, 'main'].filter(Boolean)) {
+    for (const c of await repo.log(r, schematicFile(ref), 50)) if (!seen.has(c.hash)) {
+      seen.add(c.hash);
+      history.push({ ...c, ref: r });
+    }
+  }
+  history.sort((a, b) => b.date.localeCompare(a.date));
+  return {
+    owner: { ref: owner.ref, kind: owner.kind, slug: owner.slug, name: owner.name },
+    state,
+    released,
+    isDraft: isOpen(state),
+    editable: isEditable(state),
+    branch: live.draft?.branch || null,
+    validation: validateSchematic(state, ctx),
+    schedule: cableSchedule(state, ctx),
+    face: state.kind === 'module' ? connectorFace(state, ctx) : [],
+    history: history.slice(0, 50),
+  };
 }
 
 /** Write the first draft of a schematic on its own branch. Caller holds the lock. */
@@ -221,15 +311,156 @@ async function writeFirstSchematic(ref, state) {
   return state;
 }
 
+const bumpVersion = (version, bump) => {
+  const m = /^A(\d+)\.(\d+)$/.exec(version);
+  if (!m) throw new Error(`Bad version ${version}`);
+  return bump === 'major' ? `A${+m[1] + 1}.0` : `A${m[1]}.${+m[2] + 1}`;
+};
+
+/** First draft when there is none; else the next version, started from the released netlist. */
+export async function createSchematic(ref, { bump = 'minor' } = {}) {
+  const owner = await ownerOf(ref);
+  if (!owner) throw new Error(`${isInstRef(ref) ? 'Installation' : 'Module'} "${refSlug(ref)}" not found`);
+  const live = await readLive(ref);
+  if (live.draft) throw new Error(`Schematic ${live.draft.state.version} is already open${live.draft.state.hotfix ? ' (hotfix)' : ''} — finish or discard it first`);
+  let state;
+  if (!live.main) state = startingState(ref, []);
+  else {
+    const prev = live.main;
+    const ts = now();
+    state = {
+      ...prev,
+      version: bumpVersion(prev.version, bump),
+      revision: 1,
+      status: 'draft',
+      branch: null,
+      createdAt: ts,
+      updatedAt: ts,
+      releasedAt: null,
+      hotfix: null,
+      revisions: [],
+      releaseRecord: (prev.releaseRecord || []).map((r) => ({ ...r, inherited: true })),
+    };
+  }
+  await change(() => writeFirstSchematic(ref, state));
+  return state;
+}
+
+async function loadDraft(ref) {
+  const owner = await ownerOf(ref);
+  if (!owner) throw new Error(`${isInstRef(ref) ? 'Installation' : 'Module'} "${refSlug(ref)}" not found`);
+  const live = await readLive(ref);
+  if (!live.draft) throw new Error(`${owner.name} has no open draft schematic${live.main ? ` — ${live.main.version} is ${live.main.status}; start the next version or a hotfix` : ''}`);
+  if (!isEditable(live.draft.state)) throw new Error(`Schematic ${live.draft.state.version} is ${live.draft.state.status} — not editable`);
+  return { owner, ...live.draft };
+}
+
+async function writeDraft(ref, branch, state, message) {
+  await repo.checkout(branch);
+  await repo.writeFile(schematicFile(ref), json(state));
+  await repo.commitAll(message);
+  await repo.checkout('main');
+}
+
+export async function applySchematicOps(ref, ops, { summary = '', dryRun = false } = {}) {
+  const { owner, state, branch } = await loadDraft(ref);
+  const ctx = await schematicContext();
+  const applied = applyOps(state, ops, ctx);
+  const next = applied.state;
+  const validation = validateSchematic(next, ctx);
+  if (dryRun) return { state: next, summary: applied.summary, validation };
+  const ts = now();
+  next.revision = state.revision + 1;
+  const line = str(summary) || applied.summary[0] + (applied.summary.length > 1 ? ` (+${applied.summary.length - 1})` : '');
+  next.revisions = [...(state.revisions || []), { rev: `r${next.revision}`, date: ts, summary: line }];
+  next.updatedAt = ts;
+  await change(() => writeDraft(ref, branch, next, `${owner.slug} schematic ${next.version} r${next.revision}: ${line}`));
+  return { state: next, summary: applied.summary, validation };
+}
+
+export async function setSchematicStatus(ref, status) {
+  if (!['draft', 'in-review'].includes(status)) throw new Error('Invalid status transition');
+  const { owner, state, branch } = await loadDraft(ref);
+  if (state.hotfix) throw new Error('A hotfix is published, not reviewed');
+  state.status = status;
+  state.updatedAt = now();
+  await change(() => writeDraft(ref, branch, state, `${owner.slug} schematic ${state.version}: ${status === 'in-review' ? 'submit for review' : 'back to draft'}`));
+  return state;
+}
+
+export async function releaseSchematic(ref, { note = '' } = {}) {
+  const { owner, state, branch } = await loadDraft(ref);
+  const summary = str(note).replace(/\s+/g, ' ');
+  if (!summary) throw Object.assign(new Error('Say what this release changes for the reader — that line is printed in the revision record.'), { code: 'note-required' });
+  const ctx = await schematicContext();
+  const { errors } = validateSchematic(state, ctx);
+  if (errors.length) throw Object.assign(new Error(`The schematic cannot be released: ${errors.map((e) => e.message).join('; ')}`), { code: 'blockers', blockers: errors });
+  const ts = now();
+  const line = { rev: `r${state.revision}`, version: state.version, date: ts, summary, public: true };
+  const final = { ...state, status: 'released', branch: null, hotfix: null, releasedAt: ts, updatedAt: ts, releaseRecord: [...(state.releaseRecord || []), line] };
+  await change(async () => {
+    await repo.checkout('main');
+    if (!state.hotfix) await repo.merge(branch, `Merge ${branch}: release ${owner.slug} schematic ${state.version}`);
+    await repo.writeFile(schematicFile(ref), json(final));
+    await repo.commitAll(`${owner.slug}: ${state.hotfix ? `publish schematic hotfix ${state.version} r${state.revision}` : `release schematic ${state.version}`}`);
+    await repo.deleteBranch(branch);
+  });
+  return final;
+}
+
+export async function setSchematicReleaseNote(ref, note) {
+  const owner = await ownerOf(ref);
+  if (!owner) throw new Error(`Schematic owner "${refSlug(ref)}" not found`);
+  const live = await readLive(ref);
+  if (!live.main || live.main.status !== 'released') throw new Error('Only a released schematic takes a release line');
+  if (live.draft?.state.hotfix) throw new Error(`${live.main.version} is being hotfixed — its line is given when the hotfix is published`);
+  const summary = str(note).replace(/\s+/g, ' ');
+  if (!summary) throw Object.assign(new Error('The release line cannot be empty'), { code: 'note-required' });
+  const state = live.main;
+  const idx = state.releaseRecord.findLastIndex((r) => r.version === state.version && !r.inherited);
+  if (idx >= 0) state.releaseRecord[idx] = { ...state.releaseRecord[idx], summary };
+  else state.releaseRecord.push({ rev: `r${state.revision}`, version: state.version, date: state.releasedAt, summary, public: true });
+  state.updatedAt = now();
+  await change(() => writeOnMain(schematicFile(ref), state, `${owner.slug}: schematic ${state.version} release line`));
+  return state;
+}
+
+export async function startSchematicHotfix(ref) {
+  const owner = await ownerOf(ref);
+  if (!owner) throw new Error(`${isInstRef(ref) ? 'Installation' : 'Module'} "${refSlug(ref)}" not found`);
+  const live = await readLive(ref);
+  if (live.draft) throw new Error(live.draft.state.hotfix ? `${live.draft.state.version} is already being hotfixed` : `Schematic ${live.draft.state.version} is open (${live.draft.state.status}) — finish it before hotfixing`);
+  if (!live.main || live.main.status !== 'released') throw new Error('A hotfix corrects a released schematic');
+  const ts = now();
+  const state = { ...live.main, revision: live.main.revision + 1, updatedAt: ts, branch: branchFor(ref, live.main.version), hotfix: { startedAt: ts, baseRevision: live.main.revision } };
+  state.revisions = [...(state.revisions || []), { rev: `r${state.revision}`, date: ts, summary: 'Hotfix (draft)' }];
+  await change(async () => {
+    await repo.checkout('main');
+    await repo.createBranch(state.branch, 'main');
+    await repo.writeFile(schematicFile(ref), json(state));
+    await repo.commitAll(`${owner.slug} schematic ${state.version}: start hotfix r${state.revision}`);
+    await repo.checkout('main');
+  });
+  return state;
+}
+
+export async function discardSchematic(ref) {
+  const { branch } = await loadDraft(ref);
+  await change(async () => {
+    await repo.checkout('main');
+    await repo.deleteBranch(branch);
+  });
+  return { ok: true };
+}
+
 /** Every schematic there is, live copy each: [{ref, state}]. */
 async function allSchematics() {
   const out = [];
-  const files = await repo.lsFiles('main', ['modules', 'installations']);
   const refs = new Set();
-  for (const f of files) {
-    let m = /^modules\/([^/]+)\/schematic\.json$/.exec(f);
+  for (const f of await repo.lsFiles('main', ['modules', 'installations'])) {
+    let m = MODULE_SCH_RE.exec(f);
     if (m) refs.add(m[1]);
-    if ((m = INST_FILE_RE.exec(f))) refs.add(instRef(m[1]));
+    if ((m = /^installations\/([^/]+)\/schematic\.json$/.exec(f))) refs.add(instRef(m[1]));
   }
   for (const b of await repo.branches()) {
     let m = /^draft\/inst\/([^/]+)-schematic-a\d+\.\d+$/.exec(b);
@@ -242,4 +473,36 @@ async function allSchematics() {
     if (state) out.push({ ref, state });
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* Promotion: a library device becomes a module                        */
+/* ------------------------------------------------------------------ */
+
+export async function promoteDeviceToModule(templateId, { name, code = null, category = 'misc' } = {}) {
+  const lib = await getLibrary();
+  const t = lib.devices.find((d) => d.id === templateId);
+  if (!t) throw new Error(`Device template "${templateId}" not found`);
+  const moduleName = str(name) || t.name;
+  const { blankContent } = await import('./docgen.js');
+  const created = await store.createModuleDoc(
+    {
+      name: moduleName,
+      code: str(code) || null,
+      category,
+      type: 'third-party-kit',
+      softwares: [],
+      hardware: t.hardwareId ? [{ id: t.hardwareId }] : [{ name: t.name, type: 'cots', manufacturer: t.manufacturer, model: t.model, notes: t.notes }],
+    },
+    [{ manual: 'technician', content: blankContent(moduleName, [], 'technician', []) }]
+  );
+  const hardwareId = created.hardware[0].id;
+  if (t.hardwareId !== hardwareId) await updateDeviceTemplate(t.id, { hardwareId });
+  await createSchematic(created.slug);
+  const ops = [
+    { op: 'add_device', id: 'unit', template: t.id, hardwareId, label: t.name },
+    ...t.ports.map((p) => ({ op: 'set_external_port', id: p.id, label: p.label, device: 'unit', port: p.id })),
+  ];
+  const { state } = await applySchematicOps(created.slug, ops, { summary: `Promoted from library device ${t.name}` });
+  return { slug: created.slug, hardwareId, schematic: state };
 }

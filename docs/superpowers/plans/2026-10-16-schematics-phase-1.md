@@ -1201,6 +1201,7 @@ const store = await import('./store.js');
 await store.initStore();
 const sch = await import('./schematics-store.js');
 const { blankContent } = await import('./docgen.js');
+const { SchematicError } = await import('./schematic.js');
 
 test.after(() => fs.rmSync(process.env.FTD_DATA_DIR, { recursive: true, force: true }));
 
@@ -1628,13 +1629,6 @@ test('module schematic: create, ops as commits, review, release with note, next 
   await sch.discardSchematic(slug);
   assert.equal((await sch.getSchematic(slug)).state.version, 'A1.0');
   await assert.rejects(sch.discardSchematic(slug), /no open draft/i);
-});
-
- // unrelated template, may or may not exist
-  // make an error: remove the switch template from the library file behind the schematic's back
-  const lib = await sch.getLibrary();
-  await assert.rejects(sch.deleteDeviceTemplate('switch-24'), /Broken module|broken-module/);
-  await assert.rejects(sch.releaseSchematic(slug, { note: 'x' }), (e) => e.code === 'blockers' || /unpowered|blockers|release/i.test(e.message) === false ? false : true);
 });
 
 test('hotfix: branch reopens the released version, publish writes it back, release note can be rewritten', async () => {

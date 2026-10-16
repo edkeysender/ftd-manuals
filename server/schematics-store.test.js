@@ -9,6 +9,7 @@ const store = await import('./store.js');
 await store.initStore();
 const sch = await import('./schematics-store.js');
 const { blankContent } = await import('./docgen.js');
+const { SchematicError } = await import('./schematic.js');
 
 test.after(() => fs.rmSync(process.env.FTD_DATA_DIR, { recursive: true, force: true }));
 
@@ -62,4 +63,174 @@ test('a manual can link an installation', async () => {
   await store.updateManual(m.slug, { installation: '' });
   assert.equal((await store.getManual(m.slug)).installation, null);
   await sch.deleteInstallation(inst.slug);
+});
+
+async function makeModule(name, hardware = []) {
+  const r = await store.createModuleDoc({ name, hardware, softwares: [] }, [{ manual: 'technician', content: blankContent(name, [], 'technician', []) }]);
+  return r.slug;
+}
+
+test('module schematic: create, ops as commits, review, release with note, next version', async () => {
+  const slug = await makeModule('Audio system', [{ name: 'Behringer UMC404HD', type: 'cots', manufacturer: 'Behringer', model: 'UMC404HD' }]);
+  assert.equal(await sch.getSchematic(slug), null, 'no schematic yet');
+  assert.equal(await sch.getSchematic('no-such-module'), null);
+  const created = await sch.createSchematic(slug);
+  assert.equal(created.version, 'A1.0');
+  assert.equal(created.branch, `draft/${slug}-schematic-a1.0`);
+  await assert.rejects(sch.createSchematic(slug), /already open/);
+
+  const hwId = (await store.listHardware()).find((h) => h.name === 'Behringer UMC404HD').id;
+  const dry = await sch.applySchematicOps(slug, [{ op: 'add_device', id: 'umc', hardwareId: hwId, template: 'behringer-umc404hd' }], { dryRun: true });
+  assert.equal(dry.state.devices.length, 1);
+  assert.equal((await sch.getSchematic(slug)).state.devices.length, 0, 'dry run writes nothing');
+
+  const r = await sch.applySchematicOps(
+    slug,
+    [
+      { op: 'add_device', id: 'umc', hardwareId: hwId, template: 'behringer-umc404hd', label: 'UMC404HD' },
+      { op: 'add_device', id: 'hs', template: 'headset', label: 'Headset L' },
+      { op: 'connect', id: 'c1', from: { device: 'umc', port: 'phones-1' }, to: { device: 'hs', port: 'jack' }, label: 'AUD-01' },
+      { op: 'set_external_port', id: 'power-in', label: 'Power in', device: 'umc', port: 'pwr' },
+    ],
+    { summary: 'First wiring' }
+  );
+  assert.equal(r.state.revision, 2);
+  assert.equal(r.summary.length, 4);
+  await assert.rejects(sch.applySchematicOps(slug, [{ op: 'connect', from: { device: 'umc', port: 'nope' }, to: { device: 'hs', port: 'jack' } }]), (e) => e instanceof SchematicError && e.index === 0);
+
+  let g = await sch.getSchematic(slug);
+  assert.equal(g.owner.kind, 'module');
+  assert.equal(g.owner.name, 'Audio system');
+  assert.equal(g.isDraft, true);
+  assert.equal(g.face.length, 1);
+  assert.equal(g.schedule[0].kindLabel, 'Audio');
+  assert.ok(g.history.length >= 2);
+  assert.ok(g.validation.warnings.some((w) => w.code === 'device-unpowered'));
+
+  await assert.rejects(sch.releaseSchematic(slug, { note: '' }), (e) => e.code === 'note-required');
+  assert.equal((await sch.setSchematicStatus(slug, 'in-review')).status, 'in-review');
+  const rel = await sch.releaseSchematic(slug, { note: 'Initial wiring of the audio system.' });
+  assert.equal(rel.status, 'released');
+  assert.equal(rel.branch, null);
+  assert.equal(rel.releaseRecord.at(-1).summary, 'Initial wiring of the audio system.');
+  assert.ok(rel.releaseRecord.at(-1).public);
+  assert.ok(!(await store.repo.branches()).includes(`draft/${slug}-schematic-a1.0`));
+  g = await sch.getSchematic(slug);
+  assert.equal(g.isDraft, false);
+  assert.equal(g.released.version, 'A1.0');
+  assert.equal((await sch.releasedSchematicOf(slug)).revision, rel.revision);
+  await assert.rejects(sch.applySchematicOps(slug, [{ op: 'tidy' }]), /no open draft/i);
+
+  const next = await sch.createSchematic(slug, { bump: 'minor' });
+  assert.equal(next.version, 'A1.1');
+  assert.equal(next.revision, 1);
+  assert.equal(next.devices.length, 2, 'the next version starts from the released netlist');
+  assert.equal((await sch.releasedSchematicOf(slug)).version, 'A1.0', 'main still holds the release');
+  g = await sch.getSchematic(slug);
+  assert.equal(g.state.version, 'A1.1');
+  assert.equal(g.released.version, 'A1.0');
+  await sch.discardSchematic(slug);
+  assert.equal((await sch.getSchematic(slug)).state.version, 'A1.0');
+  await assert.rejects(sch.discardSchematic(slug), /no open draft/i);
+});
+
+test('hotfix: branch reopens the released version, publish writes it back, release note can be rewritten', async () => {
+  const slug = await makeModule('Hotfix module');
+  await sch.createSchematic(slug);
+  await sch.applySchematicOps(slug, [{ op: 'add_device', id: 'hs', template: 'headset', label: 'Headset' }]);
+  await sch.releaseSchematic(slug, { note: 'First.' });
+  const released = await sch.releasedSchematicOf(slug);
+  await assert.rejects(sch.startSchematicHotfix('no-such'), /not found/);
+  const hf = await sch.startSchematicHotfix(slug);
+  assert.equal(hf.revision, released.revision + 1);
+  assert.ok(hf.hotfix);
+  assert.equal(hf.status, 'released');
+  await assert.rejects(sch.createSchematic(slug), /hotfix|open/i);
+  await assert.rejects(sch.startSchematicHotfix(slug), /already/);
+  const g = await sch.getSchematic(slug);
+  assert.equal(g.editable, true);
+  await sch.applySchematicOps(slug, [{ op: 'update_device', id: 'hs', label: 'Headset (captain)' }]);
+  assert.equal((await sch.releasedSchematicOf(slug)).devices[0].label, 'Headset', 'main keeps compiling the released copy');
+  const pub = await sch.releaseSchematic(slug, { note: 'Renamed the headset.' });
+  assert.equal(pub.hotfix, null);
+  assert.equal(pub.version, 'A1.0');
+  assert.equal((await sch.releasedSchematicOf(slug)).devices[0].label, 'Headset (captain)');
+  const noted = await sch.setSchematicReleaseNote(slug, 'Renamed the captain headset.');
+  assert.equal(noted.releaseRecord.at(-1).summary, 'Renamed the captain headset.');
+});
+
+test('installation: blocks follow released module schematics, outdated blocks are reported, resolveSchematicRef', async () => {
+  const slug = await makeModule('Rack audio');
+  await sch.createSchematic(slug);
+  await sch.applySchematicOps(slug, [{ op: 'add_device', id: 'umc', template: 'behringer-umc404hd' }, { op: 'set_external_port', id: 'power-in', label: 'Power in', device: 'umc', port: 'pwr' }]);
+  await assert.rejects(sch.applySchematicOps(instRefOf(await sch.createInstallation({ name: 'Sim A' })), [{ op: 'place_block', id: 'audio', module: slug, location: 'rack-1' }]), /no released schematic/);
+  await sch.releaseSchematic(slug, { note: 'Released.' });
+  const ref = sch.instRef('sim-a');
+  assert.equal(await sch.resolveSchematicRef('Sim A'), ref);
+  assert.equal(await sch.resolveSchematicRef('sim-a'), ref);
+  assert.equal(await sch.resolveSchematicRef(slug), slug);
+  const g0 = await sch.getSchematic(ref);
+  assert.equal(g0.owner.kind, 'installation');
+  assert.equal(g0.state.locations.length, 3, 'default locations');
+  await sch.applySchematicOps(ref, [
+    { op: 'place_block', id: 'audio', module: slug, location: 'rack-1' },
+    { op: 'add_device', id: 'pdu-1', template: 'pdu-8', label: 'Power strip 1', location: 'rack-1' },
+    { op: 'connect', from: { device: 'pdu-1', port: 'out-1' }, to: { block: 'audio', port: 'power-in' }, label: 'PWR-01' },
+  ]);
+  let g = await sch.getSchematic(ref);
+  assert.deepEqual(g.validation.errors, []);
+  assert.equal(g.schedule[0].to, 'Rack audio');
+  // the module releases a new schematic version: the block is outdated until refreshed
+  await sch.createSchematic(slug);
+  await sch.applySchematicOps(slug, [{ op: 'add_device', id: 'hs', template: 'headset' }]);
+  await sch.releaseSchematic(slug, { note: 'Added the headset.' });
+  g = await sch.getSchematic(ref);
+  assert.ok(g.validation.warnings.some((w) => w.code === 'block-outdated'));
+  await sch.applySchematicOps(ref, [{ op: 'refresh_block', id: 'audio' }]);
+  g = await sch.getSchematic(ref);
+  assert.ok(!g.validation.warnings.some((w) => w.code === 'block-outdated'));
+  assert.equal(g.state.blocks[0].schematic.version, 'A1.1');
+  const rel = await sch.releaseSchematic(ref, { note: 'Installation wiring issue 1.' });
+  assert.equal(rel.status, 'released');
+  const list = await sch.listInstallations();
+  assert.equal(list.find((i) => i.slug === 'sim-a').schematic.status, 'released');
+});
+
+function instRefOf(rec) {
+  return sch.instRef(rec.slug);
+}
+
+test('promoteDeviceToModule creates the module, its catalog item and a schematic exposing every port', async () => {
+  const t = await sch.createDeviceTemplate({ name: 'Cisco SG350', category: 'switch', manufacturer: 'Cisco', model: 'SG350-10', ports: [{ id: 'pwr', label: 'Power', connector: 'iec-c14', direction: 'in' }, { id: 'p1', label: 'Port 1', connector: 'rj45' }] });
+  const r = await sch.promoteDeviceToModule(t.id, { name: 'Core switch', code: 'CSW' });
+  assert.equal(r.slug, 'core-switch');
+  const m = await store.getModule('core-switch');
+  assert.equal(m.module.hardwareItems[0].manufacturer, 'Cisco');
+  assert.equal((await sch.getLibrary()).devices.find((d) => d.id === t.id).hardwareId, r.hardwareId);
+  const g = await sch.getSchematic('core-switch');
+  assert.equal(g.state.devices.length, 1);
+  assert.deepEqual(g.face.map((p) => p.port), ['pwr', 'p1']);
+  await assert.rejects(sch.promoteDeviceToModule('nope', { name: 'X' }), /not found/);
+});
+
+test('release is refused while validation has errors, and a used template cannot be deleted', async () => {
+  const slug = await makeModule('Broken module');
+  await sch.createSchematic(slug);
+  await sch.applySchematicOps(slug, [{ op: 'add_device', id: 'sw', template: 'switch-24' }]);
+  await assert.rejects(sch.deleteDeviceTemplate('switch-24'), /broken-module/);
+  // an error that only validation sees: the device's template vanishes from the library file
+  const lib = await sch.getLibrary();
+  await store.mutate(async () => {
+    await store.repo.checkout('main');
+    await store.repo.writeFile(sch.LIB_DEVICES_FILE, JSON.stringify({ devices: lib.devices.filter((d) => d.id !== 'switch-24') }, null, 2) + '\n');
+    await store.repo.commitAll('test: drop switch-24');
+  });
+  sch.dropCaches();
+  await assert.rejects(sch.releaseSchematic(slug, { note: 'x' }), (e) => e.code === 'blockers' && /template-missing/.test(JSON.stringify(e.blockers)));
+  await store.mutate(async () => {
+    await store.repo.checkout('main');
+    await store.repo.writeFile(sch.LIB_DEVICES_FILE, JSON.stringify({ devices: lib.devices }, null, 2) + '\n');
+    await store.repo.commitAll('test: restore switch-24');
+  });
+  sch.dropCaches();
 });
