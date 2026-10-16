@@ -193,7 +193,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
         )
       )}
 
-      {canEdit && editable && <SchematicChat owner={owner} onApplied={changed} />}
+      {canEdit && editable && <FloatingChat owner={owner} onApplied={changed} />}
       {canEdit && !editable && <p className="hint">{t('This version is released — start a new version or a hotfix to change it.')}</p>}
     </div>
   );
@@ -280,8 +280,46 @@ function NewLocation({ locations, existing = null, onClose, onCreate }) {
   );
 }
 
+/**
+ * The chat as a window over the drawing: dragged by its title bar, resized from its corner,
+ * collapsed to the bar or closed to a small button. Position, size and state are remembered in
+ * the browser, since the drawing takes the whole window and the chat should sit where it is wanted.
+ */
+function FloatingChat({ owner, onApplied }) {
+  const KEY = 'ftd-sch-chat-window';
+  const [win, setWin] = useState(() => {
+    try { return { x: 24, y: window.innerHeight - 440, w: 420, h: 400, open: true, collapsed: false, ...(JSON.parse(localStorage.getItem(KEY) || '{}')) }; } catch { return { x: 24, y: 200, w: 420, h: 400, open: true, collapsed: false }; }
+  });
+  const ref = useRef(null);
+  const drag = useRef(null);
+  const save = (next) => { setWin(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {} };
+  const clamp = (w) => ({ ...w, x: Math.max(0, Math.min(window.innerWidth - 80, w.x)), y: Math.max(0, Math.min(window.innerHeight - 40, w.y)) });
+  const down = (e) => {
+    if (e.target.closest('button')) return;
+    drag.current = { x: e.clientX, y: e.clientY, ox: win.x, oy: win.y };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const move = (e) => { const d = drag.current; if (!d) return; setWin((w) => clamp({ ...w, x: d.ox + (e.clientX - d.x), y: d.oy + (e.clientY - d.y) })); };
+  const up = () => { if (drag.current) { drag.current = null; setWin((w) => { try { localStorage.setItem(KEY, JSON.stringify(w)); } catch {} return w; }); } };
+  // the resize handle is the browser's; remember the size it leaves behind
+  const onResizeEnd = () => { const el = ref.current; if (el) save({ ...win, w: el.offsetWidth, h: el.offsetHeight }); };
+  if (!win.open) return <button className="btn btn-primary chat-fab" onClick={() => save({ ...win, open: true })}>💬 {t('Chat')}</button>;
+  return (
+    <div ref={ref} className={`chat-window ${win.collapsed ? 'collapsed' : ''}`} style={{ left: win.x, top: win.y, width: win.w, height: win.collapsed ? 'auto' : win.h }} onPointerUp={onResizeEnd}>
+      <div className="chat-window-bar" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} title={t('Drag to move')}>
+        <span>💬 {t('Build with chat')}</span>
+        <span className="btn-row">
+          <button className="btn-icon" title={win.collapsed ? t('Expand') : t('Collapse')} onClick={() => save({ ...win, collapsed: !win.collapsed })}>{win.collapsed ? '▴' : '▾'}</button>
+          <button className="btn-icon" title={t('Close')} onClick={() => save({ ...win, open: false })}>×</button>
+        </span>
+      </div>
+      {!win.collapsed && <div className="chat-window-body"><SchematicChat owner={owner} onApplied={onApplied} embedded /></div>}
+    </div>
+  );
+}
+
 /** The chat drawer: a sentence in, operations out, accepted as one commit or rejected. */
-function SchematicChat({ owner, onApplied }) {
+function SchematicChat({ owner, onApplied, embedded = false }) {
   const toast = useToast();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
@@ -345,8 +383,8 @@ function SchematicChat({ owner, onApplied }) {
   });
 
   return (
-    <div className="schematic-chat" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
-      <h3>{t('Build with chat')}</h3>
+    <div className={`schematic-chat ${embedded ? 'embedded' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+      {!embedded && <h3>{t('Build with chat')}</h3>}
       <div className="chat-log">
         {messages.length === 0 && <p className="hint">{t('Example: “Behringer UMC404HD in rack 1, powered from power strip 1 socket 1, Phones 1 to the captain headset in the cockpit.”')}</p>}
         {messages.map((m, i) => <div key={i} className={`chat-msg ${m.role}`}>{m.content}</div>)}

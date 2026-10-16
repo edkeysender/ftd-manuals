@@ -1294,4 +1294,8 @@ export const PL = {
   "e.g. H05VV-F 3G1.5, Cat 6A S/FTP": "np. H05VV-F 3G1.5, Cat 6A S/FTP",
   "e.g. black, grey, blue": "np. czarny, szary, niebieski",
   "Cable {name} updated": "Kabel {name} zaktualizowany",
+  "Chat": "Czat",
+  "Drag to move": "Przeciągnij, aby przesunąć",
+  "Expand": "Rozwiń",
+  "Collapse": "Zwiń",
 };
