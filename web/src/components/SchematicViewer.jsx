@@ -56,7 +56,10 @@ export default function SchematicViewer({ owner, data, v = 0 }) {
     const onWheel = (e) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      setView((vw) => zoomAt(vw, Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top));
+      // one wheel notch (~100 px) is a 1.5× step; a trackpad's small deltas scale the same way;
+      // deltaMode 1 reports lines instead of pixels, so scale those up first
+      const dy = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
+      setView((vw) => zoomAt(vw, Math.exp(-dy * 0.004), e.clientX - r.left, e.clientY - r.top));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -137,8 +140,8 @@ export default function SchematicViewer({ owner, data, v = 0 }) {
       <div className="sch-toolbar">
         <input className="sch-search" value={query} placeholder={t('Find a device or cable…')} onChange={(e) => setQuery(e.target.value)} />
         <div className="btn-row">
-          <button className="btn btn-sm" onClick={() => zoomBy(1 / 1.3)} title={t('Zoom out')}>−</button>
-          <button className="btn btn-sm" onClick={() => zoomBy(1.3)} title={t('Zoom in')}>+</button>
+          <button className="btn btn-sm" onClick={() => zoomBy(1 / 1.6)} title={t('Zoom out')}>−</button>
+          <button className="btn btn-sm" onClick={() => zoomBy(1.6)} title={t('Zoom in')}>+</button>
           <button className="btn btn-sm" onClick={fit}>{t('Fit')}</button>
           <button className="btn btn-sm" onClick={() => setView((vw) => centerOn(vw, boxSize(), { x: size.w / 2, y: size.h / 2 }, 1))}>100%</button>
           {selected && <button className="btn btn-sm" onClick={() => centerSelected()}>{t('Centre on selection')}</button>}
