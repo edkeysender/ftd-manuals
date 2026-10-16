@@ -35,10 +35,23 @@ function nodePorts(state, node, ctx) {
   return by;
 }
 
+/** What a port is called on the drawing: the detail in brackets goes (the card and tooltip keep it). */
+export function shortPortLabel(label) {
+  const s = String(label || '');
+  if (s.length <= 22) return s;
+  const bare = s.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  return bare.length <= 26 ? bare : `${bare.slice(0, 25)}…`;
+}
+const PORT_FONT = 7;
+const textWidth = (s) => String(s || '').length * PORT_FONT * 0.6; // Verdana is wide: ~0.6 em per character
+
+/** A symbol is as wide as its port labels need: the longest on the left plus the longest on the right. */
 function nodeSize(by) {
   const rows = Math.max(by.left.length, by.right.length, 1);
   const cols = Math.max(by.top.length, by.bottom.length, 0);
-  return { w: Math.max(NODE_W, cols * PORT_PITCH + 40), h: HEAD_H + rows * PORT_PITCH + 10 };
+  const widest = (ports) => Math.max(0, ...ports.map((p) => textWidth(shortPortLabel(p.label))));
+  const labels = widest(by.left) + widest(by.right) + (by.left.length && by.right.length ? 28 : 16);
+  return { w: Math.max(NODE_W, cols * PORT_PITCH + 40, Math.ceil(labels)), h: HEAD_H + rows * PORT_PITCH + 10 };
 }
 
 /** Where a port's stub ends, in node-local coordinates. */
@@ -151,7 +164,7 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
         const y2 = pt.y + (side === 'top' ? -STUB : side === 'bottom' ? STUB : 0);
         const tx = side === 'left' ? pt.x + 4 : side === 'right' ? pt.x - 4 : pt.x;
         const anchor = side === 'left' ? 'start' : side === 'right' ? 'end' : 'middle';
-        return `<g class="sch-port" data-port="${esc(p.id)}"><circle class="sch-port-hit" cx="${box.x + x2}" cy="${box.y + y2}" r="7" fill="transparent"/><line x1="${box.x + pt.x}" y1="${box.y + pt.y}" x2="${box.x + x2}" y2="${box.y + y2}" stroke="${col}" stroke-width="1.5"/><text x="${box.x + tx}" y="${box.y + pt.y + 3}" font-size="7" text-anchor="${anchor}">${esc(p.label)}</text></g>`;
+        return `<g class="sch-port" data-port="${esc(p.id)}"><title>${esc(p.label)}</title><circle class="sch-port-hit" cx="${box.x + x2}" cy="${box.y + y2}" r="7" fill="transparent"/><line x1="${box.x + pt.x}" y1="${box.y + pt.y}" x2="${box.x + x2}" y2="${box.y + y2}" stroke="${col}" stroke-width="1.5"/><text x="${box.x + tx}" y="${box.y + pt.y + 3}" font-size="${PORT_FONT}" text-anchor="${anchor}">${esc(shortPortLabel(p.label))}</text></g>`;
       })
     );
     parts.push(`<g class="sch-${n.block ? 'block' : 'device'}" data-id="${esc(n.id)}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="#fff" stroke="#000" stroke-width="${n.block ? 1.6 : 1}"/><text x="${box.x + box.w / 2}" y="${box.y + 13}" font-size="9" font-weight="bold" text-anchor="middle">${esc(label)}</text>${sub ? `<text x="${box.x + box.w / 2}" y="${box.y + HEAD_H - 2}" font-size="6.5" text-anchor="middle" fill="#444">${esc(sub)}</text>` : ''}${ports.join('')}</g>`);

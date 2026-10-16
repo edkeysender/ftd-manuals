@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_LIBRARY } from './library.js';
 import { emptySchematic, applyOps, cableSchedule, connectorFace } from './schematic.js';
-import { layoutSchematic, renderSvg, scheduleHtml, faceHtml, schematicCsv } from './schematic-render.js';
+import { layoutSchematic, renderSvg, scheduleHtml, faceHtml, schematicCsv, NODE_W } from './schematic-render.js';
 
 const ctx = () => ({ library: DEFAULT_LIBRARY, catalog: [], modules: [{ slug: 'audio-system', name: 'Audio system' }], releasedSchematics: new Map() });
 
@@ -124,4 +124,26 @@ test('cableLabelsHtml prints two labels per cable with its name, code and both e
   assert.doesNotMatch(html, /<script/);
   const one = cableLabelsHtml(cableSchedule(s, ctx()).filter((r) => r.id === 'aud'), { code: 'S2602' });
   assert.equal((one.match(/class="label"/g) || []).length, 2);
+});
+
+test('a device with long port labels on both sides gets a wider symbol and shortened labels on the drawing', async () => {
+  const lib = {
+    ...DEFAULT_LIBRARY,
+    devices: [...DEFAULT_LIBRARY.devices, { id: 'wordy', name: 'Wordy', category: 'other', ports: [
+      { id: 'a', label: 'Input 1 (front, XLR/TRS combo, mic/line/inst)', connector: 'trs-6.35', direction: 'in', side: 'left' },
+      { id: 'b', label: 'Line output 10 (balanced TRS)', connector: 'trs-6.35', direction: 'out', side: 'right' },
+      { id: 'c', label: 'Microphone preamplifier input', connector: 'trs-6.35', direction: 'in', side: 'left' },
+      { id: 'd', label: 'Balanced line output number ten', connector: 'trs-6.35', direction: 'out', side: 'right' },
+    ] }],
+  };
+  const c = { ...ctx(), library: lib };
+  const s = applyOps(emptySchematic({ kind: 'module', owner: 'm' }), [{ op: 'add_device', id: 'w', template: 'wordy' }, { op: 'add_device', id: 'h', template: 'headset' }], c).state;
+  const l = await layoutSchematic(s, c);
+  assert.ok(l.nodes.w.w > NODE_W + 40, `wide symbol, got ${l.nodes.w.w}`);
+  assert.match(await renderSvg(s, c), />Balanced line output numb…</, 'a long label without brackets is cut with an ellipsis');
+  assert.equal(l.nodes.h.w, NODE_W, 'short labels keep the default width');
+  const svg = await renderSvg(s, c);
+  assert.match(svg, />Input 1</, 'the parenthetical detail is dropped on the drawing');
+  assert.doesNotMatch(svg, /<text[^>]*>Input 1 \(front/, 'the drawing text is the short form; only the tooltip has the full label');
+  assert.match(svg, /<title>Input 1 \(front, XLR\/TRS combo, mic\/line\/inst\)<\/title>/, 'the full label is the tooltip');
 });
