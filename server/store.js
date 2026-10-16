@@ -61,12 +61,12 @@ const parseJson = (text) => {
   }
 };
 
-async function readJson(ref, file) {
+export async function readJson(ref, file) {
   return parseJson(await repo.show(ref, file));
 }
 
 /** Read many JSON files in one git process. Returns Map<"ref:file", object|null>. */
-async function readJsonMany(requests) {
+export async function readJsonMany(requests) {
   const blobs = await repo.showMany(requests);
   const out = new Map();
   for (const [key, buf] of blobs) out.set(key, buf ? parseJson(buf.toString('utf8')) : null);
@@ -161,7 +161,7 @@ function invalidateCache() {
 }
 
 /** Run a mutation inside the repo lock, drop caches afterwards and re-warm them in the background. */
-async function mutate(fn) {
+export async function mutate(fn) {
   try {
     return await repo.lock(fn);
   } finally {
@@ -2714,7 +2714,7 @@ function assemblyTypeOf(id) {
   return t;
 }
 
-export async function createManual({ name, code, group, modules, manual: type, device, serialNumber, operator }) {
+export async function createManual({ name, code, group, modules, manual: type, device, serialNumber, operator, installation }) {
   const slug = slugify(name);
   if (!slug) throw new Error('Manual name is required');
   if (await getManual(slug)) throw new Error(`A manual with slug "${slug}" already exists`);
@@ -2730,6 +2730,8 @@ export async function createManual({ name, code, group, modules, manual: type, d
     device: String(device || '').trim() || null,
     serialNumber: String(serialNumber || '').trim() || null,
     operator: String(operator || '').trim() || null,
+    // the installation whose wiring this manual prints and whose device / serial / operator its cover names
+    installation: String(installation || '').trim() || null,
     createdAt: ts,
     updatedAt: ts,
   };
@@ -2751,6 +2753,7 @@ export async function updateManual(slug, patch) {
   if (patch.manual !== undefined) manual.manual = assemblyTypeOf(patch.manual).id;
   if (patch.modules !== undefined) manual.modules = patch.modules;
   for (const k of ['device', 'serialNumber', 'operator']) if (patch[k] !== undefined) manual[k] = String(patch[k] || '').trim() || null;
+  if (patch.installation !== undefined) manual.installation = String(patch.installation || '').trim() || null;
   manual.updatedAt = now();
   await mutate(async () => {
     await repo.checkout('main');
