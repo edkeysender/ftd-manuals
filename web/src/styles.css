@@ -908,4 +908,9 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .chat-bubble.open { font-size: 28px; }
 .chat-window.docked-left, .chat-window.docked-right { resize: both; }
 .chat-window.docked-right { direction: ltr; }
+/* a selection fades the rest of the drawing: unrelated cables almost vanish, unrelated devices soften */
+.sch-content.has-sel svg .sch-cable:not(.sel):not(.sel-end) { opacity: 0.1; }
+.sch-content.has-sel svg .sch-device:not(.sel):not(.sel-end), .sch-content.has-sel svg .sch-block:not(.sel):not(.sel-end) { opacity: 0.45; }
+.sch-content.has-sel svg .sch-frame { opacity: 0.6; }
+.sch-content svg .sch-cable, .sch-content svg .sch-device, .sch-content svg .sch-block { transition: opacity 0.15s; }
 

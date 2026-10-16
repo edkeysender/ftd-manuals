@@ -169,6 +169,8 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
     const root = contentRef.current;
     if (!root) return;
     root.querySelectorAll('.sel, .sel-end').forEach((el) => el.classList.remove('sel', 'sel-end'));
+    // with a selection, everything unrelated fades so its wiring stands out
+    root.classList.toggle('has-sel', !!selected);
     if (!selected) return;
     const find = (kind, id) => root.querySelector(`.sch-${kind === 'cable' ? 'cable' : kind === 'block' ? 'block' : 'device'}[data-id="${CSS.escape(id)}"]`);
     find(selected.kind, selected.id)?.classList.add('sel');
