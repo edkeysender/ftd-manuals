@@ -42,6 +42,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
   const [location, setLocation] = useState(''); // '' = the whole installation; else one rack's or area's view
   const [addingLoc, setAddingLoc] = useState(false);
   const [addingDev, setAddingDev] = useState(false);
+  const [editingLoc, setEditingLoc] = useState(false); // the selected rack's Edit rack… form
 
   const load = useCallback(() => api.schematic(owner, location).then(setData).catch((e) => (e.code === 'no-schematic' || e.status === 404 ? setData(null) : toast(e.message, 'err'))), [owner, location]);
   useEffect(() => { load(); }, [load]);
@@ -79,7 +80,6 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
   const locations = [...state.locations].sort((a, b) => (a.kind === 'rack' ? 0 : 1) - (b.kind === 'rack' ? 0 : 1));
   const current = locations.find((l) => l.id === location) || null;
   const locOps = (ops, msg) => run(() => api.schematicOps(owner, ops, { summary: msg }), msg);
-  const [editingLoc, setEditingLoc] = useState(false);
   const renameLoc = () => {
     if (current.kind === 'rack') return setEditingLoc(true);
     const label = window.prompt(t('New name of the location'), current.label);
