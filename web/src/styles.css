@@ -810,3 +810,33 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .modal-wide { width: 860px; }
 .ports-edit input, .ports-edit select { width: 100%; }
 .rules-editor { margin-top: 12px; }
+
+/* ---- schematic viewer: pan, zoom, select ---- */
+.sch-viewer { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.sch-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.sch-search { min-width: 240px; border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; }
+.sch-stage { display: flex; min-height: 70vh; }
+.sch-viewport { position: relative; flex: 1; overflow: hidden; background: #fff; cursor: grab; touch-action: none; user-select: none; min-height: 70vh; }
+.sch-viewport:active { cursor: grabbing; }
+.sch-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.sch-content svg { display: block; }
+.sch-content svg .sch-device, .sch-content svg .sch-block, .sch-content svg .sch-cable { cursor: pointer; }
+.sch-content svg .sch-device:hover > rect, .sch-content svg .sch-block:hover > rect { stroke: #1f5fbf; stroke-width: 2.5; }
+.sch-content svg .sch-cable:hover polyline { stroke-width: 4 !important; }
+.sch-content svg .sch-device.sel > rect, .sch-content svg .sch-block.sel > rect { stroke: #e0007a; stroke-width: 5; fill: #fff0f7; }
+.sch-content svg .sch-cable.sel polyline { stroke: #e0007a !important; stroke-width: 5 !important; stroke-dasharray: none !important; }
+.sch-content svg .sch-device.sel-end > rect, .sch-content svg .sch-block.sel-end > rect { stroke: #ff9500; stroke-width: 4; fill: #fff7e6; }
+.sch-content svg .sch-cable.sel-end polyline { stroke: #ff9500 !important; stroke-width: 4 !important; stroke-dasharray: none !important; }
+.sch-zoom-badge { position: absolute; right: 10px; bottom: 8px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 6px; pointer-events: none; }
+.sch-side { width: 340px; max-width: 45%; border-left: 1px solid var(--line); overflow: auto; padding: 10px 12px; display: grid; gap: 12px; align-content: start; }
+.sch-results { display: grid; gap: 4px; }
+.sch-result { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 8px; }
+.sch-result:hover { border-color: var(--accent); }
+.sch-kind-device { background: var(--accent-soft-2); } .sch-kind-cable { background: var(--amber-soft); } .sch-kind-block { background: var(--green-soft); }
+.sch-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 15px; }
+.sch-table th, .sch-table td { padding: 6px 8px; font-size: 13px; }
+.sch-table th { width: 34%; text-align: left; }
+.sch-table tr.sch-free td { color: var(--muted); }
+.sch-links { margin: 0; padding-left: 18px; font-size: 13px; }
+button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+

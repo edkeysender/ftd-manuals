@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, schematicSvgUrl, askReleaseNote } from '../api.js';
 import ActionMenu from './ActionMenu.jsx';
+import SchematicViewer from './SchematicViewer.jsx';
 import { useToast } from '../App.jsx';
 import { t, plural, locale } from '../i18n.jsx';
 
@@ -118,11 +119,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
         <button className={tab === 'checks' ? 'active' : ''} onClick={() => setTab('checks')}>{t('Checks')}{errors + warnings ? ` (${errors + warnings})` : ''}</button>
       </div>
 
-      {tab === 'drawing' && (
-        <div className="schematic-drawing">
-          <img src={schematicSvgUrl(owner, { lang: locale(), v })} alt={t('Schematic')} />
-        </div>
-      )}
+      {tab === 'drawing' && <SchematicViewer owner={owner} data={data} v={v} />}
       {tab === 'cables' && (
         schedule.length === 0 ? <div className="empty">{t('No cables yet.')}</div> : (
           <table className="table">
