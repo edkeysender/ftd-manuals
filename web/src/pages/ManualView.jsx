@@ -128,6 +128,12 @@ export default function ManualView() {
             )}
             {drafts === 0 && missing === 0 && chapters.length > 0 && <span className="badge badge-released">{t('All released')}</span>}
           </div>
+          {data.installation && (
+            <div className={`hint ${data.installation.released ? '' : 'warn'}`}>
+              {t('Installation')}: <Link to={`/installations/${data.installation.slug}`}>{data.installation.name}</Link>
+              {data.installation.released ? ` · ${t('wiring {v} printed', { v: data.installation.version })}` : ` · ${t('no released wiring yet — the wiring chapter is left out')}`}
+            </div>
+          )}
         </div>
         <div className="btn-row">
           <div className="mode-toggle" title={t('Language of the compiled manual — chapters without a translation fall back to English (flagged)')}>
@@ -305,6 +311,9 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
   const [device, setDevice] = useState(manual.device || '');
   const [serialNumber, setSerialNumber] = useState(manual.serialNumber || '');
   const [operator, setOperator] = useState(manual.operator || '');
+  const [installation, setInstallation] = useState(manual.installation || '');
+  const [installations, setInstallations] = useState([]);
+  useEffect(() => { api.installations().then(setInstallations).catch(() => {}); }, []);
   const [modules, setModules] = useState([]);
   const [selected, setSelected] = useState(manual.modules);
   const [cover, setCover] = useState(null); // pending upload
@@ -318,7 +327,7 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
   async function save() {
     setBusy(true);
     try {
-      await api.updateManual(manual.slug, { name: name.trim(), code: code.trim() || null, group: group || null, manual: type, modules: selected, device, serialNumber, operator });
+      await api.updateManual(manual.slug, { name: name.trim(), code: code.trim() || null, group: group || null, manual: type, modules: selected, device, serialNumber, operator, installation });
       if (cover) await api.uploadManualCover(manual.slug, cover);
       onSaved();
     } catch (e) {
@@ -364,18 +373,26 @@ function EditManual({ manual, hasCover, onClose, onSaved }) {
                 </select>
               </label>
             </div>
+            <label>
+              {t('Installation')}
+              <select value={installation} onChange={(e) => setInstallation(e.target.value)}>
+                <option value="">{t('— none (cover fields below) —')}</option>
+                {installations.map((i) => <option key={i.slug} value={i.slug}>{i.name}{i.serialNumber ? ` · ${i.serialNumber}` : ''}</option>)}
+              </select>
+            </label>
+            {installation && <p className="hint">{t('Device, serial number and operator are taken from the installation.')}</p>}
             <div className="pair">
               <label style={{ flex: 2 }}>
                 {t('Device')}
-                <input value={device} onChange={(e) => setDevice(e.target.value)} placeholder={t('e.g. B737-800 FNPT II MCC')} />
+                <input value={device} disabled={!!installation} onChange={(e) => setDevice(e.target.value)} placeholder={t('e.g. B737-800 FNPT II MCC')} />
               </label>
               <label style={{ flex: 1 }}>
                 {t('Serial number')}
-                <input value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} />
+                <input value={serialNumber} disabled={!!installation} onChange={(e) => setSerialNumber(e.target.value)} />
               </label>
               <label style={{ flex: 1.5 }}>
                 {t('Operator')}
-                <input value={operator} onChange={(e) => setOperator(e.target.value)} placeholder={t('Training organisation')} />
+                <input value={operator} disabled={!!installation} onChange={(e) => setOperator(e.target.value)} placeholder={t('Training organisation')} />
               </label>
             </div>
             <div className="field">

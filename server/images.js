@@ -199,3 +199,8 @@ export async function resizeSameFormat(buffer, width) {
   if (out.length >= buffer.length) return null;
   return { buffer: out, mimeType: fmt === 'jpeg' ? 'image/jpeg' : `image/${fmt}` };
 }
+
+/** PNG of an SVG at the given width, aspect kept (schematics for MCP clients). */
+export async function rasterizeWide(svg, width = 1600) {
+  return sharp(Buffer.isBuffer(svg) ? svg : Buffer.from(svg), { density: 220 }).resize({ width }).png().toBuffer();
+}

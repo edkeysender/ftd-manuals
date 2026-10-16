@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, releaseDoc, askReleaseNote, CATEGORIES, MANUAL_TYPES, manualType, timeAgo, readFileAsBase64, ownerHref, ownerPath } from '../api.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { useToast, useAuth } from '../App.jsx';
+import SchematicPanel from '../components/SchematicPanel.jsx';
 import HardwarePicker, { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
 import RelationsSchema from '../components/RelationsSchema.jsx';
 import SoftwareTimeline from '../components/SoftwareTimeline.jsx';
@@ -19,10 +20,11 @@ export default function ModuleDetail() {
   const { slug } = useParams();
   const [data, setData] = useState(null);
   const [params] = useSearchParams(); // ?tab=assets — the drop link MCP agents hand to users
-  const [tab, setTab] = useState(['docs', 'hardware', 'schema', 'assets', 'history', 'software'].includes(params.get('tab')) ? params.get('tab') : 'docs');
+  const [tab, setTab] = useState(['docs', 'hardware', 'schema', 'schematic', 'assets', 'history', 'software'].includes(params.get('tab')) ? params.get('tab') : 'docs');
   const toast = useToast();
   const navigate = useNavigate();
   const [renaming, setRenaming] = useState(null); // the new name while the title is being edited
+  const { canEdit, isAdmin } = useAuth();
 
   const load = useCallback(
     () =>
@@ -163,6 +165,11 @@ export default function ModuleDetail() {
             {t('Schema')}
           </button>
         )}
+        {!ownSoftware && (
+          <button className={tab === 'schematic' ? 'active' : ''} onClick={() => setTab('schematic')}>
+            {t('Schematic')}
+          </button>
+        )}
         <button className={tab === 'assets' ? 'active' : ''} onClick={() => setTab('assets')}>
           {t('Assets')}
           {data.staleAssets > 0 && (
@@ -208,6 +215,7 @@ export default function ModuleDetail() {
       )}
 
       {tab === 'schema' && !ownSoftware && <RelationsSchema module={module} softwareFeed={data.softwareFeed} />}
+      {tab === 'schematic' && !ownSoftware && <SchematicPanel owner={slug} canEdit={canEdit} isAdmin={isAdmin} onChanged={load} />}
 
       {tab === 'assets' && <AssetsTab slug={slug} docs={docs} module={module} onChanged={load} />}
 

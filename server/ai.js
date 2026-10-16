@@ -86,7 +86,7 @@ export async function transcribe(buffer, filename = 'speech.webm', lang = '') {
   try { return (JSON.parse(body).text || '').trim(); } catch { return body.trim(); }
 }
 
-async function callOpenAI(messages, { json = false } = {}) {
+export async function callOpenAI(messages, { json = false } = {}) {
   if (!aiAvailable()) throw new Error('OPENAI_API_KEY is not set — AI assistant is unavailable');
   const supportsReasoning = /^(gpt-5|o\d)/.test(MODEL);
   const res = await apiFetch(API_URL, {
@@ -473,3 +473,6 @@ export async function downloadImage(url, { minBytes = 4096, headers = {} } = {})
   if (!/\.[a-z0-9]{2,5}$/i.test(name)) name += EXT_BY_TYPE[type] || '.img';
   return { name, buffer };
 }
+
+/** The chat-completions call other modules build on (schematic chat). */
+export const callModel = callOpenAI;

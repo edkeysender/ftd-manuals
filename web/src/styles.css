@@ -786,3 +786,27 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .presence-chip.m-edit .presence-dot { background: #e07a10; }
 .presence-chip.m-review .presence-dot { background: #2563eb; }
 .presence-chip.m-view .presence-dot { background: #16a34a; }
+
+/* ---- schematics ---- */
+.schematic-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.schematic-drawing { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; overflow: auto; }
+.schematic-drawing img { max-width: 100%; display: block; margin: 0 auto; }
+.chip-err { background: var(--red-soft); color: var(--red); }
+.chip-warn { background: var(--amber-soft); color: var(--amber-ink); }
+.check-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.check-list li { padding: 8px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
+.check-list li.check-err { border-color: var(--red); }
+.schematic-chat { margin-top: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 12px 14px; }
+.schematic-chat h3 { margin: 0 0 8px; font-size: 14px; }
+.chat-log { max-height: 320px; overflow: auto; display: grid; gap: 8px; margin-bottom: 10px; }
+.chat-msg { padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; max-width: 80%; }
+.chat-msg.user { background: var(--accent-soft-2); justify-self: end; }
+.chat-msg.assistant { background: var(--soft); }
+.pending-ops { border: 1px dashed var(--amber-ink); border-radius: 8px; padding: 8px 12px; background: var(--amber-soft); }
+.pending-ops ol { margin: 6px 0 8px; padding-left: 20px; }
+.pending-title { font-weight: 600; }
+.chat-input { display: flex; gap: 8px; align-items: flex-end; }
+.chat-input textarea { flex: 1; resize: vertical; }
+.modal-wide { width: 860px; }
+.ports-edit input, .ports-edit select { width: 100%; }
+.rules-editor { margin-top: 12px; }

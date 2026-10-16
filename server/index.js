@@ -30,6 +30,8 @@ import { templateChecklist, checklistBodyHtml, fatProtocolBodyHtml, checklistExp
 import * as auth from './auth.js';
 import * as presence from './presence.js';
 import * as oauth from './oauth.js';
+import { registerSchematicRoutes } from './schematic-routes.js';
+import './schematics-store.js'; // registers the manual build's schematic provider
 
 const PORT = process.env.PORT || 5179;
 const app = express();
@@ -779,6 +781,9 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
   if (notes.length) result.reply = `${result.reply}\n\n${notes.join('\n')}`;
   res.json(result);
 }));
+
+/* ---------- schematics, installations, device library ---------- */
+registerSchematicRoutes(app, { wrap, auth });
 
 /* ---------- manuals ---------- */
 app.get('/api/manuals', wrap(async (req, res) => {

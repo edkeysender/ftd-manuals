@@ -11,6 +11,8 @@ import SoftwareList from './pages/SoftwareList.jsx';
 import SoftwareDetail from './pages/SoftwareDetail.jsx';
 import PartsList from './pages/PartsList.jsx';
 import Login from './pages/Login.jsx';
+import InstallationsList from './pages/InstallationsList.jsx';
+import InstallationDetail from './pages/InstallationDetail.jsx';
 import { t, plural, useLocale, LanguageSwitch } from './i18n.jsx';
 
 /* UI theme: decided by the inline script in web/index.html (stored choice, else the OS preference)
@@ -89,6 +91,7 @@ export default function App() {
             </div>
             <nav>
               <NavLink to="/manuals">{t('Manuals')}</NavLink>
+              <NavLink to="/installations">{t('Installations')}</NavLink>
               <NavLink to="/" end>
                 {t('Modules')}
               </NavLink>
@@ -134,6 +137,8 @@ export default function App() {
               <Route path="/software/:name" element={<SoftwareDetail />} />
               <Route path="/manuals" element={<ManualsList />} />
               <Route path="/manuals/:slug" element={<ManualView />} />
+              <Route path="/installations" element={<InstallationsList />} />
+              <Route path="/installations/:slug" element={<InstallationDetail />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </main>
