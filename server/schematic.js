@@ -390,7 +390,50 @@ export function validateSchematic(state, ctx) {
   for (const l of state.locations) {
     if (![...state.devices, ...state.blocks].some((x) => x.location === l.id)) warn('location-empty', `${l.label} holds nothing`, l.id);
   }
+  // a simulator ships with up to four racks; a fifth is usually a rack that belongs to another installation
+  const racks = state.locations.filter((l) => l.kind === 'rack');
+  if (racks.length > MAX_RACKS) warn('too-many-racks', `${racks.length} racks — a simulator holds up to ${MAX_RACKS}`, racks[MAX_RACKS].id);
   return { errors, warnings };
+}
+
+export const MAX_RACKS = 4;
+
+/* ---- views ---- */
+
+/**
+ * One location's view of an installation: what sits in it, every cable that touches it, and the
+ * devices or blocks at the far end of those cables (kept in their own locations, so the drawing says
+ * where a cable leaves to). `view` names the ids so the UI can filter its lists the same way.
+ * With no location the state comes back as it is.
+ */
+export function filterSchematic(state, { location = null } = {}) {
+  if (!location) return state;
+  if (!locationOf(state, location)) throw new SchematicError(`unknown location "${location}"`);
+  const inside = (x) => x.location === location;
+  const deviceIds = state.devices.filter(inside).map((d) => d.id);
+  const blockIds = state.blocks.filter(inside).map((b) => b.id);
+  const mine = (end) => (end.block ? blockIds.includes(end.block) : deviceIds.includes(end.device));
+  const cables = state.cables.filter((c) => mine(c.from) || mine(c.to));
+  const partnerDevices = new Set();
+  const partnerBlocks = new Set();
+  for (const c of cables) for (const end of [c.from, c.to]) {
+    if (mine(end)) continue;
+    if (end.block) partnerBlocks.add(end.block);
+    else partnerDevices.add(end.device);
+  }
+  const devices = state.devices.filter((d) => deviceIds.includes(d.id) || partnerDevices.has(d.id));
+  const blocks = state.blocks.filter((b) => blockIds.includes(b.id) || partnerBlocks.has(b.id));
+  const usedLocations = new Set([location, ...devices.map((d) => d.location), ...blocks.map((b) => b.location)].filter(Boolean));
+  const locations = state.locations.filter((l) => usedLocations.has(l.id));
+  return {
+    ...state,
+    locations,
+    devices,
+    blocks,
+    cables,
+    externalPorts: state.kind === 'module' ? state.externalPorts : [],
+    view: { location, deviceIds, blockIds, cableIds: cables.map((c) => c.id), partnerIds: [...partnerDevices, ...partnerBlocks] },
+  };
 }
 
 /** A connector any power cable may terminate in. */

@@ -7,7 +7,7 @@ import * as sch from './schematics-store.js';
 import { renderSvg, schematicCsv } from './schematic-render.js';
 import { schematicChat, attachmentsToText } from './schematic-ai.js';
 import { expandDocuments } from './extract.js';
-import { SchematicError } from './schematic.js';
+import { SchematicError, filterSchematic, cableSchedule } from './schematic.js';
 import * as store from './store.js';
 import * as ai from './ai.js';
 import { DEFAULT_LANG, langOf } from './docgen.js';
@@ -57,6 +57,8 @@ export function registerSchematicRoutes(app, { wrap, auth }) {
   app.get(paths(), wrap(async (req, res) => {
     const s = await sch.getSchematic(schematicRef(req));
     if (!s) return res.status(404).json({ error: 'No schematic', code: 'no-schematic' });
+    // ?location=<id>: the ids that belong to one rack's view, so the UI filters its lists the way the drawing is filtered
+    if (req.query.location) s.view = filterSchematic(s.state, { location: String(req.query.location) }).view;
     res.json(s);
   }));
   app.post(paths(), wrap(async (req, res) => res.json(await sch.createSchematic(schematicRef(req), { bump: req.body?.bump || 'minor' }))));
@@ -87,7 +89,8 @@ export function registerSchematicRoutes(app, { wrap, auth }) {
   const pick = async (req) => {
     const s = await sch.getSchematic(schematicRef(req));
     if (!s) return null;
-    return req.query.released ? s.released : s.state;
+    const state = req.query.released ? s.released : s.state;
+    return state && req.query.location ? filterSchematic(state, { location: String(req.query.location) }) : state;
   };
   app.get(paths('/render.svg'), wrap(async (req, res) => {
     const state = await pick(req);
@@ -100,8 +103,10 @@ export function registerSchematicRoutes(app, { wrap, auth }) {
   app.get(paths('/cables.csv'), wrap(async (req, res) => {
     const s = await sch.getSchematic(schematicRef(req));
     if (!s) return res.status(404).json({ error: 'No schematic' });
+    const loc = req.query.location ? String(req.query.location) : '';
+    const schedule = loc ? cableSchedule(filterSchematic(s.state, { location: loc }), await sch.schematicContext()) : s.schedule;
     res.set('Content-Type', 'text/csv; charset=utf-8');
-    res.set('Content-Disposition', `attachment; filename="${s.owner.slug}-cables.csv"`);
-    res.send(schematicCsv(s.schedule));
+    res.set('Content-Disposition', `attachment; filename="${s.owner.slug}${loc ? `-${loc}` : ''}-cables.csv"`);
+    res.send(schematicCsv(schedule));
   }));
 }

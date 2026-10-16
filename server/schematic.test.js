@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_LIBRARY } from './library.js';
-import { emptySchematic, applyOps, validateSchematic, connectorFace, cableSchedule, SchematicError } from './schematic.js';
+import { emptySchematic, applyOps, validateSchematic, connectorFace, cableSchedule, SchematicError, filterSchematic } from './schematic.js';
 
 const ctx = () => ({ library: DEFAULT_LIBRARY, catalog: [], modules: [{ slug: 'audio-system', name: 'Audio system' }], releasedSchematics: new Map() });
 
@@ -179,4 +179,40 @@ test('move and tidy maintain the layout, and the device list keeps hardwareId wh
   const tidy = applyOps(state, [{ op: 'tidy' }], c).state;
   assert.deepEqual(tidy.layout.manual, []);
   assert.throws(() => applyOps(state, [{ op: 'fly' }], c), /unknown op "fly"/i);
+});
+
+test('filterSchematic keeps a location, everything in it, its cables and the far ends of those cables', () => {
+  const { state } = applyOps(
+    emptySchematic({ kind: 'installation', owner: 'sim' }),
+    [
+      { op: 'add_location', id: 'rack-1', label: 'Rack 1', kind: 'rack' },
+      { op: 'add_location', id: 'rack-2', label: 'Rack 2', kind: 'rack' },
+      { op: 'add_location', id: 'cockpit', label: 'Cockpit' },
+      { op: 'add_device', id: 'pdu', template: 'pdu-8', location: 'rack-1' },
+      { op: 'add_device', id: 'pc', template: 'pc', location: 'rack-2' },
+      { op: 'add_device', id: 'sw', template: 'switch-24', location: 'rack-2' },
+      { op: 'add_device', id: 'hs', template: 'headset', location: 'cockpit' },
+      { op: 'add_device', id: 'umc', template: 'behringer-umc404hd', location: 'rack-1' },
+      { op: 'connect', from: { device: 'pdu', port: 'out-1' }, to: { device: 'pc', port: 'pwr' }, label: 'PWR-1' },
+      { op: 'connect', from: { device: 'pc', port: 'lan' }, to: { device: 'sw', port: 'p1' }, label: 'NET-1' },
+      { op: 'connect', from: { device: 'umc', port: 'phones-1' }, to: { device: 'hs', port: 'jack' }, label: 'AUD-1' },
+    ],
+    ctx()
+  );
+  const v = filterSchematic(state, { location: 'rack-2' });
+  assert.deepEqual(v.devices.map((d) => d.id).sort(), ['pc', 'pdu', 'sw']);
+  assert.deepEqual(v.cables.map((c) => c.label).sort(), ['NET-1', 'PWR-1']);
+  assert.deepEqual(v.locations.map((l) => l.id), ['rack-1', 'rack-2'], 'the selected rack and the far ends’ locations, in the original order');
+  assert.deepEqual(v.view, { location: 'rack-2', deviceIds: ['pc', 'sw'], blockIds: [], cableIds: v.cables.map((c) => c.id), partnerIds: ['pdu'] });
+  assert.equal(filterSchematic(state, { location: null }), state);
+  assert.throws(() => filterSchematic(state, { location: 'nope' }), /unknown location/);
+});
+
+test('validation warns when an installation has more than four racks', () => {
+  const ops = [1, 2, 3, 4, 5].map((i) => ({ op: 'add_location', id: `rack-${i}`, label: `Rack ${i}`, kind: 'rack' }));
+  const { state } = applyOps(emptySchematic({ kind: 'installation', owner: 'sim' }), ops, ctx());
+  const v = validateSchematic(state, ctx());
+  assert.ok(v.warnings.some((w) => w.code === 'too-many-racks' && /4/.test(w.message)));
+  const four = applyOps(emptySchematic({ kind: 'installation', owner: 'sim' }), ops.slice(0, 4), ctx()).state;
+  assert.ok(!validateSchematic(four, ctx()).warnings.some((w) => w.code === 'too-many-racks'));
 });

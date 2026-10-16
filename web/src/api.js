@@ -73,8 +73,8 @@ export async function releaseDoc(slug, key, { hotfix = false } = {}) {
 /** Where an owner's schematic lives: a module by slug, an installation as `inst:<slug>`. */
 export const schematicPath = (owner) =>
   String(owner).startsWith('inst:') ? `/api/installations/${encodeURIComponent(String(owner).slice(5))}/schematic` : `/api/modules/${owner}/schematic`;
-export const schematicSvgUrl = (owner, { released = false, lang = 'en', v = '' } = {}) =>
-  `${schematicPath(owner)}/render.svg?${new URLSearchParams({ ...(released ? { released: '1' } : {}), ...(lang !== 'en' ? { lang } : {}), v }).toString()}`;
+export const schematicSvgUrl = (owner, { released = false, lang = 'en', v = '', location = '' } = {}) =>
+  `${schematicPath(owner)}/render.svg?${new URLSearchParams({ ...(released ? { released: '1' } : {}), ...(lang !== 'en' ? { lang } : {}), ...(location ? { location } : {}), v }).toString()}`;
 
 export const api = {
   /* login & users */
@@ -207,7 +207,7 @@ export const api = {
   installation: (slug) => request(`/api/installations/${slug}`),
   updateInstallation: (slug, body) => request(`/api/installations/${slug}`, { method: 'PUT', body }),
   deleteInstallation: (slug) => request(`/api/installations/${slug}`, { method: 'DELETE' }),
-  schematic: (owner) => request(schematicPath(owner)),
+  schematic: (owner, location = '') => request(`${schematicPath(owner)}${location ? `?location=${encodeURIComponent(location)}` : ''}`),
   createSchematic: (owner, bump = 'minor') => request(schematicPath(owner), { method: 'POST', body: { bump } }),
   schematicOps: (owner, ops, { summary = '', dryRun = false } = {}) => request(`${schematicPath(owner)}/ops`, { method: 'POST', body: { ops, summary, dryRun } }),
   schematicAction: (owner, action) => request(`${schematicPath(owner)}/${action}`, { method: 'POST' }),

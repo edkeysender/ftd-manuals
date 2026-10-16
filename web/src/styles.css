@@ -841,3 +841,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
 .chat-files { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .chat-file { display: inline-flex; align-items: center; gap: 4px; }
+.loc-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
+.loc-chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+.loc-chip.loc-rack { font-weight: 600; }
+.loc-chip.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+

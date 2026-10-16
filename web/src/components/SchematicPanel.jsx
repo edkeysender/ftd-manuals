@@ -39,8 +39,10 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('drawing');
   const [v, setV] = useState(0);
+  const [location, setLocation] = useState(''); // '' = the whole installation; else one rack's or area's view
+  const [addingLoc, setAddingLoc] = useState(false);
 
-  const load = useCallback(() => api.schematic(owner).then(setData).catch((e) => (e.code === 'no-schematic' || e.status === 404 ? setData(null) : toast(e.message, 'err'))), [owner]);
+  const load = useCallback(() => api.schematic(owner, location).then(setData).catch((e) => (e.code === 'no-schematic' || e.status === 404 ? setData(null) : toast(e.message, 'err'))), [owner, location]);
   useEffect(() => { load(); }, [load]);
   const changed = () => { setV((x) => x + 1); load(); onChanged?.(); };
 
@@ -68,9 +70,23 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
     );
   }
 
-  const { state, released, isDraft, editable, validation, schedule, face } = data;
+  const { state, released, isDraft, editable, validation, face } = data;
   const errors = validation.errors.length;
   const warnings = validation.warnings.length;
+  // one location selected: the schedule shows only the cables that touch it
+  const schedule = data.view ? data.schedule.filter((r) => data.view.cableIds.includes(r.id)) : data.schedule;
+  const locations = [...state.locations].sort((a, b) => (a.kind === 'rack' ? 0 : 1) - (b.kind === 'rack' ? 0 : 1));
+  const current = locations.find((l) => l.id === location) || null;
+  const locOps = (ops, msg) => run(() => api.schematicOps(owner, ops, { summary: msg }), msg);
+  const renameLoc = () => {
+    const label = window.prompt(t('New name of the location'), current.label);
+    if (label && label.trim() && label.trim() !== current.label) locOps([{ op: 'update_location', id: current.id, label: label.trim() }], t('Location renamed'));
+  };
+  const removeLoc = () => {
+    if (!window.confirm(t('Remove the empty location {name}?', { name: current.label }))) return;
+    setLocation('');
+    locOps([{ op: 'remove_location', id: current.id }], t('Location removed'));
+  };
 
   // askReleaseNote prompts and throws when the author cancels or leaves the line empty
   const release = () => {
@@ -112,6 +128,27 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
         )}
       </div>
 
+      {state.kind === 'installation' && (
+        <div className="loc-bar">
+          <span className="field-label">{t('Show')}</span>
+          <button className={`loc-chip ${location === '' ? 'active' : ''}`} onClick={() => setLocation('')}>{t('Whole installation')}</button>
+          {locations.map((l) => (
+            <button key={l.id} className={`loc-chip loc-${l.kind} ${location === l.id ? 'active' : ''}`} onClick={() => setLocation(l.id)} title={l.kind === 'rack' ? t('Rack') : t('Area')}>
+              {l.kind === 'rack' ? '▮ ' : '▭ '}{l.label}
+            </button>
+          ))}
+          {canEdit && editable && (
+            <span className="btn-row">
+              <button className="btn btn-sm" onClick={() => setAddingLoc(true)}>{t('+ Rack / area')}</button>
+              {current && <button className="btn btn-sm" onClick={renameLoc}>{t('Rename')}</button>}
+              {current && <button className="btn btn-sm btn-danger" onClick={removeLoc} title={t('Only an empty location can be removed')}>{t('Remove')}</button>}
+            </span>
+          )}
+          {current && <span className="hint">{t('{n} devices in {name}; cables that leave it are drawn to where they go.', { n: (data.view?.deviceIds.length || 0) + (data.view?.blockIds.length || 0), name: current.label })}</span>}
+        </div>
+      )}
+      {addingLoc && <NewLocation locations={state.locations} onClose={() => setAddingLoc(false)} onCreate={(op) => { setAddingLoc(false); locOps([op], t('Location added')); }} />}
+
       <div className="tabs">
         <button className={tab === 'drawing' ? 'active' : ''} onClick={() => setTab('drawing')}>{t('Drawing')}</button>
         <button className={tab === 'cables' ? 'active' : ''} onClick={() => setTab('cables')}>{t('Cable schedule')}{schedule.length ? ` (${schedule.length})` : ''}</button>
@@ -119,7 +156,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
         <button className={tab === 'checks' ? 'active' : ''} onClick={() => setTab('checks')}>{t('Checks')}{errors + warnings ? ` (${errors + warnings})` : ''}</button>
       </div>
 
-      {tab === 'drawing' && <SchematicViewer owner={owner} data={data} v={v} />}
+      {tab === 'drawing' && <SchematicViewer owner={owner} data={data} v={v} location={location} />}
       {tab === 'cables' && (
         schedule.length === 0 ? <div className="empty">{t('No cables yet.')}</div> : (
           <table className="table">
@@ -145,6 +182,38 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
 
       {canEdit && editable && <SchematicChat owner={owner} onApplied={changed} />}
       {canEdit && !editable && <p className="hint">{t('This version is released — start a new version or a hotfix to change it.')}</p>}
+    </div>
+  );
+}
+
+/** A new rack or area for an installation — up to four racks per simulator, IOS and the shell beside them. */
+function NewLocation({ locations, onClose, onCreate }) {
+  const racks = locations.filter((l) => l.kind === 'rack').length;
+  const [kind, setKind] = useState(racks < 4 ? 'rack' : 'area');
+  const [label, setLabel] = useState(racks < 4 ? `Rack ${racks + 1}` : '');
+  const [unitsU, setUnitsU] = useState(42);
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head"><h2>{t('New rack or area')}</h2></div>
+        <div className="modal-body">
+          <div className="pair">
+            <label>{t('Kind')}
+              <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                <option value="rack">{t('Rack')}</option>
+                <option value="area">{t('Area (IOS, simulator shell, cockpit…)')}</option>
+              </select>
+            </label>
+            <label style={{ flex: 2 }}>{t('Name')}<input autoFocus value={label} onChange={(e) => setLabel(e.target.value)} placeholder={kind === 'rack' ? t('e.g. S03 Rack AV') : t('e.g. Simulator Shell')} /></label>
+            {kind === 'rack' && <label style={{ flex: 0.6 }}>{t('Height (U)')}<input type="number" min="1" max="60" value={unitsU} onChange={(e) => setUnitsU(e.target.value)} /></label>}
+          </div>
+          {kind === 'rack' && racks >= 4 && <p className="hint warn">{t('This installation already has {n} racks — a simulator holds up to four.', { n: racks })}</p>}
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>{t('Cancel')}</button>
+          <button className="btn btn-primary" disabled={!label.trim()} onClick={() => onCreate({ op: 'add_location', label: label.trim(), kind, unitsU: kind === 'rack' ? Number(unitsU) || 42 : undefined })}>{t('Add')}</button>
+        </div>
+      </div>
     </div>
   );
 }

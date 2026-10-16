@@ -12,8 +12,8 @@ const endOf = (e) => (e.block ? { kind: 'block', id: e.block, port: e.port } : {
  * the cursor, with a device, block or cable selected by a click — highlighted with everything it is
  * connected to, and described in the card beside it. No editing here: that is the Phase 2 canvas.
  */
-export default function SchematicViewer({ owner, data, v = 0 }) {
-  const { state, schedule } = data;
+export default function SchematicViewer({ owner, data, v = 0, location = '' }) {
+  const { state, schedule, view: scope } = data; // `scope` = one location's ids when the panel filters by rack
   const [svg, setSvg] = useState('');
   const [size, setSize] = useState({ w: 1, h: 1 });
   const [view, setView] = useState({ x: 0, y: 0, z: 1 });
@@ -27,7 +27,7 @@ export default function SchematicViewer({ owner, data, v = 0 }) {
   useEffect(() => { api.library().then(setLib).catch(() => {}); }, []);
   useEffect(() => {
     let alive = true;
-    fetch(schematicSvgUrl(owner, { lang: locale(), v })).then((r) => r.text()).then((text) => {
+    fetch(schematicSvgUrl(owner, { lang: locale(), v, location })).then((r) => r.text()).then((text) => {
       if (!alive) return;
       const m = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(text);
       const s = { w: m ? +m[1] : 1000, h: m ? +m[2] : 600 };
@@ -37,7 +37,8 @@ export default function SchematicViewer({ owner, data, v = 0 }) {
       if (box) setView(fitView(s, { w: box.width, h: box.height }));
     });
     return () => { alive = false; };
-  }, [owner, v]);
+  }, [owner, v, location]);
+  useEffect(() => { setSelected(null); }, [location]);
 
   const boxSize = () => {
     const b = boxRef.current.getBoundingClientRect();
@@ -129,9 +130,11 @@ export default function SchematicViewer({ owner, data, v = 0 }) {
     const q = query.trim().toLowerCase();
     if (!q) return [];
     const out = [];
-    for (const d of state.devices) if (`${d.label} ${d.id} ${d.notes || ''}`.toLowerCase().includes(q)) out.push({ kind: 'device', id: d.id, label: d.label });
-    for (const b of state.blocks) if (`${b.module} ${b.id}`.toLowerCase().includes(q)) out.push({ kind: 'block', id: b.id, label: b.module });
-    for (const c of state.cables) if (`${c.label} ${c.id}`.toLowerCase().includes(q)) out.push({ kind: 'cable', id: c.id, label: c.label || c.id });
+    const shown = scope ? new Set([...scope.deviceIds, ...scope.blockIds, ...scope.partnerIds, ...scope.cableIds]) : null;
+    const keep = (id) => !shown || shown.has(id);
+    for (const d of state.devices) if (!keep(d.id)) continue; else if (`${d.label} ${d.id} ${d.notes || ''}`.toLowerCase().includes(q)) out.push({ kind: 'device', id: d.id, label: d.label });
+    for (const b of state.blocks) if (keep(b.id) && `${b.module} ${b.id}`.toLowerCase().includes(q)) out.push({ kind: 'block', id: b.id, label: b.module });
+    for (const c of state.cables) if (keep(c.id) && `${c.label} ${c.id}`.toLowerCase().includes(q)) out.push({ kind: 'cable', id: c.id, label: c.label || c.id });
     return out.slice(0, 15);
   }, [query, state]);
 

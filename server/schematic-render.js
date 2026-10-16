@@ -70,11 +70,13 @@ export async function layoutSchematic(state, ctx) {
     const fixed = manual.has(n.id) && state.layout.nodes[n.id];
     return { id: n.id, width: size.w, height: size.h, ...(fixed ? { x: fixed.x, y: fixed.y, layoutOptions: { 'elk.position': `(${fixed.x},${fixed.y})` } } : {}) };
   };
-  const frames = state.locations.map((l) => {
+  // racks first, areas after; the frames sit far enough apart that a cable between two racks reads as leaving one
+  const ordered = [...state.locations].sort((a, b) => (a.kind === 'rack' ? 0 : 1) - (b.kind === 'rack' ? 0 : 1));
+  const frames = ordered.map((l) => {
     const children = nodes.filter((n) => n.location === l.id).map(childOf);
     return {
       id: l.id,
-      layoutOptions: { 'elk.padding': `[top=${FRAME_PAD + 10},left=${FRAME_PAD},bottom=${FRAME_PAD},right=${FRAME_PAD}]`, 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT' },
+      layoutOptions: { 'elk.padding': `[top=${FRAME_PAD + 14},left=${FRAME_PAD},bottom=${FRAME_PAD},right=${FRAME_PAD}]`, 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.margins': '[top=40,left=60,bottom=40,right=60]' },
       children,
       // an empty location is still a place on the drawing, not a dot
       ...(children.length ? {} : { width: 160, height: 60 }),
@@ -83,7 +85,7 @@ export async function layoutSchematic(state, ctx) {
   const loose = nodes.filter((n) => !n.location || !state.locations.some((l) => l.id === n.location)).map(childOf);
   const graph = {
     id: 'root',
-    layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': '30', 'elk.layered.spacing.nodeNodeBetweenLayers': '60', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN' },
+    layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': '30', 'elk.layered.spacing.nodeNodeBetweenLayers': '60', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN', 'elk.spacing.componentComponent': '160' },
     children: [...frames, ...loose],
     edges: state.cables.map((c) => ({ id: c.id, sources: [endNode(c.from)], targets: [endNode(c.to)] })),
   };
@@ -131,7 +133,8 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
   for (const loc of state.locations) {
     const f = l.frames[loc.id];
     if (!f) continue;
-    parts.push(`<g class="sch-frame sch-frame-${esc(loc.kind)}"><rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="6" fill="none" stroke="#000" stroke-width="0.8" stroke-dasharray="${loc.kind === 'rack' ? '' : '4 3'}"/><text x="${f.x + 8}" y="${f.y + 15}" font-size="11" font-weight="bold">${esc(loc.label)}</text></g>`);
+    const rack = loc.kind === 'rack';
+    parts.push(`<g class="sch-frame sch-frame-${esc(loc.kind)}" data-id="${esc(loc.id)}"><rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="8" fill="${rack ? '#f7f7f7' : 'none'}" stroke="#000" stroke-width="${rack ? 1.6 : 0.8}" stroke-dasharray="${rack ? '' : '4 3'}"/><text x="${f.x + 10}" y="${f.y + 17}" font-size="${rack ? 13 : 11}" font-weight="bold">${esc(loc.label)}</text></g>`);
   }
   for (const n of nodes) {
     const box = l.nodes[n.id];
