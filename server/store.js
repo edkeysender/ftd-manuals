@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { GitRepo } from './git.js';
+import { slugify } from './store-utils.js';
 import {
   blankContent,
   generatedSections,
@@ -47,11 +48,7 @@ export async function initStore() {
   warmCache();
 }
 
-export const slugify = (name) =>
-  String(name)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+export { slugify };
 
 const now = () => new Date().toISOString();
 
