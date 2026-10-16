@@ -1299,4 +1299,10 @@ export const PL = {
   "Expand": "Rozwiń",
   "Collapse": "Zwiń",
   'Chat — drag to move, click to open': 'Czat — przeciągnij, aby przesunąć, kliknij, aby otworzyć',
+  "Previous device": "Poprzednie urządzenie",
+  "Next device": "Następne urządzenie",
+  "Go to a device": "Przejdź do urządzenia",
+  "Go to device…": "Przejdź do urządzenia…",
+  "Exit full screen": "Wyjdź z pełnego ekranu",
+  "Full screen": "Pełny ekran",
 };

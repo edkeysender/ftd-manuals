@@ -35,7 +35,23 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
   const [lib, setLib] = useState(null);
   const boxRef = useRef(null);
   const contentRef = useRef(null);
+  const viewerRef = useRef(null);
   const drag = useRef(null);
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => { setFullscreen(document.fullscreenElement === viewerRef.current); setTimeout(() => { if (boxRef.current) setView(fitView(size, boxSize())); }, 60); };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, [size]);
+  const toggleFullscreen = () => { if (document.fullscreenElement) document.exitFullscreen?.(); else viewerRef.current?.requestFullscreen?.(); };
+  // the device walker: every device (and block) in the current scope, in label order
+  const walkList = useMemo(() => {
+    const shown = scope ? new Set([...scope.deviceIds, ...scope.blockIds, ...scope.partnerIds]) : null;
+    const items = [...state.devices.filter((d) => !shown || shown.has(d.id)).map((d) => ({ kind: 'device', id: d.id, label: d.label })), ...state.blocks.filter((b) => !shown || shown.has(b.id)).map((b) => ({ kind: 'block', id: b.id, label: b.module }))];
+    return items.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  }, [state, scope]);
+  const walkIndex = selected && selected.kind !== 'cable' ? walkList.findIndex((i) => i.kind === selected.kind && i.id === selected.id) : -1;
+  const step = (d) => { if (!walkList.length) return; const i = walkIndex < 0 ? (d > 0 ? 0 : walkList.length - 1) : (walkIndex + d + walkList.length) % walkList.length; go({ kind: walkList[i].kind, id: walkList[i].id }); };
 
   useEffect(() => { api.library().then(setLib).catch(() => {}); }, []);
   useEffect(() => {
@@ -213,7 +229,7 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
   }, [query, state]);
 
   return (
-    <div className="sch-viewer">
+    <div ref={viewerRef} className={`sch-viewer ${fullscreen ? 'fullscreen' : ''}`}>
       <div className="sch-toolbar">
         <input className="sch-search" value={query} placeholder={t('Find a device or cable…')} onChange={(e) => setQuery(e.target.value)} />
         <div className="btn-row">
@@ -225,6 +241,15 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
           {location && lib && rackMap(state, lib, location, face) && <button className={`btn btn-sm ${showRack ? 'active' : ''}`} onClick={toggleRack} title={showRack ? t('Hide the rack elevation') : t('Show the rack elevation')}>{showRack ? t('Hide rack view') : t('Show rack view')}</button>}
         </div>
         <span className="hint">{editable ? t('Scroll to zoom, drag to pan, click to select, Esc to clear — drag from a port stub to another port to connect them.') : t('Scroll to zoom, drag to pan, click a device or cable to select it, Esc to clear.')}</span>
+        <span className="sch-walker">
+          <button className="btn btn-sm" onClick={() => step(-1)} title={t('Previous device')} disabled={!walkList.length}>‹</button>
+          <select value={walkIndex >= 0 ? `${walkList[walkIndex].kind}:${walkList[walkIndex].id}` : ''} onChange={(e) => { const [kind, ...rest] = e.target.value.split(':'); if (kind) go({ kind, id: rest.join(':') }); }} title={t('Go to a device')}>
+            <option value="">{t('Go to device…')} ({walkList.length})</option>
+            {walkList.map((i) => <option key={`${i.kind}:${i.id}`} value={`${i.kind}:${i.id}`}>{i.label}</option>)}
+          </select>
+          <button className="btn btn-sm" onClick={() => step(1)} title={t('Next device')} disabled={!walkList.length}>›</button>
+          <button className="btn btn-sm" onClick={toggleFullscreen} title={fullscreen ? t('Exit full screen') : t('Full screen')}>{fullscreen ? '⤡' : '⤢'}</button>
+        </span>
       </div>
       <div className="sch-stage">
         {location && showRack && lib && rackMap(state, lib, location, face) && (

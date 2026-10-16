@@ -913,4 +913,10 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .sch-content.has-sel svg .sch-device:not(.sel):not(.sel-end), .sch-content.has-sel svg .sch-block:not(.sel):not(.sel-end) { opacity: 0.45; }
 .sch-content.has-sel svg .sch-frame { opacity: 0.6; }
 .sch-content svg .sch-cable, .sch-content svg .sch-device, .sch-content svg .sch-block { transition: opacity 0.15s; }
+.sch-toolbar { position: relative; }
+.sch-walker { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.sch-walker select { max-width: 260px; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; font-size: 13px; }
+.sch-viewer.fullscreen, .sch-viewer:fullscreen { background: var(--panel); display: flex; flex-direction: column; width: 100vw; height: 100vh; border-radius: 0; }
+.sch-viewer:fullscreen .sch-stage, .sch-viewer.fullscreen .sch-stage { flex: 1; min-height: 0; }
+.sch-viewer:fullscreen .sch-viewport, .sch-viewer.fullscreen .sch-viewport { min-height: 0; height: 100%; }
 
