@@ -349,7 +349,10 @@ test('a template stores a front and a rear panel picture on main and serves them
   assert.equal(got.mime, 'image/svg+xml');
   assert.equal(got.buffer.toString(), svg.toString());
   assert.equal(await sch.getDevicePanel(t.id, 'rear'), null);
-  await assert.rejects(sch.saveDevicePanel(t.id, 'side', svg, 'image/svg+xml'), /front or rear/);
+  await assert.rejects(sch.saveDevicePanel(t.id, 'Side View!', svg, 'image/svg+xml'), /picture name/);
+  assert.deepEqual((await sch.saveDevicePanel(t.id, 'mainboard-io', svg, 'image/svg+xml')).panels, { front: 'svg', 'mainboard-io': 'svg' });
+  assert.equal((await sch.getDevicePanel(t.id, 'mainboard-io')).mime, 'image/svg+xml');
+  await sch.deleteDevicePanel(t.id, 'mainboard-io');
   await assert.rejects(sch.saveDevicePanel(t.id, 'rear', Buffer.from('hello'), 'text/plain'), /image/);
   const cleared = await sch.deleteDevicePanel(t.id, 'front');
   assert.deepEqual(cleared.panels, {});

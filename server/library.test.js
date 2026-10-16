@@ -54,5 +54,7 @@ test('normalizeTemplate keeps the panel pictures a template has', () => {
   const t = normalizeTemplate({ name: 'UMC202HD', panels: { front: 'svg', rear: 'png' } });
   assert.deepEqual(t.panels, { front: 'svg', rear: 'png' });
   assert.deepEqual(normalizeTemplate({ name: 'Plain' }).panels, {});
-  assert.throws(() => normalizeTemplate({ name: 'Bad', panels: { top: 'svg' } }), /front or rear/);
+  assert.throws(() => normalizeTemplate({ name: 'Bad', panels: { 'Top View!': 'svg' } }), /picture name/);
+  // beyond the two faces, a template may carry named pictures: a mainboard's rear I/O, a card's bracket
+  assert.deepEqual(normalizeTemplate({ name: 'PC', panels: { front: 'jpg', 'mainboard-io': 'png', 'gpu-io': 'png' } }).panels, { front: 'jpg', 'mainboard-io': 'png', 'gpu-io': 'png' });
 });

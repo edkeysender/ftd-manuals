@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api, devicePanelUrl, readFileAsBase64 } from '../api.js';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
+import { panelOrder, panelName } from './SchematicViewer.jsx';
 
 const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-strip', 'headset', 'display', 'panel', 'other'];
 const DIRECTIONS = ['in', 'out', 'bidir'];
@@ -144,13 +145,19 @@ function PanelPictures({ template, onChanged }) {
     setBusy(side);
     try { const t = await api.deleteDevicePanel(template.id, side); setPanels(t.panels || {}); onChanged?.(); } catch (e) { toast(e.message, 'err'); } finally { setBusy(''); }
   }
+  const [extra, setExtra] = useState('');
+  const slots = ['front', 'rear', ...Object.keys(panels).filter((s) => s !== 'front' && s !== 'rear')];
   return (
     <div className="field">
       <span className="field-label">{t('What it looks like')}</span>
+      <div className="pair" style={{ marginBottom: 6 }}>
+        <input value={extra} placeholder={t('Extra picture name, e.g. mainboard-io, gpu-io')} onChange={(e) => setExtra(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} />
+        <label className="btn btn-sm">{t('Add named picture…')}<input type="file" accept="image/*,.svg" hidden disabled={!extra.trim()} onChange={(e) => { upload(extra.trim(), e.target.files?.[0]); setExtra(''); }} /></label>
+      </div>
       <div className="panel-grid">
-        {['front', 'rear'].map((side) => (
+        {slots.map((side) => (
           <div key={side} className="panel-slot">
-            <div className="small muted">{side === 'front' ? t('Front') : t('Rear')}</div>
+            <div className="small muted">{panelName(side)}</div>
             {panels[side] ? <img src={devicePanelUrl(template.id, side, `${panels[side]}-${Date.now()}`)} alt={side} /> : <div className="panel-empty">{t('No picture')}</div>}
             <div className="btn-row">
               <label className="btn btn-sm">{busy === side ? t('Saving…') : panels[side] ? t('Replace…') : t('Add picture…')}<input type="file" accept="image/*,.svg" hidden onChange={(e) => upload(side, e.target.files?.[0])} /></label>

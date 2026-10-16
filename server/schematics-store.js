@@ -7,7 +7,7 @@
  */
 import * as store from './store.js';
 import { repo, mutate, readJson, readJsonMany, slugify } from './store.js';
-import { normalizeLibrary, normalizeTemplate, DEFAULT_LIBRARY, PANEL_SIDES } from './library.js';
+import { normalizeLibrary, normalizeTemplate, DEFAULT_LIBRARY, PANEL_NAME } from './library.js';
 import { sniff } from './images.js';
 import { emptySchematic, applyOps, validateSchematic, connectorFace, cableSchedule, SchematicError } from './schematic.js';
 import { renderSvg, scheduleHtml, faceHtml } from './schematic-render.js';
@@ -134,7 +134,7 @@ const isSvg = (buf) => /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.t
 
 /** Store a picture of one face of a device template (SVG or a raster image). */
 export async function saveDevicePanel(id, side, buffer, mime = '') {
-  if (!PANEL_SIDES.includes(side)) throw new Error(`Panel pictures are front or rear, not "${side}"`);
+  if (!PANEL_NAME.test(side)) throw new Error(`A picture name is front, rear or a short kebab-case word such as "mainboard-io", not "${side}"`);
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error('No image data');
   let ext = null;
   if (isSvg(buffer) || mime === 'image/svg+xml') ext = 'svg';

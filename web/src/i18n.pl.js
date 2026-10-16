@@ -1279,4 +1279,9 @@ export const PL = {
   "rear picture": "zdjęcie tyłu",
   "Devices in this rack without a U position — pick one, then click a free slot to place it": "Urządzenia w tej szafie bez pozycji U — wybierz jedno, potem kliknij wolny slot, aby je umieścić",
   "{n} without U — pick to place…": "{n} bez pozycji U — wybierz, aby umieścić…",
+  // ----- named pictures -----
+  "Mainboard rear I/O": "Tylne złącza płyty głównej",
+  "Graphics card outputs": "Wyjścia karty graficznej",
+  "Extra picture name, e.g. mainboard-io, gpu-io": "Nazwa dodatkowego obrazu, np. mainboard-io, gpu-io",
+  "Add named picture…": "Dodaj nazwany obraz…",
 };

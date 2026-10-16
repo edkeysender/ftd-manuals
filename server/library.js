@@ -12,6 +12,8 @@ export const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'displa
 export const PORT_DIRECTIONS = ['in', 'out', 'bidir'];
 export const PORT_SIDES = ['left', 'right', 'top', 'bottom'];
 export const PANEL_SIDES = ['front', 'rear'];
+/** front, rear, or a named extra picture: lower-case letters, digits and dashes. */
+export const PANEL_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
 /** Default symbol per category, when a template names none. */
 const SYMBOL_OF = { switch: 'switch', router: 'switch', pc: 'pc', 'power-strip': 'power-strip', headset: 'headset', display: 'display' };
 
@@ -121,9 +123,10 @@ export function normalizeTemplate(spec, takenIds = new Set(), connectors = DEFAU
   const ports = Array.isArray(spec.ports) ? spec.ports.map((p) => normalizePort(p, connectorIds, seen)) : [];
   const heightU = spec.heightU === undefined || spec.heightU === null || spec.heightU === '' ? 1 : Number(spec.heightU);
   // pictures of the device's faces, kept as files next to the library: {front: 'svg'|'png'|…, rear: …}
+  // the two faces plus any named picture (a mainboard's rear I/O, a card's bracket): {name: ext}
   const panels = {};
   for (const [side, ext] of Object.entries(spec.panels && typeof spec.panels === 'object' ? spec.panels : {})) {
-    if (!PANEL_SIDES.includes(side)) throw new Error(`Panel pictures are front or rear, not "${side}"`);
+    if (!PANEL_NAME.test(side)) throw new Error(`A picture name is front, rear or a short kebab-case word such as "mainboard-io", not "${side}"`);
     if (ext) panels[side] = String(ext);
   }
   if (!Number.isFinite(heightU) || heightU < 0) throw new Error('heightU must be a number of rack units (0 for a device outside a rack)');

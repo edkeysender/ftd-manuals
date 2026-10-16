@@ -5,6 +5,9 @@ import { cableKindsFor, portOf, cableAt, compatibleTargets, rackMap } from './sc
 import { useToast } from '../App.jsx';
 import { t, locale } from '../i18n.jsx';
 
+/** Picture names on the card: the two faces first, then the extras in the order they were added. */
+export const panelOrder = (panels) => ['front', 'rear'].filter((s) => panels?.[s]).concat(Object.keys(panels || {}).filter((s) => s !== 'front' && s !== 'rear'));
+export const panelName = (s) => (s === 'front' ? t('Front') : s === 'rear' ? t('Rear') : s === 'mainboard-io' ? t('Mainboard rear I/O') : s === 'gpu-io' ? t('Graphics card outputs') : s.replace(/-/g, ' '));
 const SELECTABLE = '.sch-device[data-id], .sch-block[data-id], .sch-cable[data-id]';
 const kindOf = (el) => (el.classList.contains('sch-cable') ? 'cable' : el.classList.contains('sch-block') ? 'block' : 'device');
 const endOf = (e) => (e.block ? { kind: 'block', id: e.block, port: e.port } : { kind: 'device', id: e.device, port: e.port });
@@ -453,12 +456,12 @@ function Details({ selected, state, schedule, lib, owner, onGo, onClose, editabl
           </label>
         </div>
       )}
-      {tpl && (tpl.panels?.front || tpl.panels?.rear) && (
+      {tpl && Object.keys(tpl.panels || {}).length > 0 && (
         <div className="panel-grid">
-          {['front', 'rear'].filter((s) => tpl.panels[s]).map((s) => (
-            <figure key={s} className="panel-fig" title={t('Click to enlarge')} onClick={() => onZoomPanel({ src: devicePanelUrl(tpl.id, s, tpl.panels[s]), caption: `${tpl.name} — ${s === 'front' ? t('Front') : t('Rear')}` })}>
+          {panelOrder(tpl.panels).map((s) => (
+            <figure key={s} className="panel-fig" title={t('Click to enlarge')} onClick={() => onZoomPanel({ src: devicePanelUrl(tpl.id, s, tpl.panels[s]), caption: `${tpl.name} — ${panelName(s)}` })}>
               <img src={devicePanelUrl(tpl.id, s, tpl.panels[s])} alt={s} />
-              <figcaption className="small muted">{s === 'front' ? t('Front') : t('Rear')}</figcaption>
+              <figcaption className="small muted">{panelName(s)}</figcaption>
             </figure>
           ))}
         </div>
