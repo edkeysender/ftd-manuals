@@ -5,13 +5,21 @@
  */
 import * as sch from './schematics-store.js';
 import { renderSvg, schematicCsv } from './schematic-render.js';
-import { schematicChat } from './schematic-ai.js';
+import { schematicChat, attachmentsToText } from './schematic-ai.js';
+import { expandDocuments } from './extract.js';
 import { SchematicError } from './schematic.js';
 import * as store from './store.js';
 import * as ai from './ai.js';
 import { DEFAULT_LANG, langOf } from './docgen.js';
 
 /** Routes are registered with a path array, so `req.route.path` is that array — the URL says which owner it is. */
+/** The readable text of a Word / PDF / PowerPoint file, through the inbox extractor (its <doc>.html), tags stripped. */
+async function documentText({ name, buffer }) {
+  const files = await expandDocuments([{ name, buffer }], { keepDocuments: false });
+  const html = files.find((f) => /\.html$/i.test(f.name));
+  return html ? html.buffer.toString('utf8').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+}
+
 export const schematicRef = (req) => (String(req.originalUrl || req.url || '').startsWith('/api/installations/') ? sch.instRef(req.params.slug) : req.params.slug);
 const paths = (suffix = '') => [`/api/modules/:slug/schematic${suffix}`, `/api/installations/:slug/schematic${suffix}`];
 
@@ -69,7 +77,11 @@ export function registerSchematicRoutes(app, { wrap, auth }) {
     if (!s) throw new Error('No schematic — create one first');
     if (!s.editable) throw new Error(`Schematic ${s.state.version} is ${s.state.status} — start the next version or a hotfix to change it`);
     const ctx = await sch.schematicContext();
-    res.json(await schematicChat({ state: s.state, ctx, messages: req.body?.messages || [], guidelines: await store.getAiGuidelines(), lang: langOf(req.body?.lang || DEFAULT_LANG) }));
+    // files dropped into the chat: text as it is, pictures through the vision model, Word/PDF through the extractor
+    const { texts, notes } = await attachmentsToText(req.body?.attachments || [], { expand: documentText });
+    const out = await schematicChat({ state: s.state, ctx, messages: req.body?.messages || [], guidelines: await store.getAiGuidelines(), lang: langOf(req.body?.lang || DEFAULT_LANG), attachments: texts });
+    if (notes.length) out.note = [out.note, ...notes].filter(Boolean).join(' ');
+    res.json(out);
   }));
 
   const pick = async (req) => {

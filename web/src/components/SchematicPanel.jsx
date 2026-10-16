@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { api, schematicSvgUrl, askReleaseNote } from '../api.js';
+import { api, schematicSvgUrl, askReleaseNote, readFileAsBase64 } from '../api.js';
 import ActionMenu from './ActionMenu.jsx';
 import SchematicViewer from './SchematicViewer.jsx';
 import { useToast } from '../App.jsx';
@@ -156,19 +156,38 @@ function SchematicChat({ owner, onApplied }) {
   const [text, setText] = useState('');
   const [pending, setPending] = useState(null); // { ops, validation, reply }
   const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState([]); // attachments waiting for the next message: {name, type, size, dataBase64}
+  const fileRef = useRef(null);
   const endRef = useRef(null);
+  const MAX_FILE = 8 * 1024 * 1024;
+  async function addFiles(list) {
+    const picked = [...(list || [])];
+    const small = picked.filter((f) => f.size <= MAX_FILE);
+    if (small.length < picked.length) toast(t('Files over 8 MB were left out'), 'err');
+    const read = await Promise.all(small.map(readFileAsBase64));
+    setFiles((cur) => [...cur, ...read.filter((r) => !cur.some((c) => c.name === r.name && c.size === r.size))]);
+  }
+  const onDrop = (e) => { e.preventDefault(); addFiles(e.dataTransfer.files); };
+  const onPaste = (e) => {
+    const items = [...(e.clipboardData?.items || [])].filter((it) => it.kind === 'file').map((it) => it.getAsFile()).filter(Boolean);
+    if (items.length) { e.preventDefault(); addFiles(items); }
+  };
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [messages, pending]);
 
   async function send() {
     const content = text.trim();
-    if (!content || busy) return;
-    const next = [...messages, { role: 'user', content }];
-    setMessages(next);
+    if ((!content && files.length === 0) || busy) return;
+    const sent = files;
+    // the log shows what went along; the model gets the files' contents through the route
+    const shown = sent.length ? `${content}${content ? '\n' : ''}📎 ${sent.map((f) => f.name).join(', ')}` : content;
+    const next = [...messages, { role: 'user', content: content || t('See the attached files.') }];
+    setMessages([...messages, { role: 'user', content: shown }]);
     setText('');
+    setFiles([]);
     setBusy(true);
     try {
-      const r = await api.schematicChat(owner, next, locale());
-      setMessages([...next, { role: 'assistant', content: [r.reply, r.note].filter(Boolean).join('\n') }]);
+      const r = await api.schematicChat(owner, next, locale(), sent);
+      setMessages((m) => [...m, { role: 'assistant', content: [r.reply, r.note].filter(Boolean).join('\n') }]);
       setPending(r.ops.length ? { ops: r.ops, validation: r.validation, reply: r.reply } : null);
     } catch (e) {
       toast(e.message, 'err');
@@ -195,7 +214,7 @@ function SchematicChat({ owner, onApplied }) {
   });
 
   return (
-    <div className="schematic-chat">
+    <div className="schematic-chat" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <h3>{t('Build with chat')}</h3>
       <div className="chat-log">
         {messages.length === 0 && <p className="hint">{t('Example: “Behringer UMC404HD in rack 1, powered from power strip 1 socket 1, Phones 1 to the captain headset in the cockpit.”')}</p>}
@@ -215,9 +234,20 @@ function SchematicChat({ owner, onApplied }) {
         )}
         <div ref={endRef} />
       </div>
+      {files.length > 0 && (
+        <div className="chat-files">
+          {files.map((f) => (
+            <span key={`${f.name}:${f.size}`} className="chip chat-file" title={`${Math.round(f.size / 1024)} kB`}>
+              📎 {f.name} <button className="btn-icon" title={t('Remove attachment')} onClick={() => setFiles((cur) => cur.filter((x) => x !== f))}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="chat-input">
-        <textarea rows={2} value={text} placeholder={t('What is connected to what?')} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
-        <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={send}>{busy ? t('Thinking…') : t('Send')}</button>
+        <input ref={fileRef} type="file" multiple hidden accept="image/*,.txt,.csv,.tsv,.json,.md,.html,.htm,.xml,.yaml,.yml,.ini,.cfg,.log,.docx,.pdf,.pptx,.xlsx" onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
+        <button className="btn" title={t('Attach files: pictures, cable lists, notes, Word or PDF')} onClick={() => fileRef.current?.click()}>📎</button>
+        <textarea rows={2} value={text} placeholder={t('What is connected to what? Drop or paste files here too.')} onChange={(e) => setText(e.target.value)} onPaste={onPaste} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
+        <button className="btn btn-primary" disabled={busy || (!text.trim() && files.length === 0)} onClick={send}>{busy ? t('Thinking…') : t('Send')}</button>
       </div>
     </div>
   );

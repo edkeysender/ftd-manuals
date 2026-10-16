@@ -1185,4 +1185,10 @@ export const PL = {
   "Connected to": "Połączony z",
   "free": "wolny",
   "Nothing connected": "Nic nie podłączono",
+  // ----- schematic chat attachments -----
+  "Files over 8 MB were left out": "Pliki powyżej 8 MB zostały pominięte",
+  "See the attached files.": "Patrz załączone pliki.",
+  "Remove attachment": "Usuń załącznik",
+  "Attach files: pictures, cable lists, notes, Word or PDF": "Załącz pliki: zdjęcia, listy kabli, notatki, Word lub PDF",
+  "What is connected to what? Drop or paste files here too.": "Co jest z czym połączone? Można tu też upuścić lub wkleić pliki.",
 };

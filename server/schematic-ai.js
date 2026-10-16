@@ -70,7 +70,7 @@ const OP_SCHEMA = `OPERATIONS (JSON objects, "op" plus fields):
 - module schematic only: {"op":"set_external_port","id"?,"label","device","port"} · {"op":"unset_external_port","id"}
 - installation only: {"op":"add_location","id"?,"label","kind":"rack"|"area","unitsU"?} · {"op":"update_location",…} · {"op":"remove_location","id"} · {"op":"place_block","id"?,"module","location"?,"rack"?} · {"op":"refresh_block","id"} · {"op":"remove_block","id","cascade"?}`;
 
-export function buildPrompt({ state, ctx, guidelines = '', lang = 'en' }) {
+export function buildPrompt({ state, ctx, guidelines = '', lang = 'en', attachments = [] }) {
   const kind = state.kind === 'module' ? `the wiring schematic of module "${state.owner}"` : `the installation schematic "${state.owner}"`;
   return `You are the schematic assistant of the FTD.aero Documentation Console, editing ${kind} (version ${state.version} r${state.revision}, ${state.status}).
 The schematic is DATA: devices with typed ports, cables between ports, locations (racks and areas), and — for a module — the external ports that leave it. You change it ONLY through operations; the console validates, applies and draws them. You never emit coordinates, sizes or drawing instructions.
@@ -88,7 +88,10 @@ RULES:
 - Reply in ${lang === 'pl' ? 'Polish' : 'English'}, one to three sentences.
 ${guidelines.trim() ? `\nHOUSE GUIDELINES:\n${guidelines.trim()}\n` : ''}
 ${describeLibrary(ctx)}
-
+${attachments.length ? `
+ATTACHED FILES from the chat — source material for this instruction (a cable list, a photo of the rack described by the vision model, a wiring note). Take device names, ports and cable labels from them where they say so:
+${attachments.map((a) => `=== ${a.name} ===\n${a.text}`).join('\n\n')}
+` : ''}
 CURRENT STATE:
 ${describeState(state, ctx)}
 
@@ -111,8 +114,8 @@ export function parseOps(raw) {
   return { reply: typeof parsed.reply === 'string' && parsed.reply.trim() ? parsed.reply.trim() : 'Done.', ops, note: dropped.length ? `Ignored unknown operation(s): ${dropped.join(', ')}.` : '' };
 }
 
-export async function schematicChat({ state, ctx, messages, guidelines = '', lang = 'en', callModel = ai.callModel }) {
-  const sys = buildPrompt({ state, ctx, guidelines, lang });
+export async function schematicChat({ state, ctx, messages, guidelines = '', lang = 'en', attachments = [], callModel = ai.callModel }) {
+  const sys = buildPrompt({ state, ctx, guidelines, lang, attachments });
   const convo = (messages || []).slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }));
   const raw = await callModel([{ role: 'system', content: sys }, ...convo], { json: true });
   const parsed = parseOps(raw);
@@ -124,4 +127,45 @@ export async function schematicChat({ state, ctx, messages, guidelines = '', lan
     if (!(e instanceof SchematicError)) throw e;
     return { reply: parsed.reply, ops: [], preview: null, validation: null, note: [parsed.note, `The proposed change was refused: ${e.message}`].filter(Boolean).join(' ') };
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Chat attachments → text the prompt can carry                        */
+/* ------------------------------------------------------------------ */
+
+const TEXT_EXT = /\.(txt|csv|tsv|json|md|html?|xml|ya?ml|ini|cfg|conf|log)$/i;
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i;
+
+/**
+ * Turn what the user dropped into the chat into text: a text file as it is (capped), a picture as the
+ * vision model's description plus any readable text, anything else skipped with a note. `describe` is
+ * ai.describeImage unless injected; `expand` (optional) turns a document into {text} for docx/pdf.
+ */
+export async function attachmentsToText(list, { describe = (args) => ai.describeImage(args), expand = null, maxText = 15000, maxBytes = 8 * 1024 * 1024 } = {}) {
+  const texts = [];
+  const notes = [];
+  for (const a of list || []) {
+    const name = String(a?.name || 'file');
+    const buffer = Buffer.from(a?.dataBase64 || '', 'base64');
+    if (!buffer.length) { notes.push(`Attachment "${name}" is empty — skipped.`); continue; }
+    if (buffer.length > maxBytes) { notes.push(`Attachment "${name}" is larger than ${Math.round(maxBytes / 1048576)} MB — skipped.`); continue; }
+    const type = String(a?.type || '');
+    try {
+      if (type.startsWith('image/') || IMAGE_EXT.test(name)) {
+        const d = await describe({ buffer, mimeType: type || 'image/jpeg', module: null, name });
+        texts.push({ name, text: [d.description, d.text ? `Readable text: ${d.text}` : ''].filter(Boolean).join('\n') || '(no description)' });
+      } else if (type.startsWith('text/') || /json|xml|yaml|csv/.test(type) || TEXT_EXT.test(name)) {
+        texts.push({ name, text: buffer.toString('utf8').slice(0, maxText) });
+      } else if (expand && /\.(docx|pdf|pptx|xlsx)$/i.test(name)) {
+        const text = await expand({ name, buffer });
+        if (text) texts.push({ name, text: String(text).slice(0, maxText) });
+        else notes.push(`Attachment "${name}": no readable text found — skipped.`);
+      } else {
+        notes.push(`Attachment "${name}" skipped — only images, text files and Word/PDF documents are read.`);
+      }
+    } catch (e) {
+      notes.push(`Attachment "${name}" could not be read: ${e.message}`);
+    }
+  }
+  return { texts, notes };
 }

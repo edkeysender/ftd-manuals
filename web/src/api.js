@@ -213,7 +213,7 @@ export const api = {
   schematicAction: (owner, action) => request(`${schematicPath(owner)}/${action}`, { method: 'POST' }),
   releaseSchematic: (owner, note) => request(`${schematicPath(owner)}/release`, { method: 'POST', body: { note } }),
   schematicReleaseNote: (owner, note) => request(`${schematicPath(owner)}/release-note`, { method: 'PUT', body: { note } }),
-  schematicChat: (owner, messages, lang = 'en') => request(`${schematicPath(owner)}/chat`, { method: 'POST', body: { messages, lang } }),
+  schematicChat: (owner, messages, lang = 'en', attachments = []) => request(`${schematicPath(owner)}/chat`, { method: 'POST', body: { messages, lang, attachments } }),
   saveChecklist: (slug, version, checklist, summary = '') =>
     request(`${ownerPath(slug)}/docs/${version}/checklist`, { method: 'PUT', body: { checklist, summary } }),
 };

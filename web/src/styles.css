@@ -839,4 +839,5 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .sch-table tr.sch-free td { color: var(--muted); }
 .sch-links { margin: 0; padding-left: 18px; font-size: 13px; }
 button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
-
+.chat-files { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.chat-file { display: inline-flex; align-items: center; gap: 4px; }

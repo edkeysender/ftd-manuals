@@ -61,3 +61,32 @@ test('schematicChat returns no ops when the applier refuses them', async () => {
   assert.equal(r.preview, null);
   assert.match(r.note, /port "nope"/);
 });
+
+test('buildPrompt carries chat attachments as source material', () => {
+  const p = buildPrompt({ state: inst(), ctx: ctx(), attachments: [{ name: 'cables.csv', text: 'W10,VDS,5 m' }] });
+  assert.match(p, /ATTACHED FILES/);
+  assert.match(p, /=== cables\.csv ===\nW10,VDS,5 m/);
+  assert.doesNotMatch(buildPrompt({ state: inst(), ctx: ctx() }), /ATTACHED FILES/);
+});
+
+test('attachmentsToText reads text files, describes images, and skips what it cannot use', async () => {
+  const { attachmentsToText } = await import('./schematic-ai.js');
+  const b64 = (s) => Buffer.from(s).toString('base64');
+  const described = [];
+  const r = await attachmentsToText(
+    [
+      { name: 'list.csv', type: 'text/csv', dataBase64: b64('a,b\n1,2') },
+      { name: 'photo.jpg', type: 'image/jpeg', dataBase64: b64('not really a jpeg') },
+      { name: 'big.bin', type: 'application/octet-stream', dataBase64: b64('x'.repeat(10)) },
+      { name: 'empty.txt', type: 'text/plain', dataBase64: '' },
+    ],
+    { describe: async ({ name }) => { described.push(name); return { description: 'A rack with a PDU.', text: 'PDU-1' }; }, maxText: 1000 }
+  );
+  assert.deepEqual(r.texts.map((t) => t.name), ['list.csv', 'photo.jpg']);
+  assert.equal(r.texts[0].text, 'a,b\n1,2');
+  assert.match(r.texts[1].text, /A rack with a PDU\./);
+  assert.match(r.texts[1].text, /PDU-1/);
+  assert.deepEqual(described, ['photo.jpg']);
+  assert.equal(r.notes.length, 2);
+  assert.match(r.notes.join(' '), /big\.bin/);
+});

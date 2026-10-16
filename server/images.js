@@ -202,5 +202,11 @@ export async function resizeSameFormat(buffer, width) {
 
 /** PNG of an SVG at the given width, aspect kept (schematics for MCP clients). */
 export async function rasterizeWide(svg, width = 1600) {
-  return sharp(Buffer.isBuffer(svg) ? svg : Buffer.from(svg), { density: 220 }).resize({ width }).png().toBuffer();
+  const buf = Buffer.isBuffer(svg) ? svg : Buffer.from(svg);
+  // An SVG unit is a CSS pixel at 72 dpi: pick the density that lands on the requested width, so a
+  // 12 000-unit drawing is not first rendered at 220 dpi (36 000 px wide) and refused by sharp.
+  const m = /viewBox="0 0 ([\d.]+) [\d.]+"/.exec(buf.toString('utf8', 0, 2000));
+  const unitsWide = m ? Number(m[1]) : width;
+  const density = Math.max(1, Math.min(2400, (72 * width) / unitsWide));
+  return sharp(buf, { density, limitInputPixels: false }).resize({ width }).png().toBuffer();
 }
