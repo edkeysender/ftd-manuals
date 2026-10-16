@@ -351,6 +351,8 @@ const STRINGS = {
     introduction: 'Introduction', generalInfo: 'General information', module: 'Module', code: 'Code', category: 'Category', manualType: 'Manual type', docCode: 'Document code',
     hardware: 'Parts', unit: 'Part', relation: 'Relation', notes: 'Notes',
     relatedHardware: 'Related hardware', runsIn: 'Runs in',
+    connections: 'Connections', portList: 'External ports', cableSchedule: 'Cable schedule', wiringOf: (name, code) => `Wiring of ${name} — ${code}`,
+    installationWiring: 'Installation wiring', installationFig: (name) => `Installation wiring — ${name}`, installationCables: 'Cables of this manual’s chapters',
     softwareRelation: 'Software relation', software: 'Software', coveredReleases: 'Covered releases', andLater: 'and later',
     audienceRow: (label, audience) => `${label} — ${audience} audience`,
     introAudience: { technician: 'It is intended for the installer and service technician and is not part of the documentation handed to the simulator operator.', customer: 'It is intended for the operator of the simulator.' },
@@ -380,6 +382,8 @@ const STRINGS = {
     introduction: 'Wprowadzenie', generalInfo: 'Informacje ogólne', module: 'Moduł', code: 'Kod', category: 'Kategoria', manualType: 'Rodzaj instrukcji', docCode: 'Kod dokumentu',
     hardware: 'Części', unit: 'Część', relation: 'Relacja', notes: 'Uwagi',
     relatedHardware: 'Powiązany sprzęt', runsIn: 'Pracuje w',
+    connections: 'Połączenia', portList: 'Porty zewnętrzne', cableSchedule: 'Zestawienie kabli', wiringOf: (name, code) => `Okablowanie ${name} — ${code}`,
+    installationWiring: 'Okablowanie instalacji', installationFig: (name) => `Okablowanie instalacji — ${name}`, installationCables: 'Kable rozdziałów tej instrukcji',
     softwareRelation: 'Powiązane oprogramowanie', software: 'Oprogramowanie', coveredReleases: 'Objęte wydania', andLater: 'i nowsze',
     audienceRow: (label, audience) => `${label} — odbiorca: ${audience}`,
     introAudience: { technician: 'Jest przeznaczony dla instalatora i technika serwisu i nie stanowi części dokumentacji przekazywanej operatorowi symulatora.', customer: 'Jest przeznaczony dla operatora symulatora.' },
@@ -409,7 +413,7 @@ export function generatedSections(
   module,
   doc,
   lang = DEFAULT_LANG,
-  { revisionHistory = true, relatedHardware = [], assembled = false } = {}
+  { revisionHistory = true, relatedHardware = [], assembled = false, schematic = null } = {}
 ) {
   const T = strings(lang);
   // The revision column carries the date under the revision: short lines in one narrow column
@@ -463,6 +467,15 @@ export function generatedSections(
   // A software has no parts of its own, but the technician still has to know which units run it:
   // the parts of the modules that link this software, named with the module they sit in.
   const hasRelated = ownedBySoftware && type.audience !== 'customer' && relatedHardware.length > 0;
+  // A module's wiring: its released schematic, the ports that leave it and its cables. The
+  // technician's business, never the operator's. The build numbers the figure like any other.
+  const hasSchematic = !ownedBySoftware && type.audience !== 'customer' && schematic && schematic.svg;
+  const schematicBlock = !hasSchematic
+    ? ''
+    : `<h3>${T.connections}</h3>
+<figure class="schematic" data-schematic="${esc(module.slug)}" data-size="full">${schematic.svg}<figcaption>${esc(T.wiringOf(module.name, `${manualDocCode(module, type.id).replace(/-[A-Z]+-[A-Z]+$/, '')}-SCH ${schematic.version}`))}</figcaption></figure>
+${schematic.faceHtml ? `<h4>${T.portList}</h4>\n${schematic.faceHtml}` : ''}
+${schematic.scheduleHtml ? `<h4>${T.cableSchedule}</h4>\n${schematic.scheduleHtml}` : ''}`;
   const relRows = relatedHardware
     .map(
       (h) =>
@@ -504,6 +517,7 @@ ${relRows}
 </tbody>
 </table>`,
       // The software and the releases it covers are said by the chapter's badge (kindBadge).
+      schematicBlock,
     ].filter(Boolean);
     return tables.length ? `<section class="auto-section" data-auto="3">\n<h2>${T.generalInfo}</h2>\n${tables.join('\n')}\n</section>\n` : '';
   }
@@ -555,6 +569,7 @@ ${!hasSoftware ? '' : `<h3>${T.softwareRelation}</h3>
 ${swRows}
 </tbody>
 </table>`}
+${schematicBlock}
 </section>
 `;
 }
@@ -752,6 +767,8 @@ export const MANUAL_CSS = `
 /* width (a small screenshot is scaled up), and a tall one is held to a page. In a table a picture     */
 /* fills its column but never below 35 mm. data-size="small|medium|large|full" on a <figure> sets it. */
 .manual-doc figure img { min-width: 60%; max-height: 190mm; object-fit: contain; }
+.manual-doc figure.schematic svg { width: 100%; height: auto; max-height: 230mm; border: 1px solid #dde3ea; }
+.manual-doc table.cable-schedule td, .manual-doc table.port-list td { font-size: 8.5pt; }
 .manual-doc .chapter td img, .manual-doc .chapter th img, .manual-doc .chapter td figure img { width: 100%; min-width: 35mm; max-height: none; }
 .manual-doc figure[data-size="small"] img { min-width: 0; width: 40%; }
 .manual-doc figure[data-size="medium"] img { min-width: 0; width: 60%; }
@@ -807,6 +824,7 @@ export const MANUAL_CSS = `
  * replaces the Software relation table an assembled chapter used to carry.
  */
 function kindBadge(c, T) {
+  if (c.installation) return '';
   const software = c.software || c.module?.kind === 'software' || manualTypeOf(c.doc?.manual).kind === 'software';
   if (!software) return `<span class="kind-badge hw">${esc(T.hardwareKind)}</span>`;
   const covered = (c.doc?.covers || [])

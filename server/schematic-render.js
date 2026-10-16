@@ -30,8 +30,8 @@ const words = (lang) => WORDS[lang] || WORDS.en;
 function nodePorts(state, node, ctx) {
   const ports = portsOf(state, node.block ? { block: node.id } : { device: node.id }, ctx) || [];
   const by = { left: [], right: [], top: [], bottom: [] };
-  for (const p of ports) (by[p.side] || by.right).push(p);
-  if (node.block) for (const p of ports) if (!p.side) by.left.push(p); // a face has no side: all on the left
+  // a block shows its module's connector face, which has no sides of its own: all on the left
+  for (const p of ports) (node.block ? by.left : by[p.side] || by.right).push(p);
   return by;
 }
 
@@ -70,11 +70,16 @@ export async function layoutSchematic(state, ctx) {
     const fixed = manual.has(n.id) && state.layout.nodes[n.id];
     return { id: n.id, width: size.w, height: size.h, ...(fixed ? { x: fixed.x, y: fixed.y, layoutOptions: { 'elk.position': `(${fixed.x},${fixed.y})` } } : {}) };
   };
-  const frames = state.locations.map((l) => ({
-    id: l.id,
-    layoutOptions: { 'elk.padding': `[top=${FRAME_PAD + 10},left=${FRAME_PAD},bottom=${FRAME_PAD},right=${FRAME_PAD}]`, 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT' },
-    children: nodes.filter((n) => n.location === l.id).map(childOf),
-  }));
+  const frames = state.locations.map((l) => {
+    const children = nodes.filter((n) => n.location === l.id).map(childOf);
+    return {
+      id: l.id,
+      layoutOptions: { 'elk.padding': `[top=${FRAME_PAD + 10},left=${FRAME_PAD},bottom=${FRAME_PAD},right=${FRAME_PAD}]`, 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT' },
+      children,
+      // an empty location is still a place on the drawing, not a dot
+      ...(children.length ? {} : { width: 160, height: 60 }),
+    };
+  });
   const loose = nodes.filter((n) => !n.location || !state.locations.some((l) => l.id === n.location)).map(childOf);
   const graph = {
     id: 'root',

@@ -81,3 +81,27 @@ test('tables and csv', () => {
   assert.equal(csv.split('\n')[0], 'label,kind,from,from_port,to,to_port,length_m,notes');
   assert.match(csv, /PWR-01,Power,Power strip 1,Socket 1,UMC404HD,Power,,/);
 });
+
+test('a block draws each external port once, on its left edge', async () => {
+  const released = applyOps(
+    emptySchematic({ kind: 'module', owner: 'audio-system' }),
+    [{ op: 'add_device', id: 'hs', template: 'headset' }, { op: 'set_external_port', id: 'jack', label: 'Headset jack', device: 'hs', port: 'jack' }],
+    ctx()
+  ).state;
+  const c = { ...ctx(), releasedSchematics: new Map([['audio-system', { ...released, status: 'released' }]]) };
+  const inst = applyOps(
+    emptySchematic({ kind: 'installation', owner: 'sim' }),
+    [{ op: 'add_location', id: 'rack-1', label: 'Rack 1', kind: 'rack' }, { op: 'place_block', id: 'audio', module: 'audio-system', location: 'rack-1' }],
+    c
+  ).state;
+  const svg = await renderSvg(inst, c);
+  assert.equal((svg.match(/data-port="jack"/g) || []).length, 1);
+  const l = await layoutSchematic(inst, c);
+  assert.ok(l.nodes.audio.w > 0);
+});
+
+test('an empty location still draws as a visible frame', async () => {
+  const inst = applyOps(emptySchematic({ kind: 'installation', owner: 'sim' }), [{ op: 'add_location', id: 'ios', label: 'IOS' }], ctx()).state;
+  const l = await layoutSchematic(inst, ctx());
+  assert.ok(l.frames.ios.w >= 100 && l.frames.ios.h >= 40, `frame ${JSON.stringify(l.frames.ios)}`);
+});

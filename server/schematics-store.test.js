@@ -234,3 +234,42 @@ test('release is refused while validation has errors, and a used template cannot
   });
   sch.dropCaches();
 });
+
+test('the technician manual and the assembled manual carry the released wiring', async () => {
+  const slug = await makeModule('Wired module');
+  const m = await store.getModule(slug);
+  const techKey = m.docs.find((d) => d.manual === 'technician').key;
+  assert.doesNotMatch((await store.getDoc(slug, techKey)).generated, /Connections/, 'no schematic yet');
+  await sch.createSchematic(slug);
+  await sch.applySchematicOps(slug, [{ op: 'add_device', id: 'hs', template: 'headset', label: 'Headset' }, { op: 'set_external_port', id: 'jack', label: 'Headset jack', device: 'hs', port: 'jack' }]);
+  assert.doesNotMatch((await store.getDoc(slug, techKey)).generated, /Connections/, 'a draft schematic does not print');
+  await sch.releaseSchematic(slug, { note: 'Wired.' });
+  const d = await store.getDoc(slug, techKey);
+  assert.match(d.generated, /<h3>Connections<\/h3>/);
+  assert.match(d.generated, /Headset jack/);
+
+  await store.releaseDoc(slug, techKey, { force: true, note: 'Released for the test.' });
+  const inst = await sch.createInstallation({ name: 'Wired sim', device: 'FNPT II', serialNumber: 'SN-7', operator: 'Op' });
+  const ref = sch.instRef(inst.slug);
+  await sch.applySchematicOps(ref, [
+    { op: 'place_block', id: 'wm', module: slug, location: 'cockpit' },
+    { op: 'add_device', id: 'pdu', template: 'pdu-8', label: 'PDU', location: 'rack-1' },
+    { op: 'add_device', id: 'umc', template: 'behringer-umc404hd', label: 'UMC', location: 'rack-1' },
+    { op: 'connect', from: { device: 'umc', port: 'phones-1' }, to: { block: 'wm', port: 'jack' }, label: 'AUD-01' },
+  ]);
+  const manual = await store.createManual({ name: 'Wired manual', manual: 'technician', modules: [slug], installation: inst.slug, serialNumber: 'IGNORED' });
+  let compiled = await store.compileManual(manual.slug);
+  assert.equal(compiled.manual.serialNumber, 'SN-7', 'the cover reads the installation');
+  assert.equal(compiled.manual.device, 'FNPT II');
+  assert.ok(!compiled.chapters.some((c) => c.installation), 'a draft installation does not print');
+  assert.ok(compiled.state.blockers.some((b) => /installation/i.test(b)), 'and the state says why');
+  await sch.releaseSchematic(ref, { note: 'Issue 1.' });
+  compiled = await store.compileManual(manual.slug);
+  const ch = compiled.chapters.find((c) => c.installation);
+  assert.ok(ch, 'wiring chapter present');
+  assert.match(ch.content, /<figure class="schematic installation"/);
+  assert.match(ch.content, /cable-schedule/);
+  assert.equal(compiled.installation.released, true);
+  const html = (await import('./docgen.js')).manualBodyHtml(compiled);
+  assert.match(html, /Installation wiring/);
+});

@@ -9,6 +9,7 @@ import * as store from './store.js';
 import { repo, mutate, readJson, readJsonMany, slugify } from './store.js';
 import { normalizeLibrary, normalizeTemplate, DEFAULT_LIBRARY } from './library.js';
 import { emptySchematic, applyOps, validateSchematic, connectorFace, cableSchedule, SchematicError } from './schematic.js';
+import { renderSvg, scheduleHtml, faceHtml } from './schematic-render.js';
 
 const now = () => new Date().toISOString();
 const str = (v) => String(v ?? '').trim();
@@ -506,3 +507,67 @@ export async function promoteDeviceToModule(templateId, { name, code = null, cat
   const { state } = await applySchematicOps(created.slug, ops, { summary: `Promoted from library device ${t.name}` });
   return { slug: created.slug, hardwareId, schematic: state };
 }
+
+/* ------------------------------------------------------------------ */
+/* What the manual build prints                                        */
+/* ------------------------------------------------------------------ */
+
+/** A module's released wiring as the generated sections print it — null when there is nothing to print. */
+async function schematicForManual({ module, manual, lang = 'en' }) {
+  if (!module || module.kind === 'software') return null;
+  const { manualTypeOf } = await import('./docgen.js');
+  if (manualTypeOf(manual).audience === 'customer') return null;
+  const state = await releasedSchematicOf(module.slug);
+  if (!state) return null;
+  const ctx = await schematicContext();
+  const face = connectorFace(state, ctx);
+  const schedule = cableSchedule(state, ctx);
+  return {
+    svg: await renderSvg(state, ctx, { lang, title: module.name }),
+    faceHtml: face.length ? faceHtml(face, lang, ctx.library) : '',
+    scheduleHtml: schedule.length ? scheduleHtml(schedule, lang) : '',
+    version: state.version,
+    revision: state.revision,
+  };
+}
+
+/**
+ * The wiring chapter of an assembled manual: the released installation drawn once, then the cables
+ * that touch this manual's chapter modules. Null when the manual links no installation; a draft or
+ * missing installation returns {blocker} so the compile can say why nothing printed.
+ */
+async function installationChapterFor(manual, lang = 'en') {
+  if (!manual?.installation) return null;
+  const rec = await getInstallation(manual.installation);
+  if (!rec) return { blocker: { reason: `installation "${manual.installation}" not found` } };
+  const state = await readJson('main', schematicFile(instRef(rec.slug)));
+  if (!state || state.status !== 'released') return { blocker: { reason: `installation "${rec.name}" has no released schematic` }, record: rec };
+  const ctx = await schematicContext();
+  const { strings } = await import('./docgen.js');
+  const T = strings(lang);
+  const chapterSlugs = new Set(manual.modules || []);
+  const schedule = cableSchedule(state, ctx).filter((row) => {
+    const c = state.cables.find((x) => x.id === row.id);
+    const touches = (end) => end.block && chapterSlugs.has(state.blocks.find((b) => b.id === end.block)?.module);
+    return touches(c.from) || touches(c.to);
+  });
+  const svg = await renderSvg(state, ctx, { lang, title: rec.name });
+  return {
+    record: rec,
+    state,
+    chapter: {
+      slug: 'installation-wiring',
+      installation: true,
+      module: { slug: 'installation-wiring', name: T.installationWiring, code: rec.slug.toUpperCase(), hardwareIds: [], hardwareItems: [], softwares: [] },
+      doc: { version: state.version, revision: state.revision, status: 'released', manual: manual.manual, releasedAt: state.releasedAt, updatedAt: state.updatedAt, revisionRecord: state.releaseRecord || [], covers: [] },
+      title: T.installationWiring,
+      generated: '',
+      content: `<h2>${T.installationWiring}</h2>\n<figure class="schematic installation" data-size="full">${svg}<figcaption>${T.installationFig(rec.name)} — ${state.version}</figcaption></figure>\n${schedule.length ? `<h2>${T.installationCables}</h2>\n${scheduleHtml(schedule, lang)}` : ''}`,
+      checklist: null,
+      isDraft: false,
+      langFallback: false,
+    },
+  };
+}
+
+store.setSchematicProvider({ forManual: schematicForManual, installationChapter: installationChapterFor });

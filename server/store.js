@@ -1164,7 +1164,7 @@ export async function getDoc(slug, key, { lang = DEFAULT_LANG } = {}) {
     lang,
     languages: languageStatus(doc, contentHash(enContent)),
     content,
-    generated: generatedSections(entry.module, doc, lang, { relatedHardware: hardware }),
+    generated: generatedSections(entry.module, doc, lang, { relatedHardware: hardware, schematic: await schematicFor({ module: entry.module, manual: doc.manual, lang }) }),
     relatedHardware: hardware,
     checklist,
     // the main page as the author wrote it, or null while it is the default — and a translation
@@ -2934,6 +2934,9 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   if (!manual) return null;
   const type = manualTypeOf(manual.manual).id;
   manual.manual = type;
+  // A manual that belongs to an installation names that installation's device, serial and operator.
+  const instInfo = await installationChapter(manual, lang);
+  if (instInfo?.record) Object.assign(manual, { device: instInfo.record.device, serialNumber: instInfo.record.serialNumber, operator: instInfo.record.operator });
   const swType = { customer: 'software-customer', technician: 'software-technician' }[type] || null;
   const { modules, softwareOwners } = await collectAll();
   const chapters = [];
@@ -2954,6 +2957,7 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       generated: generatedSections(entry.module, doc, lang, {
         assembled: true,
         relatedHardware: await relatedHardware(entry.module),
+        schematic: await schematicFor({ module: entry.module, manual: doc.manual, lang }),
       }),
       content,
       checklist,
@@ -3000,6 +3004,7 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       );
     }
   }
+  if (instInfo?.chapter) chapters.push(instInfo.chapter);
   // A picture whose file is no longer in the owner's assets leaves a hole in the printed manual and
   // nothing else says so — a software renamed before the console moved picture URLs with it left
   // exactly that behind. Report them with the chapter they sit in.
@@ -3018,7 +3023,12 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   }
   // A cross-reference to a module this manual does not carry prints as plain words; the console says so.
   const missingRefs = missingCrossRefs(chapters);
-  return { manual, chapters, lang, missingAssets, missingRefs, state: manualState(manual, chapters, missingAssets) };
+  const state = manualState(manual, chapters, missingAssets);
+  if (instInfo?.blocker) state.blockers = [...(state.blockers || []), instInfo.blocker.reason];
+  return {
+    manual, chapters, lang, missingAssets, missingRefs, state,
+    installation: instInfo?.record ? { slug: instInfo.record.slug, name: instInfo.record.name, version: instInfo.state?.version || null, revision: instInfo.state?.revision || null, released: !!instInfo.chapter } : null,
+  };
 }
 
 /**
@@ -3050,7 +3060,7 @@ export async function compileDocPreview(ref, key, { lang = DEFAULT_LANG } = {}) 
     module,
     doc,
     mainPage,
-    generated: generatedSections(module, doc, lang, { relatedHardware: await relatedHardware(module) }),
+    generated: generatedSections(module, doc, lang, { relatedHardware: await relatedHardware(module), schematic: await schematicFor({ module, manual: doc.manual, lang }) }),
     content,
     isDraft: doc.status !== 'released' || !!doc.hotfix,
     langFallback,
