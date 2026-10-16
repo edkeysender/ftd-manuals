@@ -339,3 +339,19 @@ test('two concurrent template creates both land', async () => {
   const ids = (await sch.getLibrary()).devices.map((d) => d.id);
   assert.ok(ids.includes(a.id) && ids.includes(b.id), `have ${ids.join(', ')}`);
 });
+
+test('a template stores a front and a rear panel picture on main and serves them back', async () => {
+  const t = await sch.createDeviceTemplate({ name: 'Panel device', ports: [] });
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>');
+  const saved = await sch.saveDevicePanel(t.id, 'front', svg, 'image/svg+xml');
+  assert.deepEqual(saved.panels, { front: 'svg' });
+  const got = await sch.getDevicePanel(t.id, 'front');
+  assert.equal(got.mime, 'image/svg+xml');
+  assert.equal(got.buffer.toString(), svg.toString());
+  assert.equal(await sch.getDevicePanel(t.id, 'rear'), null);
+  await assert.rejects(sch.saveDevicePanel(t.id, 'side', svg, 'image/svg+xml'), /front or rear/);
+  await assert.rejects(sch.saveDevicePanel(t.id, 'rear', Buffer.from('hello'), 'text/plain'), /image/);
+  const cleared = await sch.deleteDevicePanel(t.id, 'front');
+  assert.deepEqual(cleared.panels, {});
+  assert.equal(await sch.getDevicePanel(t.id, 'front'), null);
+});

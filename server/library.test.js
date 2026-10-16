@@ -49,3 +49,10 @@ test('templateIdFor and templateFor', () => {
   assert.equal(templateFor(DEFAULT_LIBRARY, 'behringer-umc404hd').name, 'Behringer UMC404HD');
   assert.equal(templateFor(DEFAULT_LIBRARY, 'nope'), null);
 });
+
+test('normalizeTemplate keeps the panel pictures a template has', () => {
+  const t = normalizeTemplate({ name: 'UMC202HD', panels: { front: 'svg', rear: 'png' } });
+  assert.deepEqual(t.panels, { front: 'svg', rear: 'png' });
+  assert.deepEqual(normalizeTemplate({ name: 'Plain' }).panels, {});
+  assert.throws(() => normalizeTemplate({ name: 'Bad', panels: { top: 'svg' } }), /front or rear/);
+});

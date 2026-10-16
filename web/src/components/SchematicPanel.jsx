@@ -41,6 +41,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
   const [v, setV] = useState(0);
   const [location, setLocation] = useState(''); // '' = the whole installation; else one rack's or area's view
   const [addingLoc, setAddingLoc] = useState(false);
+  const [addingDev, setAddingDev] = useState(false);
 
   const load = useCallback(() => api.schematic(owner, location).then(setData).catch((e) => (e.code === 'no-schematic' || e.status === 404 ? setData(null) : toast(e.message, 'err'))), [owner, location]);
   useEffect(() => { load(); }, [load]);
@@ -139,6 +140,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
           ))}
           {canEdit && editable && (
             <span className="btn-row">
+              <button className="btn btn-sm btn-primary" onClick={() => setAddingDev(true)}>{t('+ Device')}</button>
               <button className="btn btn-sm" onClick={() => setAddingLoc(true)}>{t('+ Rack / area')}</button>
               {current && <button className="btn btn-sm" onClick={renameLoc}>{t('Rename')}</button>}
               {current && <button className="btn btn-sm btn-danger" onClick={removeLoc} title={t('Only an empty location can be removed')}>{t('Remove')}</button>}
@@ -148,6 +150,8 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
         </div>
       )}
       {addingLoc && <NewLocation locations={state.locations} onClose={() => setAddingLoc(false)} onCreate={(op) => { setAddingLoc(false); locOps([op], t('Location added')); }} />}
+      {state.kind === 'module' && canEdit && editable && <div className="loc-bar"><button className="btn btn-sm btn-primary" onClick={() => setAddingDev(true)}>{t('+ Device')}</button></div>}
+      {addingDev && <NewDevice state={state} defaultLocation={location} onClose={() => setAddingDev(false)} onCreate={(op) => { setAddingDev(false); locOps([op], t('Device added')); }} />}
 
       <div className="tabs">
         <button className={tab === 'drawing' ? 'active' : ''} onClick={() => setTab('drawing')}>{t('Drawing')}</button>
@@ -182,6 +186,49 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
 
       {canEdit && editable && <SchematicChat owner={owner} onApplied={changed} />}
       {canEdit && !editable && <p className="hint">{t('This version is released — start a new version or a hotfix to change it.')}</p>}
+    </div>
+  );
+}
+
+/** Place a library device: pick the template, name it, choose where it sits. */
+function NewDevice({ state, defaultLocation, onClose, onCreate }) {
+  const [lib, setLib] = useState(null);
+  const [q, setQ] = useState('');
+  const [template, setTemplate] = useState('');
+  const [label, setLabel] = useState('');
+  const [loc, setLoc] = useState(defaultLocation || state.locations[0]?.id || '');
+  const [u, setU] = useState('');
+  useEffect(() => { api.library().then(setLib).catch(() => setLib({ devices: [] })); }, []);
+  const devices = (lib?.devices || []).filter((d) => !q.trim() || `${d.name} ${d.manufacturer} ${d.model} ${d.category} ${d.id}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const tpl = (lib?.devices || []).find((d) => d.id === template) || null;
+  const rack = state.locations.find((l) => l.id === loc)?.kind === 'rack';
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head"><h2>{t('Add device')}</h2></div>
+        <div className="modal-body">
+          <label>{t('Library device')}
+            <input autoFocus value={q} placeholder={t('Filter by name, maker, model, category…')} onChange={(e) => setQ(e.target.value)} />
+            <select size={7} value={template} onChange={(e) => setTemplate(e.target.value)}>
+              {devices.map((d) => <option key={d.id} value={d.id} onClick={() => setTemplate(d.id)}>{d.name}{d.manufacturer || d.model ? ` — ${[d.manufacturer, d.model].filter(Boolean).join(' ')}` : ''}</option>)}
+            </select>
+          </label>
+          {tpl && <p className="small muted">{t('{n} ports', { n: tpl.ports.length })}: {tpl.ports.map((p) => p.label).join(', ')}</p>}
+          <div className="pair">
+            <label style={{ flex: 2 }}>{t('Label')}<input value={label} placeholder={tpl ? tpl.name : ''} onChange={(e) => setLabel(e.target.value)} /></label>
+            {state.kind === 'installation' && (
+              <label style={{ flex: 1.5 }}>{t('Location')}
+                <select value={loc} onChange={(e) => setLoc(e.target.value)}>{state.locations.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}</select>
+              </label>
+            )}
+            {rack && <label style={{ flex: 0.6 }}>{t('U position')}<input type="number" min="1" value={u} onChange={(e) => setU(e.target.value)} /></label>}
+          </div>
+        </div>
+        <div className="modal-foot">
+          <button className="btn" onClick={onClose}>{t('Cancel')}</button>
+          <button className="btn btn-primary" disabled={!tpl} onClick={() => onCreate({ op: 'add_device', template: tpl.id, label: label.trim() || tpl.name, ...(state.kind === 'installation' && loc ? { location: loc } : {}), ...(rack && u ? { rack: { u: Number(u) } } : {}) })}>{t('Add')}</button>
+        </div>
+      </div>
     </div>
   );
 }

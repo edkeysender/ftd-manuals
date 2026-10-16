@@ -11,6 +11,7 @@ export const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-s
 export const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display'];
 export const PORT_DIRECTIONS = ['in', 'out', 'bidir'];
 export const PORT_SIDES = ['left', 'right', 'top', 'bottom'];
+export const PANEL_SIDES = ['front', 'rear'];
 /** Default symbol per category, when a template names none. */
 const SYMBOL_OF = { switch: 'switch', router: 'switch', pc: 'pc', 'power-strip': 'power-strip', headset: 'headset', display: 'display' };
 
@@ -119,6 +120,12 @@ export function normalizeTemplate(spec, takenIds = new Set(), connectors = DEFAU
   const seen = new Set();
   const ports = Array.isArray(spec.ports) ? spec.ports.map((p) => normalizePort(p, connectorIds, seen)) : [];
   const heightU = spec.heightU === undefined || spec.heightU === null || spec.heightU === '' ? 1 : Number(spec.heightU);
+  // pictures of the device's faces, kept as files next to the library: {front: 'svg'|'png'|…, rear: …}
+  const panels = {};
+  for (const [side, ext] of Object.entries(spec.panels && typeof spec.panels === 'object' ? spec.panels : {})) {
+    if (!PANEL_SIDES.includes(side)) throw new Error(`Panel pictures are front or rear, not "${side}"`);
+    if (ext) panels[side] = String(ext);
+  }
   if (!Number.isFinite(heightU) || heightU < 0) throw new Error('heightU must be a number of rack units (0 for a device outside a rack)');
   return {
     id: str(spec.id) || templateIdFor(name, takenIds),
@@ -131,6 +138,7 @@ export function normalizeTemplate(spec, takenIds = new Set(), connectors = DEFAU
     ports,
     hardwareId: str(spec.hardwareId) || null,
     notes: str(spec.notes),
+    panels,
   };
 }
 

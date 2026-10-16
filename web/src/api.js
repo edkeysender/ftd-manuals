@@ -73,6 +73,8 @@ export async function releaseDoc(slug, key, { hotfix = false } = {}) {
 /** Where an owner's schematic lives: a module by slug, an installation as `inst:<slug>`. */
 export const schematicPath = (owner) =>
   String(owner).startsWith('inst:') ? `/api/installations/${encodeURIComponent(String(owner).slice(5))}/schematic` : `/api/modules/${owner}/schematic`;
+/** Picture of one face of a library device, when the template has one. */
+export const devicePanelUrl = (id, side, v = '') => `/api/library/devices/${encodeURIComponent(id)}/panel/${side}?v=${encodeURIComponent(v)}`;
 export const schematicSvgUrl = (owner, { released = false, lang = 'en', v = '', location = '' } = {}) =>
   `${schematicPath(owner)}/render.svg?${new URLSearchParams({ ...(released ? { released: '1' } : {}), ...(lang !== 'en' ? { lang } : {}), ...(location ? { location } : {}), v }).toString()}`;
 
@@ -202,6 +204,8 @@ export const api = {
   updateDeviceTemplate: (id, body) => request(`/api/library/devices/${encodeURIComponent(id)}`, { method: 'PUT', body }),
   deleteDeviceTemplate: (id) => request(`/api/library/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   promoteDevice: (id, body) => request(`/api/library/devices/${encodeURIComponent(id)}/promote`, { method: 'POST', body }),
+  uploadDevicePanel: (id, side, file) => request(`/api/library/devices/${encodeURIComponent(id)}/panel/${side}`, { method: 'POST', body: file }),
+  deleteDevicePanel: (id, side) => request(`/api/library/devices/${encodeURIComponent(id)}/panel/${side}`, { method: 'DELETE' }),
   installations: () => request('/api/installations'),
   createInstallation: (body) => request('/api/installations', { method: 'POST', body }),
   installation: (slug) => request(`/api/installations/${slug}`),

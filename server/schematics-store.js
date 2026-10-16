@@ -7,7 +7,8 @@
  */
 import * as store from './store.js';
 import { repo, mutate, readJson, readJsonMany, slugify } from './store.js';
-import { normalizeLibrary, normalizeTemplate, DEFAULT_LIBRARY } from './library.js';
+import { normalizeLibrary, normalizeTemplate, DEFAULT_LIBRARY, PANEL_SIDES } from './library.js';
+import { sniff } from './images.js';
 import { emptySchematic, applyOps, validateSchematic, connectorFace, cableSchedule, SchematicError } from './schematic.js';
 import { renderSvg, scheduleHtml, faceHtml } from './schematic-render.js';
 
@@ -122,6 +123,71 @@ export async function deleteDeviceTemplate(id) {
     if (users.length) throw new Error(`Device template "${id}" is used by ${users.map((s) => s.ref).join(', ')} — remove those devices first`);
     await writeDevices(lib.devices.filter((d) => d.id !== id), `library: remove device ${id}`);
     return { ok: true, id };
+  });
+}
+
+/* ---- panel pictures: what a device's front and rear look like ---- */
+
+const PANEL_MIME = { svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
+const panelFile = (id, side, ext) => `library/panels/${id}-${side}.${ext}`;
+const isSvg = (buf) => /^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(buf.toString('utf8', 0, 2048));
+
+/** Store a picture of one face of a device template (SVG or a raster image). */
+export async function saveDevicePanel(id, side, buffer, mime = '') {
+  if (!PANEL_SIDES.includes(side)) throw new Error(`Panel pictures are front or rear, not "${side}"`);
+  if (!Buffer.isBuffer(buffer) || !buffer.length) throw new Error('No image data');
+  let ext = null;
+  if (isSvg(buffer) || mime === 'image/svg+xml') ext = 'svg';
+  else {
+    const info = sniff(buffer);
+    if (info && PANEL_MIME[info.type]) ext = info.type === 'jpeg' ? 'jpg' : info.type;
+  }
+  if (!ext) throw new Error('A panel picture must be an image (SVG, PNG, JPEG, WebP or GIF)');
+  return change(async () => {
+    const lib = await loadLibrary();
+    const idx = lib.devices.findIndex((d) => d.id === id);
+    if (idx < 0) throw new Error(`Device template "${id}" not found`);
+    const t = { ...lib.devices[idx], panels: { ...(lib.devices[idx].panels || {}), [side]: ext } };
+    const devices = lib.devices.slice();
+    devices[idx] = t;
+    await repo.checkout('main');
+    for (const other of Object.keys(PANEL_MIME)) {
+      // one picture per face: an older file of another type goes
+      if (other !== ext && (await repo.show('main', panelFile(id, side, other))) !== null) await repo.removePath(panelFile(id, side, other));
+    }
+    await repo.writeFile(panelFile(id, side, ext), buffer);
+    await repo.writeFile(LIB_DEVICES_FILE, json({ devices }));
+    await repo.commitAll(`library: ${side} panel of ${t.name}`);
+    return t;
+  });
+}
+
+export async function getDevicePanel(id, side) {
+  const lib = await getLibrary();
+  const t = lib.devices.find((d) => d.id === id);
+  const ext = t?.panels?.[side];
+  if (!ext) return null;
+  const buffer = await repo.showBinary('main', panelFile(id, side, ext));
+  return buffer ? { buffer, mime: PANEL_MIME[ext] || 'application/octet-stream', ext } : null;
+}
+
+export async function deleteDevicePanel(id, side) {
+  return change(async () => {
+    const lib = await loadLibrary();
+    const idx = lib.devices.findIndex((d) => d.id === id);
+    if (idx < 0) throw new Error(`Device template "${id}" not found`);
+    const panels = { ...(lib.devices[idx].panels || {}) };
+    const ext = panels[side];
+    if (!ext) return lib.devices[idx];
+    delete panels[side];
+    const t = { ...lib.devices[idx], panels };
+    const devices = lib.devices.slice();
+    devices[idx] = t;
+    await repo.checkout('main');
+    await repo.removePath(panelFile(id, side, ext));
+    await repo.writeFile(LIB_DEVICES_FILE, json({ devices }));
+    await repo.commitAll(`library: remove ${side} panel of ${t.name}`);
+    return t;
   });
 }
 

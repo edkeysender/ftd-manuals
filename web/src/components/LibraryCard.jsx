@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { api, devicePanelUrl, readFileAsBase64 } from '../api.js';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 
@@ -37,7 +37,7 @@ export default function LibraryCard() {
               <td><strong>{d.name}</strong><div className="small muted">{[d.manufacturer, d.model].filter(Boolean).join(' ')} · {d.id}</div></td>
               <td>{d.category}</td>
               <td title={d.ports.map((p) => `${p.label} (${p.connector}, ${p.direction})`).join('\n')}>{plural(d.ports.length, 'port')}</td>
-              <td>{d.hardwareId ? hardware.find((h) => h.id === d.hardwareId)?.name || d.hardwareId : '—'}</td>
+              <td>{d.hardwareId ? hardware.find((h) => h.id === d.hardwareId)?.name || d.hardwareId : '—'}{(d.panels?.front || d.panels?.rear) && <div className="panel-thumbs">{['front', 'rear'].filter((s) => d.panels[s]).map((s) => <img key={s} src={devicePanelUrl(d.id, s, d.panels[s])} alt={s} title={s === 'front' ? t('Front') : t('Rear')} />)}</div>}</td>
               <td className="btn-row">
                 <button className="btn btn-sm" onClick={() => setEditing(d)}>{t('Edit')}</button>
                 <button className="btn btn-sm" onClick={() => promote(d)} title={t('Create a module of its own from this device')}>{t('Promote to module')}</button>
@@ -114,11 +114,50 @@ function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
             <button className="btn btn-sm" onClick={addPort}>{t('+ Port')}</button>
           </div>
           <label>{t('Notes')}<input value={form.notes} onChange={set('notes')} /></label>
+          {!isNew && <PanelPictures template={template} onChanged={onSaved} />}
+          {isNew && <p className="hint">{t('Save the template first, then add pictures of its front and rear.')}</p>}
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>{t('Cancel')}</button>
           <button className="btn btn-primary" disabled={busy || !form.name.trim()} onClick={save}>{busy ? t('Saving…') : t('Save')}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** The two faces of a device: a picture each (SVG or a photo), shown on the device card in the schematic. */
+function PanelPictures({ template, onChanged }) {
+  const toast = useToast();
+  const [panels, setPanels] = useState(template.panels || {});
+  const [busy, setBusy] = useState('');
+  async function upload(side, file) {
+    if (!file) return;
+    setBusy(side);
+    try {
+      const t = await api.uploadDevicePanel(template.id, side, await readFileAsBase64(file));
+      setPanels(t.panels || {});
+      onChanged?.();
+    } catch (e) { toast(e.message, 'err'); } finally { setBusy(''); }
+  }
+  async function remove(side) {
+    setBusy(side);
+    try { const t = await api.deleteDevicePanel(template.id, side); setPanels(t.panels || {}); onChanged?.(); } catch (e) { toast(e.message, 'err'); } finally { setBusy(''); }
+  }
+  return (
+    <div className="field">
+      <span className="field-label">{t('What it looks like')}</span>
+      <div className="panel-grid">
+        {['front', 'rear'].map((side) => (
+          <div key={side} className="panel-slot">
+            <div className="small muted">{side === 'front' ? t('Front') : t('Rear')}</div>
+            {panels[side] ? <img src={devicePanelUrl(template.id, side, `${panels[side]}-${Date.now()}`)} alt={side} /> : <div className="panel-empty">{t('No picture')}</div>}
+            <div className="btn-row">
+              <label className="btn btn-sm">{busy === side ? t('Saving…') : panels[side] ? t('Replace…') : t('Add picture…')}<input type="file" accept="image/*,.svg" hidden onChange={(e) => upload(side, e.target.files?.[0])} /></label>
+              {panels[side] && <button className="btn btn-sm btn-danger" onClick={() => remove(side)}>{t('Remove')}</button>}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

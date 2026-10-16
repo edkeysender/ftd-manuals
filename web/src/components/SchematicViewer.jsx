@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, schematicSvgUrl } from '../api.js';
+import { api, schematicSvgUrl, devicePanelUrl } from '../api.js';
 import { fitView, zoomAt, centerOn } from './schematicView.js';
 import { cableKindsFor, portOf, cableAt, compatibleTargets } from './schematicLib.js';
 import { useToast } from '../App.jsx';
@@ -369,6 +369,16 @@ function Details({ selected, state, schedule, lib, onGo, onClose, editable = fal
       </div>
       {d.notes && <p className="small">{d.notes}</p>}
       {tpl?.notes && <p className="small muted">{tpl.notes}</p>}
+      {tpl && (tpl.panels?.front || tpl.panels?.rear) && (
+        <div className="panel-grid">
+          {['front', 'rear'].filter((s) => tpl.panels[s]).map((s) => (
+            <figure key={s} className="panel-fig">
+              <img src={devicePanelUrl(tpl.id, s, tpl.panels[s])} alt={s} />
+              <figcaption className="small muted">{s === 'front' ? t('Front') : t('Rear')}</figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
       <div className="field-label">{t('Connections')} ({links.length})</div>
       {ports.length > 0 ? (
         <table className="table sch-table">

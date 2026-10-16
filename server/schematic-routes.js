@@ -39,6 +39,19 @@ export function registerSchematicRoutes(app, { wrap, auth }) {
   app.put('/api/library/devices/:id', wrap(async (req, res) => res.json(await sch.updateDeviceTemplate(req.params.id, req.body || {}))));
   app.delete('/api/library/devices/:id', wrap(async (req, res) => res.json(await sch.deleteDeviceTemplate(req.params.id))));
   app.post('/api/library/devices/:id/promote', wrap(async (req, res) => res.json(await sch.promoteDeviceToModule(req.params.id, req.body || {}))));
+  // what a device looks like: its front and rear, one picture each
+  app.get('/api/library/devices/:id/panel/:side', wrap(async (req, res) => {
+    const p = await sch.getDevicePanel(req.params.id, req.params.side);
+    if (!p) return res.status(404).json({ error: 'No panel picture' });
+    res.set('Content-Type', p.mime);
+    res.set('Cache-Control', 'no-cache');
+    res.send(p.buffer);
+  }));
+  app.post('/api/library/devices/:id/panel/:side', wrap(async (req, res) => {
+    const buffer = Buffer.from(req.body?.dataBase64 || '', 'base64');
+    res.json(await sch.saveDevicePanel(req.params.id, req.params.side, buffer, req.body?.type || ''));
+  }));
+  app.delete('/api/library/devices/:id/panel/:side', wrap(async (req, res) => res.json(await sch.deleteDevicePanel(req.params.id, req.params.side))));
 
   /* ---- installations ---- */
   app.get('/api/installations', wrap(async (req, res) => res.json(await sch.listInstallations())));
