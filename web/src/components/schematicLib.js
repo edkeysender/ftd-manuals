@@ -52,11 +52,13 @@ export function rackMap(state, lib, locationId, face = 'front') {
   const faceOf = (r) => r?.face || 'front';
   for (const d of state.devices || []) {
     if (d.location !== locationId) continue;
-    const h = Number(d.rack?.h) || Math.max(1, Number(templateOf(lib, state, d.id)?.heightU) || 1);
+    const tpl = templateOf(lib, state, d.id);
+    const h = Number(d.rack?.h) || Math.max(1, Number(tpl?.heightU) || 1);
+    const pic = { template: tpl?.id || d.template, panels: tpl?.panels || {} };
     if (d.rack?.u) {
       counts[faceOf(d.rack)] += 1;
-      if (faceOf(d.rack) === face) items.push({ id: d.id, kind: 'device', label: d.label, u: Number(d.rack.u), h, face });
-    } else unplaced.push({ id: d.id, kind: 'device', label: d.label, h });
+      if (faceOf(d.rack) === face) items.push({ id: d.id, kind: 'device', label: d.label, u: Number(d.rack.u), h, face, ...pic });
+    } else unplaced.push({ id: d.id, kind: 'device', label: d.label, h, ...pic });
   }
   for (const b of state.blocks || []) {
     if (b.location !== locationId) continue;

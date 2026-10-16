@@ -273,7 +273,8 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
  * empty slot to move it there. Devices in the rack with no U yet are listed underneath.
  */
 function RackMap({ map, rackLabel, selected, editable, face, onFace, onGo, onMove }) {
-  const ROW = 14;
+  const ROW = 16; // px per U — a 1U front at ~176 px wide keeps the real 11:1 proportions
+  const picOf = (it) => (it.panels?.[face] ? face : it.panels?.front ? 'front' : it.panels?.rear ? 'rear' : null);
   const canMove = editable && selected && selected.kind === 'device' && [...map.items, ...map.unplaced].some((i) => i.id === selected.id);
   const rows = [];
   for (let u = map.units; u >= 1; u--) rows.push(u);
@@ -293,17 +294,22 @@ function RackMap({ map, rackLabel, selected, editable, face, onFace, onGo, onMov
             <span className="rack-u">{u}</span>
           </div>
         ))}
-        {map.items.map((it) => (
-          <button key={it.id} className={`rack-item ${it.overlap ? 'overlap' : ''} ${selected && selected.id === it.id ? 'sel' : ''}`}
-            style={{ top: (map.units - (it.u + it.h - 1)) * ROW + 1, height: it.h * ROW - 2 }} title={`${it.label} · U${it.u}${it.h > 1 ? `–${it.u + it.h - 1}` : ''}${it.overlap ? ` · ${t('overlaps another device')}` : ''}`} onClick={() => onGo(it)}>
-            {it.label}
-          </button>
-        ))}
+        {map.items.map((it) => {
+          const side = picOf(it);
+          return (
+            <button key={it.id} className={`rack-item ${side ? 'with-pic' : ''} ${it.overlap ? 'overlap' : ''} ${selected && selected.id === it.id ? 'sel' : ''}`}
+              style={{ top: (map.units - (it.u + it.h - 1)) * ROW + 1, height: it.h * ROW - 2 }} title={`${it.label} · U${it.u}${it.h > 1 ? `–${it.u + it.h - 1}` : ''}${side && side !== face ? ` · ${side === 'front' ? t('front picture') : t('rear picture')}` : ''}${it.overlap ? ` · ${t('overlaps another device')}` : ''}`} onClick={() => onGo(it)}>
+              {side ? <img src={devicePanelUrl(it.template, side, it.panels[side])} alt={it.label} draggable={false} /> : it.label}
+            </button>
+          );
+        })}
       </div>
       {map.unplaced.length > 0 && (
         <div className="rack-unplaced">
-          <div className="small muted">{t('In this rack, no U yet')}</div>
-          {map.unplaced.map((it) => <button key={it.id} className={`rack-item loose ${selected && selected.id === it.id ? 'sel' : ''}`} onClick={() => onGo(it)}>{it.label}</button>)}
+          <select value="" onChange={(e) => { const it = map.unplaced.find((x) => x.id === e.target.value); if (it) onGo(it); }} title={t('Devices in this rack without a U position — pick one, then click a free slot to place it')}>
+            <option value="">{t('{n} without U — pick to place…', { n: map.unplaced.length })}</option>
+            {map.unplaced.map((it) => <option key={it.id} value={it.id}>{it.label}{it.h > 1 ? ` (${it.h} U)` : ''}</option>)}
+          </select>
         </div>
       )}
     </aside>

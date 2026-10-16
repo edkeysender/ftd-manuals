@@ -1274,4 +1274,9 @@ export const PL = {
   "Edit rack": "Edytuj szafę",
   "Rack model": "Model szafy",
   "e.g. Lanberg FF01-8042-12B 42U 800×1000": "np. Lanberg FF01-8042-12B 42U 800×1000",
+  // ----- rack map pictures -----
+  "front picture": "zdjęcie przodu",
+  "rear picture": "zdjęcie tyłu",
+  "Devices in this rack without a U position — pick one, then click a free slot to place it": "Urządzenia w tej szafie bez pozycji U — wybierz jedno, potem kliknij wolny slot, aby je umieścić",
+  "{n} without U — pick to place…": "{n} bez pozycji U — wybierz, aby umieścić…",
 };

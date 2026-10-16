@@ -78,4 +78,10 @@ test('rackMap lays rack-mounted devices out by U, flags overlaps and lists the r
   assert.equal(tm.items.find((i) => i.id === 's').h, 3);
   assert.equal(tm.model, undefined);
   assert.equal(rackMap({ ...st, locations: [{ ...st.locations[0], model: 'Lanberg 12U' }, st.locations[1]] }, lib2, 'r1').model, 'Lanberg 12U');
+  // the strip can draw the device's picture: items carry the template id and its panel pictures
+  const pic = { ...lib2, devices: lib2.devices.map((d) => (d.id === 'pc' ? { ...d, panels: { front: 'png' } } : d)) };
+  const pm = rackMap(st, pic, 'r1');
+  assert.deepEqual(pm.items.find((i) => i.id === 'p').panels, { front: 'png' });
+  assert.equal(pm.items.find((i) => i.id === 'p').template, 'pc');
+  assert.deepEqual(pm.items.find((i) => i.id === 'a').panels, {});
 });

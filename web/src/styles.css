@@ -859,11 +859,11 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .panel-thumbs { display: flex; gap: 4px; margin-top: 4px; }
 .panel-thumbs img { height: 22px; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
 /* ---- rack elevation strip ---- */
-.rack-map { width: 150px; flex: none; border-right: 1px solid var(--line); overflow: auto; padding: 8px; background: var(--panel); }
+.rack-map { width: 214px; flex: none; border-right: 1px solid var(--line); overflow: auto; padding: 8px; background: var(--panel); }
 .rack-map-title { font-weight: 600; font-size: 12.5px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rack-map-body { position: relative; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
 .rack-row { position: absolute; left: 0; right: 0; border-bottom: 1px dotted var(--line); box-sizing: border-box; }
-.rack-row .rack-u { position: absolute; left: 3px; top: 0; font-size: 9px; color: var(--muted); line-height: 14px; }
+.rack-row .rack-u { position: absolute; left: 3px; top: 0; font-size: 9px; color: var(--muted); line-height: 16px; }
 .rack-row.target { cursor: copy; }
 .rack-row.target:hover { background: var(--accent-soft-2); }
 .rack-item { position: absolute; left: 22px; right: 3px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--panel); font-size: 10px; line-height: 1.1; padding: 0 4px; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
@@ -882,3 +882,9 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .rack-faces button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .rack-map-sub { margin: -4px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sch-upos label.inline input[type=number] { width: 64px; }
+.rack-item.with-pic { padding: 0; background: #111; border-color: #222; overflow: hidden; }
+.rack-item.with-pic img { display: block; width: 100%; height: 100%; object-fit: fill; }
+.rack-item.with-pic.sel { outline: 2px solid #e0007a; outline-offset: -2px; }
+.rack-item.with-pic.overlap { outline: 2px solid var(--red); outline-offset: -2px; }
+.rack-unplaced select { width: 100%; font-size: 12px; }
+
