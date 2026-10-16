@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, schematicSvgUrl, devicePanelUrl, cableLabelsUrl } from '../api.js';
 import { fitView, zoomAt, centerOn } from './schematicView.js';
 import { cableKindsFor, portOf, cableAt, compatibleTargets, rackMap } from './schematicLib.js';
@@ -30,7 +31,14 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
   const [svg, setSvg] = useState('');
   const [size, setSize] = useState({ w: 1, h: 1 });
   const [view, setView] = useState({ x: 0, y: 0, z: 1 });
-  const [selected, setSelected] = useState(null); // { kind, id }
+  const [params, setParams] = useSearchParams();
+  // the selection is part of the URL: ?sel=device:ig1 — restored on reload and centred once the drawing is in
+  const [selected, setSelectedState] = useState(() => { const v = params.get('sel'); if (!v) return null; const i = v.indexOf(':'); return i > 0 ? { kind: v.slice(0, i), id: v.slice(i + 1) } : null; });
+  const setSelected = (sel) => {
+    setSelectedState(sel);
+    setParams((p) => { const n = new URLSearchParams(p); if (sel) n.set('sel', `${sel.kind}:${sel.id}`); else n.delete('sel'); return n; }, { replace: true });
+  };
+  const restored = useRef(!!params.get('sel'));
   const [query, setQuery] = useState('');
   const [lib, setLib] = useState(null);
   const boxRef = useRef(null);
@@ -64,10 +72,12 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
       setSize(s);
       const box = boxRef.current?.getBoundingClientRect();
       if (box) setView(fitView(s, { w: box.width, h: box.height }));
+      if (restored.current) { restored.current = false; setTimeout(() => centerSelected(undefined, 1), 50); }
     });
     return () => { alive = false; };
   }, [owner, v, location]);
-  useEffect(() => { setSelected(null); }, [location]);
+  const firstLoc = useRef(true);
+  useEffect(() => { if (firstLoc.current) { firstLoc.current = false; return; } setSelectedState(null); }, [location]);
 
   const boxSize = () => {
     const b = boxRef.current.getBoundingClientRect();

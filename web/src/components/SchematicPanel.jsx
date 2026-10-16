@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, schematicSvgUrl, askReleaseNote, readFileAsBase64, cableLabelsUrl } from '../api.js';
 import ActionMenu from './ActionMenu.jsx';
 import SchematicViewer from './SchematicViewer.jsx';
@@ -39,7 +40,10 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('drawing');
   const [v, setV] = useState(0);
-  const [location, setLocation] = useState(''); // '' = the whole installation; else one rack's or area's view
+  // the rack filter and the selection live in the URL (?loc=…&sel=…) so a reload or a shared link reopens the same view
+  const [params, setParams] = useSearchParams();
+  const location = params.get('loc') || '';
+  const setLocation = (loc) => setParams((p) => { const n = new URLSearchParams(p); if (loc) n.set('loc', loc); else n.delete('loc'); n.delete('sel'); return n; }, { replace: true });
   const [addingLoc, setAddingLoc] = useState(false);
   const [addingDev, setAddingDev] = useState(false);
   const [editingLoc, setEditingLoc] = useState(false); // the selected rack's Edit rack… form
