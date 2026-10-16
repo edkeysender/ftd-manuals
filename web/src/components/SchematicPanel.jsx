@@ -281,40 +281,61 @@ function NewLocation({ locations, existing = null, onClose, onCreate }) {
 }
 
 /**
- * The chat as a window over the drawing: dragged by its title bar, resized from its corner,
- * collapsed to the bar or closed to a small button. Position, size and state are remembered in
- * the browser, since the drawing takes the whole window and the chat should sit where it is wanted.
+ * The chat as a messenger bubble: a round button that sticks to the left or right edge of the window,
+ * dragged anywhere along it (release snaps it to the nearer edge), opening into a panel docked beside
+ * it. Side, height, panel size and open state are remembered in the browser.
  */
 function FloatingChat({ owner, onApplied }) {
-  const KEY = 'ftd-sch-chat-window';
-  const [win, setWin] = useState(() => {
-    try { return { x: 24, y: window.innerHeight - 440, w: 420, h: 400, open: true, collapsed: false, ...(JSON.parse(localStorage.getItem(KEY) || '{}')) }; } catch { return { x: 24, y: 200, w: 420, h: 400, open: true, collapsed: false }; }
+  const KEY = 'ftd-sch-chat-bubble';
+  const [b, setB] = useState(() => {
+    const d = { side: 'right', y: Math.max(120, window.innerHeight - 180), open: false, w: 420, h: 460 };
+    try { return { ...d, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return d; }
   });
+  const [drag, setDrag] = useState(null); // { x, y } of the bubble while it is being dragged
   const ref = useRef(null);
-  const drag = useRef(null);
-  const save = (next) => { setWin(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {} };
-  const clamp = (w) => ({ ...w, x: Math.max(0, Math.min(window.innerWidth - 80, w.x)), y: Math.max(0, Math.min(window.innerHeight - 40, w.y)) });
+  const press = useRef(null);
+  const save = (next) => { setB(next); try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {} };
+  const BUBBLE = 56;
+  const clampY = (y) => Math.max(8, Math.min(window.innerHeight - BUBBLE - 8, y));
   const down = (e) => {
-    if (e.target.closest('button')) return;
-    drag.current = { x: e.clientX, y: e.clientY, ox: win.x, oy: win.y };
+    press.current = { x: e.clientX, y: e.clientY, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
-  const move = (e) => { const d = drag.current; if (!d) return; setWin((w) => clamp({ ...w, x: d.ox + (e.clientX - d.x), y: d.oy + (e.clientY - d.y) })); };
-  const up = () => { if (drag.current) { drag.current = null; setWin((w) => { try { localStorage.setItem(KEY, JSON.stringify(w)); } catch {} return w; }); } };
-  // the resize handle is the browser's; remember the size it leaves behind
-  const onResizeEnd = () => { const el = ref.current; if (el) save({ ...win, w: el.offsetWidth, h: el.offsetHeight }); };
-  if (!win.open) return <button className="btn btn-primary chat-fab" onClick={() => save({ ...win, open: true })}>💬 {t('Chat')}</button>;
+  const move = (e) => {
+    const p = press.current;
+    if (!p) return;
+    if (!p.moved && Math.abs(e.clientX - p.x) + Math.abs(e.clientY - p.y) < 5) return;
+    p.moved = true;
+    setDrag({ x: e.clientX - BUBBLE / 2, y: e.clientY - BUBBLE / 2 });
+  };
+  const up = (e) => {
+    const p = press.current;
+    press.current = null;
+    if (!p) return;
+    if (!p.moved) return save({ ...b, open: !b.open }); // a tap toggles the panel
+    setDrag(null);
+    save({ ...b, side: e.clientX < window.innerWidth / 2 ? 'left' : 'right', y: clampY(e.clientY - BUBBLE / 2) }); // snap to the nearer edge
+  };
+  const onResizeEnd = () => { const el = ref.current; if (el) save({ ...b, w: el.offsetWidth, h: el.offsetHeight }); };
+  const bubbleStyle = drag ? { left: drag.x, top: drag.y, transition: 'none' } : { [b.side]: 16, top: b.y };
+  // the panel hangs off the bubble on its side, kept inside the window
+  const panelTop = Math.max(8, Math.min(window.innerHeight - b.h - 8, b.y - b.h + BUBBLE));
   return (
-    <div ref={ref} className={`chat-window ${win.collapsed ? 'collapsed' : ''}`} style={{ left: win.x, top: win.y, width: win.w, height: win.collapsed ? 'auto' : win.h }} onPointerUp={onResizeEnd}>
-      <div className="chat-window-bar" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} title={t('Drag to move')}>
-        <span>💬 {t('Build with chat')}</span>
-        <span className="btn-row">
-          <button className="btn-icon" title={win.collapsed ? t('Expand') : t('Collapse')} onClick={() => save({ ...win, collapsed: !win.collapsed })}>{win.collapsed ? '▴' : '▾'}</button>
-          <button className="btn-icon" title={t('Close')} onClick={() => save({ ...win, open: false })}>×</button>
-        </span>
-      </div>
-      {!win.collapsed && <div className="chat-window-body"><SchematicChat owner={owner} onApplied={onApplied} embedded /></div>}
-    </div>
+    <>
+      <button className={`chat-bubble ${b.open ? 'open' : ''} ${drag ? 'dragging' : ''}`} style={bubbleStyle} title={t('Chat — drag to move, click to open')}
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { press.current = null; setDrag(null); }}>
+        {b.open ? '×' : '💬'}
+      </button>
+      {b.open && !drag && (
+        <div ref={ref} className={`chat-window docked-${b.side}`} style={{ [b.side]: 16 + BUBBLE + 10, top: panelTop, width: b.w, height: b.h }} onPointerUp={onResizeEnd}>
+          <div className="chat-window-bar">
+            <span>💬 {t('Build with chat')}</span>
+            <button className="btn-icon" title={t('Close')} onClick={() => save({ ...b, open: false })}>×</button>
+          </div>
+          <div className="chat-window-body"><SchematicChat owner={owner} onApplied={onApplied} embedded /></div>
+        </div>
+      )}
+    </>
   );
 }
 

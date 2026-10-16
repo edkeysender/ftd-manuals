@@ -1298,4 +1298,5 @@ export const PL = {
   "Drag to move": "Przeciągnij, aby przesunąć",
   "Expand": "Rozwiń",
   "Collapse": "Zwiń",
+  'Chat — drag to move, click to open': 'Czat — przeciągnij, aby przesunąć, kliknij, aby otworzyć',
 };
