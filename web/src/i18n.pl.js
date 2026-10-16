@@ -1284,4 +1284,5 @@ export const PL = {
   "Graphics card outputs": "Wyjścia karty graficznej",
   "Extra picture name, e.g. mainboard-io, gpu-io": "Nazwa dodatkowego obrazu, np. mainboard-io, gpu-io",
   "Add named picture…": "Dodaj nazwany obraz…",
+  'Scroll to zoom, drag to pan, Esc to close.': 'Kółko przybliża, przeciąganie przesuwa, Esc zamyka.',
 };

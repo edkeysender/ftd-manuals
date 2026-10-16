@@ -254,18 +254,65 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
           </aside>
         )}
       </div>
-      {lightbox && (
-        <div className="modal-backdrop lightbox" onClick={() => setLightbox(null)}>
-          <figure onClick={(e) => e.stopPropagation()}>
-            <img src={lightbox.src} alt={lightbox.caption} />
-            <figcaption>{lightbox.caption} <button className="btn btn-sm" onClick={() => setLightbox(null)}>{t('Close')}</button></figcaption>
-          </figure>
-        </div>
-      )}
+      {lightbox && <Lightbox src={lightbox.src} caption={lightbox.caption} onClose={() => setLightbox(null)} />}
       {connecting && lib && (
         <ConnectDialog lib={lib} state={state} from={connecting.from} to={connecting.to || null} onClose={() => setConnecting(null)}
           onConfirm={(op) => { setConnecting(null); applyOps([op], t('Connected {a} to {b}', { a: op.from.device, b: op.to.device })); }} />
       )}
+    </div>
+  );
+}
+
+/**
+ * A picture shown large: fitted to the window first, then zoomed with the wheel or the buttons and
+ * panned by dragging — a 1U front panel is eleven times wider than tall, so "fit" alone is too small
+ * to read its port labels.
+ */
+function Lightbox({ src, caption, onClose }) {
+  const stageRef = useRef(null);
+  const [z, setZ] = useState(1);
+  const [fitW, setFitW] = useState(0); // the width at zoom 1: the picture fitted to the stage
+  const drag = useRef(null);
+  const onLoad = (e) => {
+    const st = stageRef.current.getBoundingClientRect();
+    const img = e.target;
+    const scale = Math.min(st.width / img.naturalWidth, st.height / img.naturalHeight, 1);
+    setFitW(Math.max(1, img.naturalWidth * scale));
+  };
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return undefined;
+    const onWheel = (ev) => { ev.preventDefault(); setZ((v) => Math.min(8, Math.max(0.25, v * Math.exp(-ev.deltaY * 0.0025)))); };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+  useEffect(() => {
+    const esc = (ev) => { if (ev.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', esc);
+    return () => window.removeEventListener('keydown', esc);
+  }, [onClose]);
+  const down = (ev) => { drag.current = { x: ev.clientX, y: ev.clientY, sl: stageRef.current.scrollLeft, st: stageRef.current.scrollTop }; ev.currentTarget.setPointerCapture(ev.pointerId); };
+  const move = (ev) => { const d = drag.current; if (!d) return; stageRef.current.scrollLeft = d.sl - (ev.clientX - d.x); stageRef.current.scrollTop = d.st - (ev.clientY - d.y); };
+  const up = () => { drag.current = null; };
+  return (
+    <div className="modal-backdrop lightbox" onClick={onClose}>
+      <figure onClick={(e) => e.stopPropagation()}>
+        <div className="lightbox-bar">
+          <span>{caption}</span>
+          <span className="btn-row">
+            <button className="btn btn-sm" onClick={() => setZ((v) => Math.max(0.25, v / 1.5))} title={t('Zoom out')}>−</button>
+            <button className="btn btn-sm" onClick={() => setZ((v) => Math.min(8, v * 1.5))} title={t('Zoom in')}>+</button>
+            <button className="btn btn-sm" onClick={() => setZ(1)}>{t('Fit')}</button>
+            <button className="btn btn-sm" onClick={() => setZ(2)}>200%</button>
+            <button className="btn btn-sm" onClick={() => setZ(4)}>400%</button>
+            <button className="btn btn-sm" onClick={onClose}>{t('Close')}</button>
+          </span>
+        </div>
+        <div ref={stageRef} className="lightbox-stage" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+          <img src={src} alt={caption} draggable={false} onLoad={onLoad} style={fitW ? { width: fitW * z, maxWidth: 'none', maxHeight: 'none' } : {}} />
+        </div>
+        <div className="hint">{t('Scroll to zoom, drag to pan, Esc to close.')} · {Math.round(z * 100)}%</div>
+      </figure>
     </div>
   );
 }
