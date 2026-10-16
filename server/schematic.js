@@ -296,11 +296,16 @@ const OPS = {
   },
 };
 
+/** Where in a rack: the U position and the face it is mounted on (front unless said otherwise). */
 function rackOf(v) {
   if (!v || typeof v !== 'object') return null;
   const u = Number(v.u);
-  return Number.isFinite(u) && u > 0 ? { u } : null;
+  if (!(Number.isFinite(u) && u > 0)) return null;
+  const face = str(v.face) || 'front';
+  if (!RACK_FACES.includes(face)) throw new SchematicError(`a rack face is front or rear, not "${face}"`);
+  return { u, face };
 }
+export const RACK_FACES = ['front', 'rear'];
 const numOrNull = (v) => {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(v);

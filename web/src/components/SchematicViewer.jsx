@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, schematicSvgUrl, devicePanelUrl } from '../api.js';
+import { api, schematicSvgUrl, devicePanelUrl, cableLabelsUrl } from '../api.js';
 import { fitView, zoomAt, centerOn } from './schematicView.js';
-import { cableKindsFor, portOf, cableAt, compatibleTargets } from './schematicLib.js';
+import { cableKindsFor, portOf, cableAt, compatibleTargets, rackMap } from './schematicLib.js';
 import { useToast } from '../App.jsx';
 import { t, locale } from '../i18n.jsx';
 
@@ -18,6 +18,8 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
   const { state, schedule, view: scope } = data; // `scope` = one location's ids when the panel filters by rack
   const editable = canEdit && data.editable;
   const toast = useToast();
+  const [face, setFace] = useState('front'); // which face of the selected rack the strip shows
+  const [lightbox, setLightbox] = useState(null); // { src, caption } — a panel picture shown large
   const [connecting, setConnecting] = useState(null); // { from: {device, port}, to?: {device, port} } → ConnectDialog
   const [wire, setWire] = useState(null); // a wire being dragged from a port: { from, x1, y1, x2, y2 }
   const [svg, setSvg] = useState('');
@@ -217,6 +219,11 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
         <span className="hint">{editable ? t('Scroll to zoom, drag to pan, click to select, Esc to clear — drag from a port stub to another port to connect them.') : t('Scroll to zoom, drag to pan, click a device or cable to select it, Esc to clear.')}</span>
       </div>
       <div className="sch-stage">
+        {location && lib && rackMap(state, lib, location, face) && (
+          <RackMap map={rackMap(state, lib, location, face)} rackLabel={state.locations.find((l) => l.id === location)?.label} selected={selected} editable={editable} face={face} onFace={setFace}
+            onGo={(it) => go({ kind: it.kind, id: it.id })}
+            onMove={(u) => selected && applyOps([{ op: 'update_device', id: selected.id, rack: { u, face } }], t('{name} moved to U{u} ({face})', { name: state.devices.find((d) => d.id === selected.id)?.label || selected.id, u, face: face === 'rear' ? t('rear') : t('front') }))} />
+        )}
         <div ref={boxRef} className="sch-viewport" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => (drag.current = null)}>
           <div ref={contentRef} className="sch-content" style={{ width: size.w, height: size.h, transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }} dangerouslySetInnerHTML={{ __html: svg }} />
           {wire && (
@@ -239,15 +246,66 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
                 ))}
               </div>
             )}
-            {selected && <Details selected={selected} state={state} schedule={schedule} lib={lib} onGo={go} onClose={() => setSelected(null)} editable={editable} onConnect={(from) => setConnecting({ from })} onDisconnect={disconnect} />}
+            {selected && <Details selected={selected} state={state} schedule={schedule} lib={lib} owner={owner} onGo={go} onClose={() => setSelected(null)} editable={editable} onConnect={(from) => setConnecting({ from })} onDisconnect={disconnect} onZoomPanel={setLightbox}
+              onMoveU={(id, u, f = 'front') => applyOps([{ op: 'update_device', id, rack: u ? { u, face: f } : null }], u ? t('{name} moved to U{u} ({face})', { name: state.devices.find((d) => d.id === id)?.label || id, u, face: f === 'rear' ? t('rear') : t('front') }) : t('U position cleared'))} />}
           </aside>
         )}
       </div>
+      {lightbox && (
+        <div className="modal-backdrop lightbox" onClick={() => setLightbox(null)}>
+          <figure onClick={(e) => e.stopPropagation()}>
+            <img src={lightbox.src} alt={lightbox.caption} />
+            <figcaption>{lightbox.caption} <button className="btn btn-sm" onClick={() => setLightbox(null)}>{t('Close')}</button></figcaption>
+          </figure>
+        </div>
+      )}
       {connecting && lib && (
         <ConnectDialog lib={lib} state={state} from={connecting.from} to={connecting.to || null} onClose={() => setConnecting(null)}
           onConfirm={(op) => { setConnecting(null); applyOps([op], t('Connected {a} to {b}', { a: op.from.device, b: op.to.device })); }} />
       )}
     </div>
+  );
+}
+
+/**
+ * The rack seen from the front: one row per U, numbered from the top, every mounted device drawn at
+ * its span. Click a device to jump to it; with a device selected and the schematic editable, click an
+ * empty slot to move it there. Devices in the rack with no U yet are listed underneath.
+ */
+function RackMap({ map, rackLabel, selected, editable, face, onFace, onGo, onMove }) {
+  const ROW = 14;
+  const canMove = editable && selected && selected.kind === 'device' && [...map.items, ...map.unplaced].some((i) => i.id === selected.id);
+  const rows = [];
+  for (let u = map.units; u >= 1; u--) rows.push(u);
+  return (
+    <aside className="rack-map" title={rackLabel}>
+      <div className="rack-map-title">{rackLabel}</div>
+      <div className="rack-faces">
+        <button className={face === 'front' ? 'active' : ''} onClick={() => onFace('front')}>{t('Front')} ({map.counts.front})</button>
+        <button className={face === 'rear' ? 'active' : ''} onClick={() => onFace('rear')}>{t('Rear')} ({map.counts.rear})</button>
+      </div>
+      <div className="rack-map-body" style={{ height: map.units * ROW }}>
+        {rows.map((u) => (
+          <div key={u} className={`rack-row ${map.freeSlots.includes(u) ? 'free' : ''} ${canMove && map.freeSlots.includes(u) ? 'target' : ''}`} style={{ top: (map.units - u) * ROW, height: ROW }}
+            title={canMove && map.freeSlots.includes(u) ? t('Move the selected device to U{u}', { u }) : `U${u}`}
+            onClick={() => canMove && map.freeSlots.includes(u) && onMove(u)}>
+            <span className="rack-u">{u}</span>
+          </div>
+        ))}
+        {map.items.map((it) => (
+          <button key={it.id} className={`rack-item ${it.overlap ? 'overlap' : ''} ${selected && selected.id === it.id ? 'sel' : ''}`}
+            style={{ top: (map.units - (it.u + it.h - 1)) * ROW + 1, height: it.h * ROW - 2 }} title={`${it.label} · U${it.u}${it.h > 1 ? `–${it.u + it.h - 1}` : ''}${it.overlap ? ` · ${t('overlaps another device')}` : ''}`} onClick={() => onGo(it)}>
+            {it.label}
+          </button>
+        ))}
+      </div>
+      {map.unplaced.length > 0 && (
+        <div className="rack-unplaced">
+          <div className="small muted">{t('In this rack, no U yet')}</div>
+          {map.unplaced.map((it) => <button key={it.id} className={`rack-item loose ${selected && selected.id === it.id ? 'sel' : ''}`} onClick={() => onGo(it)}>{it.label}</button>)}
+        </div>
+      )}
+    </aside>
   );
 }
 
@@ -326,7 +384,7 @@ function ConnectDialog({ lib, state, from, to, onClose, onConfirm }) {
 }
 
 /** What the selected thing is and what hangs on it. */
-function Details({ selected, state, schedule, lib, onGo, onClose, editable = false, onConnect, onDisconnect }) {
+function Details({ selected, state, schedule, lib, owner, onGo, onClose, editable = false, onConnect, onDisconnect, onMoveU, onZoomPanel }) {
   const locName = (id) => state.locations.find((l) => l.id === id)?.label || id || '';
   const nameOf = (end) => (end.block ? state.blocks.find((b) => b.id === end.block)?.module || end.block : state.devices.find((d) => d.id === end.device)?.label || end.device);
   const row = (c) => schedule.find((s) => s.id === c.id) || {};
@@ -343,7 +401,10 @@ function Details({ selected, state, schedule, lib, onGo, onClose, editable = fal
           <tr><th>{t('To')}</th><td><button className="link" onClick={() => onGo(endOf(c.to))}>{nameOf(c.to)}</button> · {s.toPort || c.to.port}</td></tr>
           {c.notes && <tr><th>{t('Notes')}</th><td>{c.notes}</td></tr>}
         </tbody></table>
-        {editable && <button className="btn btn-sm btn-danger" onClick={() => onDisconnect(c)}>{t('Remove cable')}</button>}
+        <div className="btn-row">
+          <a className="btn btn-sm" href={cableLabelsUrl(owner, { ids: [c.id], lang: locale() })} target="_blank" rel="noreferrer">{t('Print label')}</a>
+          {editable && <button className="btn btn-sm btn-danger" onClick={() => onDisconnect(c)}>{t('Remove cable')}</button>}
+        </div>
       </div>
     );
   }
@@ -369,10 +430,23 @@ function Details({ selected, state, schedule, lib, onGo, onClose, editable = fal
       </div>
       {d.notes && <p className="small">{d.notes}</p>}
       {tpl?.notes && <p className="small muted">{tpl.notes}</p>}
+      {editable && !isBlock && state.locations.find((l) => l.id === d.location)?.kind === 'rack' && (
+        <div className="pair sch-upos">
+          <label className="inline">{t('U position')}
+            <input type="number" min="1" defaultValue={d.rack?.u || ''} key={`${d.id}:${d.rack?.u || ''}`} onBlur={(e) => { const u = Number(e.target.value); if (u !== (d.rack?.u || 0)) onMoveU(d.id, u || null, d.rack?.face || 'front'); }} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} />
+          </label>
+          <label className="inline">{t('Face')}
+            <select value={d.rack?.face || 'front'} disabled={!d.rack?.u} onChange={(e) => onMoveU(d.id, d.rack.u, e.target.value)}>
+              <option value="front">{t('Front')}</option><option value="rear">{t('Rear')}</option>
+            </select>
+          </label>
+          <span className="hint">{t('{h} U high', { h: Math.max(1, Number(tpl?.heightU) || 1) })}</span>
+        </div>
+      )}
       {tpl && (tpl.panels?.front || tpl.panels?.rear) && (
         <div className="panel-grid">
           {['front', 'rear'].filter((s) => tpl.panels[s]).map((s) => (
-            <figure key={s} className="panel-fig">
+            <figure key={s} className="panel-fig" title={t('Click to enlarge')} onClick={() => onZoomPanel({ src: devicePanelUrl(tpl.id, s, tpl.panels[s]), caption: `${tpl.name} — ${s === 'front' ? t('Front') : t('Rear')}` })}>
               <img src={devicePanelUrl(tpl.id, s, tpl.panels[s])} alt={s} />
               <figcaption className="small muted">{s === 'front' ? t('Front') : t('Rear')}</figcaption>
             </figure>

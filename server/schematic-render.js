@@ -202,3 +202,49 @@ export function schematicCsv(schedule) {
   const head = 'label,kind,from,from_port,to,to_port,length_m,notes';
   return [head, ...schedule.map((r) => [r.label || r.id, r.kindLabel, r.from, r.fromPort, r.to, r.toPort, r.length ?? '', r.notes].map(cell).join(','))].join('\n');
 }
+
+/* ---- printable cable labels ---- */
+
+const LABEL_WORDS = {
+  en: { thisEnd: 'This end', otherEnd: 'Other end', labels: 'Cable labels', printHint: 'Print this page (Ctrl/Cmd+P). Two labels per cable, one for each end — 60 × 32 mm, cut along the dashed lines.' },
+  pl: { thisEnd: 'Ten koniec', otherEnd: 'Drugi koniec', labels: 'Etykiety kabli', printHint: 'Wydrukuj tę stronę (Ctrl/Cmd+P). Dwie etykiety na kabel, po jednej na każdy koniec — 60 × 32 mm, tnij wzdłuż linii przerywanych.' },
+};
+
+/**
+ * One printable page of cable labels: for every cable two labels (one per end), each with the cable's
+ * name, its code (the installation code plus the cable id), the end it sits on and where the other
+ * end goes, the kind and the length. Plain HTML + CSS; the browser prints it.
+ */
+export function cableLabelsHtml(schedule, { code = '', title = '', lang = 'en' } = {}) {
+  const W = LABEL_WORDS[lang] || LABEL_WORDS.en;
+  const labelCode = (r) => `${code ? `${code}-` : ''}${String(r.id).toUpperCase()}`;
+  const one = (r, here, herePort, there, therePort) => `<div class="label">
+<div class="code">${esc(labelCode(r))}</div>
+<div class="name">${esc(r.label || r.id)}</div>
+<div class="end"><span class="k">${W.thisEnd}</span> ${esc(here)} · ${esc(herePort)}</div>
+<div class="end"><span class="k">${W.otherEnd}</span> ${esc(there)} · ${esc(therePort)}</div>
+<div class="meta">${esc(r.kindLabel)}${r.length != null ? ` · ${esc(r.length)} m` : ''}${code ? ` · ${esc(code)}` : ''}</div>
+</div>`;
+  const labels = schedule.flatMap((r) => [one(r, r.from, r.fromPort, r.to, r.toPort), one(r, r.to, r.toPort, r.from, r.fromPort)]);
+  return `<!doctype html>
+<html lang="${esc(lang)}"><head><meta charset="utf-8"><title>${esc(title || W.labels)}</title>
+<style>
+@page { size: A4; margin: 10mm; }
+body { font-family: Verdana, Geneva, sans-serif; margin: 0; color: #000; }
+.hint { font-size: 10pt; margin: 0 0 6mm; color: #333; }
+.sheet { display: grid; grid-template-columns: repeat(3, 60mm); gap: 3mm; }
+.label { width: 60mm; height: 32mm; box-sizing: border-box; border: 0.3mm dashed #888; padding: 2mm 2.5mm; position: relative; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+.code { position: absolute; top: 1.5mm; right: 2.5mm; font-size: 6.5pt; letter-spacing: 0.03em; color: #333; }
+.name { font-size: 14pt; font-weight: bold; line-height: 1.1; margin: 1.5mm 0 1.5mm; max-width: 44mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.end { font-size: 7.5pt; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.end .k { display: inline-block; min-width: 15mm; color: #555; }
+.meta { position: absolute; left: 2.5mm; right: 2.5mm; bottom: 1.5mm; font-size: 6.5pt; color: #333; border-top: 0.2mm solid #bbb; padding-top: 0.8mm; }
+@media print { .hint { display: none; } }
+</style></head><body>
+<p class="hint">${W.printHint}</p>
+<div class="sheet">
+${labels.join('\n')}
+</div>
+</body></html>`;
+}
+

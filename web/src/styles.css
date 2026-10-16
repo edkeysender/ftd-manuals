@@ -858,4 +858,26 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .panel-empty { height: 60px; border: 1px dashed var(--line); border-radius: 6px; display: grid; place-items: center; color: var(--muted); font-size: 12.5px; }
 .panel-thumbs { display: flex; gap: 4px; margin-top: 4px; }
 .panel-thumbs img { height: 22px; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
+/* ---- rack elevation strip ---- */
+.rack-map { width: 150px; flex: none; border-right: 1px solid var(--line); overflow: auto; padding: 8px; background: var(--panel); }
+.rack-map-title { font-weight: 600; font-size: 12.5px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rack-map-body { position: relative; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
+.rack-row { position: absolute; left: 0; right: 0; border-bottom: 1px dotted var(--line); box-sizing: border-box; }
+.rack-row .rack-u { position: absolute; left: 3px; top: 0; font-size: 9px; color: var(--muted); line-height: 14px; }
+.rack-row.target { cursor: copy; }
+.rack-row.target:hover { background: var(--accent-soft-2); }
+.rack-item { position: absolute; left: 22px; right: 3px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--panel); font-size: 10px; line-height: 1.1; padding: 0 4px; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.rack-item:hover { border-color: var(--accent); }
+.rack-item.sel { border-color: #e0007a; background: #fff0f7; color: #000; }
+.rack-item.overlap { border-color: var(--red); background: var(--red-soft); }
+.rack-item.loose { position: static; display: block; width: 100%; margin-top: 4px; padding: 3px 4px; }
+.rack-unplaced { margin-top: 8px; }
+.sch-upos input { width: 70px; margin-left: 6px; }
+.panel-fig { cursor: zoom-in; }
+.lightbox figure { margin: 0; max-width: 92vw; max-height: 90vh; background: var(--panel); border-radius: 10px; padding: 12px; display: grid; gap: 8px; }
+.lightbox img { max-width: 90vw; max-height: 78vh; width: auto; height: auto; background: #fff; border-radius: 6px; }
+.lightbox figcaption { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.rack-faces { display: flex; gap: 4px; margin-bottom: 6px; }
+.rack-faces button { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; font-size: 11px; padding: 3px 0; }
+.rack-faces button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 

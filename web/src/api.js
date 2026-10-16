@@ -74,6 +74,9 @@ export async function releaseDoc(slug, key, { hotfix = false } = {}) {
 export const schematicPath = (owner) =>
   String(owner).startsWith('inst:') ? `/api/installations/${encodeURIComponent(String(owner).slice(5))}/schematic` : `/api/modules/${owner}/schematic`;
 /** Picture of one face of a library device, when the template has one. */
+/** The printable cable-label sheet of an owner's schematic: all cables, one rack's, or chosen ids. */
+export const cableLabelsUrl = (owner, { location = '', ids = [], lang = 'en' } = {}) =>
+  `${schematicPath(owner)}/labels.html?${new URLSearchParams({ ...(location ? { location } : {}), ...(ids.length ? { ids: ids.join(',') } : {}), ...(lang !== 'en' ? { lang } : {}) }).toString()}`;
 export const devicePanelUrl = (id, side, v = '') => `/api/library/devices/${encodeURIComponent(id)}/panel/${side}?v=${encodeURIComponent(v)}`;
 export const schematicSvgUrl = (owner, { released = false, lang = 'en', v = '', location = '' } = {}) =>
   `${schematicPath(owner)}/render.svg?${new URLSearchParams({ ...(released ? { released: '1' } : {}), ...(lang !== 'en' ? { lang } : {}), ...(location ? { location } : {}), v }).toString()}`;

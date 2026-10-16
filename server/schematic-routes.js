@@ -4,7 +4,7 @@
  * an installation (`inst:<slug>` to the store).
  */
 import * as sch from './schematics-store.js';
-import { renderSvg, schematicCsv } from './schematic-render.js';
+import { renderSvg, schematicCsv, cableLabelsHtml } from './schematic-render.js';
 import { schematicChat, attachmentsToText } from './schematic-ai.js';
 import { expandDocuments } from './extract.js';
 import { SchematicError, filterSchematic, cableSchedule } from './schematic.js';
@@ -112,6 +112,21 @@ export function registerSchematicRoutes(app, { wrap, auth }) {
     res.set('Content-Type', 'image/svg+xml; charset=utf-8');
     res.set('Cache-Control', 'no-cache');
     res.send(await renderSvg(state, ctx, { lang: langOf(req.query.lang || DEFAULT_LANG), title: `${state.owner} ${state.version}` }));
+  }));
+  // printable labels: ?location= narrows to one rack's cables, ?ids=a,b to chosen cables
+  app.get(paths('/labels.html'), wrap(async (req, res) => {
+    const s = await sch.getSchematic(schematicRef(req));
+    if (!s) return res.status(404).json({ error: 'No schematic' });
+    const loc = req.query.location ? String(req.query.location) : '';
+    let schedule = loc ? cableSchedule(filterSchematic(s.state, { location: loc }), await sch.schematicContext()) : s.schedule;
+    if (req.query.ids) {
+      const want = new Set(String(req.query.ids).split(',').map((x) => x.trim()).filter(Boolean));
+      schedule = schedule.filter((r) => want.has(r.id));
+    }
+    const rec = s.owner.kind === 'installation' ? await sch.getInstallation(s.owner.slug) : null;
+    const code = String(rec?.serialNumber || rec?.slug || s.owner.slug).toUpperCase();
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(cableLabelsHtml(schedule, { code, title: `${s.owner.name} — labels`, lang: langOf(req.query.lang || DEFAULT_LANG) }));
   }));
   app.get(paths('/cables.csv'), wrap(async (req, res) => {
     const s = await sch.getSchematic(schematicRef(req));

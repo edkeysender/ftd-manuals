@@ -216,3 +216,20 @@ test('validation warns when an installation has more than four racks', () => {
   const four = applyOps(emptySchematic({ kind: 'installation', owner: 'sim' }), ops.slice(0, 4), ctx()).state;
   assert.ok(!validateSchematic(four, ctx()).warnings.some((w) => w.code === 'too-many-racks'));
 });
+
+test('a rack position carries the face it is mounted on, front by default', () => {
+  const { state } = applyOps(
+    emptySchematic({ kind: 'installation', owner: 'sim' }),
+    [
+      { op: 'add_location', id: 'rack-1', label: 'Rack 1', kind: 'rack' },
+      { op: 'add_device', id: 'pdu', template: 'pdu-8', location: 'rack-1', rack: { u: 1, face: 'rear' } },
+      { op: 'add_device', id: 'pc', template: 'pc', location: 'rack-1', rack: { u: 1 } },
+    ],
+    ctx()
+  );
+  assert.deepEqual(state.devices[0].rack, { u: 1, face: 'rear' });
+  assert.deepEqual(state.devices[1].rack, { u: 1, face: 'front' });
+  assert.throws(() => applyOps(state, [{ op: 'update_device', id: 'pc', rack: { u: 2, face: 'side' } }], ctx()), /front or rear/);
+  const moved = applyOps(state, [{ op: 'update_device', id: 'pc', rack: { u: 2, face: 'rear' } }], ctx()).state;
+  assert.deepEqual(moved.devices[1].rack, { u: 2, face: 'rear' });
+});

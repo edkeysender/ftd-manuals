@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { api, schematicSvgUrl, askReleaseNote, readFileAsBase64 } from '../api.js';
+import { api, schematicSvgUrl, askReleaseNote, readFileAsBase64, cableLabelsUrl } from '../api.js';
 import ActionMenu from './ActionMenu.jsx';
 import SchematicViewer from './SchematicViewer.jsx';
 import { useToast } from '../App.jsx';
@@ -161,6 +161,12 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
       </div>
 
       {tab === 'drawing' && <SchematicViewer owner={owner} data={data} v={v} location={location} canEdit={canEdit} onChanged={changed} />}
+      {tab === 'cables' && schedule.length > 0 && (
+        <div className="btn-row" style={{ marginBottom: 10 }}>
+          <a className="btn btn-sm" href={cableLabelsUrl(owner, { location, lang: locale() })} target="_blank" rel="noreferrer">{t('Print cable labels')}{current ? ` (${current.label})` : ''}</a>
+          <span className="hint">{t('Two labels per cable, name and code, 60 × 32 mm.')}</span>
+        </div>
+      )}
       {tab === 'cables' && (
         schedule.length === 0 ? <div className="empty">{t('No cables yet.')}</div> : (
           <table className="table">
@@ -198,6 +204,7 @@ function NewDevice({ state, defaultLocation, onClose, onCreate }) {
   const [label, setLabel] = useState('');
   const [loc, setLoc] = useState(defaultLocation || state.locations[0]?.id || '');
   const [u, setU] = useState('');
+  const [face, setFace] = useState('front');
   useEffect(() => { api.library().then(setLib).catch(() => setLib({ devices: [] })); }, []);
   const devices = (lib?.devices || []).filter((d) => !q.trim() || `${d.name} ${d.manufacturer} ${d.model} ${d.category} ${d.id}`.toLowerCase().includes(q.trim().toLowerCase()));
   const tpl = (lib?.devices || []).find((d) => d.id === template) || null;
@@ -222,11 +229,12 @@ function NewDevice({ state, defaultLocation, onClose, onCreate }) {
               </label>
             )}
             {rack && <label style={{ flex: 0.6 }}>{t('U position')}<input type="number" min="1" value={u} onChange={(e) => setU(e.target.value)} /></label>}
+            {rack && <label style={{ flex: 0.8 }}>{t('Face')}<select value={face} onChange={(e) => setFace(e.target.value)}><option value="front">{t('Front')}</option><option value="rear">{t('Rear')}</option></select></label>}
           </div>
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>{t('Cancel')}</button>
-          <button className="btn btn-primary" disabled={!tpl} onClick={() => onCreate({ op: 'add_device', template: tpl.id, label: label.trim() || tpl.name, ...(state.kind === 'installation' && loc ? { location: loc } : {}), ...(rack && u ? { rack: { u: Number(u) } } : {}) })}>{t('Add')}</button>
+          <button className="btn btn-primary" disabled={!tpl} onClick={() => onCreate({ op: 'add_device', template: tpl.id, label: label.trim() || tpl.name, ...(state.kind === 'installation' && loc ? { location: loc } : {}), ...(rack && u ? { rack: { u: Number(u), face } } : {}) })}>{t('Add')}</button>
         </div>
       </div>
     </div>

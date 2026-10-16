@@ -36,3 +36,41 @@ export function compatibleTargets(lib, state, deviceId, portId) {
   }
   return out;
 }
+
+/**
+ * A rack's elevation: every device and block mounted in it at its U span (top first), whether two of
+ * them overlap, what sits in the rack without a U position, and which slots are free. Null for an
+ * area. A template's heightU of 0 counts as one slot when the device was given a position anyway.
+ */
+export function rackMap(state, lib, locationId, face = 'front') {
+  const loc = (state.locations || []).find((l) => l.id === locationId);
+  if (!loc || loc.kind !== 'rack') return null;
+  const units = Number(loc.unitsU) || 42;
+  const items = [];
+  const unplaced = [];
+  const counts = { front: 0, rear: 0 };
+  const faceOf = (r) => r?.face || 'front';
+  for (const d of state.devices || []) {
+    if (d.location !== locationId) continue;
+    const h = Math.max(1, Number(templateOf(lib, state, d.id)?.heightU) || 1);
+    if (d.rack?.u) {
+      counts[faceOf(d.rack)] += 1;
+      if (faceOf(d.rack) === face) items.push({ id: d.id, kind: 'device', label: d.label, u: Number(d.rack.u), h, face });
+    } else unplaced.push({ id: d.id, kind: 'device', label: d.label, h });
+  }
+  for (const b of state.blocks || []) {
+    if (b.location !== locationId) continue;
+    if (b.rack?.u) {
+      counts[faceOf(b.rack)] += 1;
+      if (faceOf(b.rack) === face) items.push({ id: b.id, kind: 'block', label: b.module, u: Number(b.rack.u), h: 1, face });
+    } else unplaced.push({ id: b.id, kind: 'block', label: b.module, h: 1 });
+  }
+  const top = (i) => i.u + i.h - 1;
+  for (const i of items) i.overlap = items.some((o) => o !== i && o.u <= top(i) && i.u <= top(o));
+  items.sort((a, b) => top(b) - top(a) || b.u - a.u);
+  const taken = new Set();
+  for (const i of items) for (let u = i.u; u <= top(i); u++) taken.add(u);
+  const freeSlots = [];
+  for (let u = 1; u <= units; u++) if (!taken.has(u)) freeSlots.push(u);
+  return { units, face, counts, items, unplaced, freeSlots };
+}

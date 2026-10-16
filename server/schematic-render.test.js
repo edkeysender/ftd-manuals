@@ -106,3 +106,20 @@ test('an empty location still draws as a visible frame', async () => {
   const l = await layoutSchematic(inst, ctx());
   assert.ok(l.frames.ios.w >= 100 && l.frames.ios.h >= 40, `frame ${JSON.stringify(l.frames.ios)}`);
 });
+
+test('cableLabelsHtml prints two labels per cable with its name, code and both ends', async () => {
+  const { cableLabelsHtml } = await import('./schematic-render.js');
+  const s = fixture();
+  const html = cableLabelsHtml(cableSchedule(s, ctx()), { code: 'S2602', title: 'S2602 wiring', lang: 'en' });
+  assert.match(html, /<!doctype html>/i);
+  assert.equal((html.match(/class="label"/g) || []).length, 4, 'two cables, one label per end');
+  assert.match(html, /S2602-PWR<\/div>/, 'the code is the installation code plus the cable id');
+  assert.match(html, /PWR-01/);
+  assert.match(html, /Power strip 1 · Socket 1/);
+  assert.match(html, /UMC404HD · Power/);
+  assert.match(html, /3 m/);
+  assert.match(html, /@page/);
+  assert.doesNotMatch(html, /<script/);
+  const one = cableLabelsHtml(cableSchedule(s, ctx()).filter((r) => r.id === 'aud'), { code: 'S2602' });
+  assert.equal((one.match(/class="label"/g) || []).length, 2);
+});

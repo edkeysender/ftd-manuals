@@ -1248,4 +1248,22 @@ export const PL = {
   "{n} ports": "{n} portów",
   "Location": "Lokalizacja",
   "U position": "Pozycja U",
+  // ----- rack map -----
+  "{name} moved to U{u}": "{name} przeniesiono na U{u}",
+  "U position cleared": "Pozycja U wyczyszczona",
+  "{h} U high": "wysokość {h} U",
+  "Move the selected device to U{u}": "Przenieś zaznaczone urządzenie na U{u}",
+  "overlaps another device": "nachodzi na inne urządzenie",
+  "In this rack, no U yet": "W tej szafie, bez pozycji U",
+  // ----- labels / lightbox -----
+  "Print cable labels": "Drukuj etykiety kabli",
+  "Two labels per cable, name and code, 60 × 32 mm.": "Dwie etykiety na kabel, nazwa i kod, 60 × 32 mm.",
+  "Print label": "Drukuj etykietę",
+  "Click to enlarge": "Kliknij, aby powiększyć",
+  "Close": "Zamknij",
+  // ----- rack faces -----
+  "{name} moved to U{u} ({face})": "{name} przeniesiono na U{u} ({face})",
+  "front": "przód",
+  "rear": "tył",
+  "Face": "Strona",
 };
