@@ -1266,4 +1266,12 @@ export const PL = {
   "front": "przód",
   "rear": "tył",
   "Face": "Strona",
+  // ----- rack model / height -----
+  "{n} U": "{n} U",
+  "Leave empty to use the template height ({h} U)": "Zostaw puste, aby użyć wysokości z szablonu ({h} U)",
+  "Edit rack…": "Edytuj szafę…",
+  "Rack updated": "Szafa zaktualizowana",
+  "Edit rack": "Edytuj szafę",
+  "Rack model": "Model szafy",
+  "e.g. Lanberg FF01-8042-12B 42U 800×1000": "np. Lanberg FF01-8042-12B 42U 800×1000",
 };

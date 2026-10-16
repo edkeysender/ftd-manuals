@@ -247,7 +247,7 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
               </div>
             )}
             {selected && <Details selected={selected} state={state} schedule={schedule} lib={lib} owner={owner} onGo={go} onClose={() => setSelected(null)} editable={editable} onConnect={(from) => setConnecting({ from })} onDisconnect={disconnect} onZoomPanel={setLightbox}
-              onMoveU={(id, u, f = 'front') => applyOps([{ op: 'update_device', id, rack: u ? { u, face: f } : null }], u ? t('{name} moved to U{u} ({face})', { name: state.devices.find((d) => d.id === id)?.label || id, u, face: f === 'rear' ? t('rear') : t('front') }) : t('U position cleared'))} />}
+              onMoveU={(id, u, f = 'front', h = state.devices.find((d) => d.id === id)?.rack?.h || null) => applyOps([{ op: 'update_device', id, rack: u ? { u, face: f, ...(h ? { h } : {}) } : null }], u ? t('{name} moved to U{u} ({face})', { name: state.devices.find((d) => d.id === id)?.label || id, u, face: f === 'rear' ? t('rear') : t('front') }) : t('U position cleared'))} />}
           </aside>
         )}
       </div>
@@ -280,6 +280,7 @@ function RackMap({ map, rackLabel, selected, editable, face, onFace, onGo, onMov
   return (
     <aside className="rack-map" title={rackLabel}>
       <div className="rack-map-title">{rackLabel}</div>
+      <div className="small muted rack-map-sub">{[map.model, t('{n} U', { n: map.units })].filter(Boolean).join(' · ')}</div>
       <div className="rack-faces">
         <button className={face === 'front' ? 'active' : ''} onClick={() => onFace('front')}>{t('Front')} ({map.counts.front})</button>
         <button className={face === 'rear' ? 'active' : ''} onClick={() => onFace('rear')}>{t('Rear')} ({map.counts.rear})</button>
@@ -440,7 +441,10 @@ function Details({ selected, state, schedule, lib, owner, onGo, onClose, editabl
               <option value="front">{t('Front')}</option><option value="rear">{t('Rear')}</option>
             </select>
           </label>
-          <span className="hint">{t('{h} U high', { h: Math.max(1, Number(tpl?.heightU) || 1) })}</span>
+          <label className="inline" title={t('Leave empty to use the template height ({h} U)', { h: Math.max(1, Number(tpl?.heightU) || 1) })}>{t('Height (U)')}
+            <input type="number" min="1" max="60" placeholder={String(Math.max(1, Number(tpl?.heightU) || 1))} defaultValue={d.rack?.h || ''} key={`h:${d.id}:${d.rack?.h || ''}`} disabled={!d.rack?.u}
+              onBlur={(e) => { const h = Number(e.target.value) || null; if (h !== (d.rack?.h || null)) onMoveU(d.id, d.rack.u, d.rack?.face || 'front', h); }} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} />
+          </label>
         </div>
       )}
       {tpl && (tpl.panels?.front || tpl.panels?.rear) && (

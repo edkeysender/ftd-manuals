@@ -220,7 +220,9 @@ const OPS = {
     if (locationOf(state, id)) throw new SchematicError(`location "${id}" already exists`);
     const kind = str(op.kind) || 'area';
     if (!['rack', 'area'].includes(kind)) throw new SchematicError('location kind must be rack or area');
-    state.locations.push({ id, label, kind, unitsU: kind === 'rack' ? Number(op.unitsU) || 42 : null });
+    const loc = { id, label, kind, unitsU: kind === 'rack' ? (op.unitsU === undefined || op.unitsU === null || op.unitsU === '' ? 42 : unitsOf(op.unitsU)) : null };
+    if (str(op.model)) loc.model = str(op.model); // the cabinet itself: maker, series, size
+    state.locations.push(loc);
     return `Added location ${label}`;
   },
   update_location(state, op) {
@@ -233,7 +235,11 @@ const OPS = {
       l.kind = op.kind;
       l.unitsU = l.kind === 'rack' ? l.unitsU || 42 : null;
     }
-    if (op.unitsU !== undefined && l.kind === 'rack') l.unitsU = Number(op.unitsU) || 42;
+    if (op.unitsU !== undefined && l.kind === 'rack') l.unitsU = unitsOf(op.unitsU);
+    if (op.model !== undefined) {
+      if (str(op.model)) l.model = str(op.model);
+      else delete l.model;
+    }
     return `Updated location ${l.label}`;
   },
   remove_location(state, op) {
@@ -303,8 +309,20 @@ function rackOf(v) {
   if (!(Number.isFinite(u) && u > 0)) return null;
   const face = str(v.face) || 'front';
   if (!RACK_FACES.includes(face)) throw new SchematicError(`a rack face is front or rear, not "${face}"`);
-  return { u, face };
+  const out = { u, face };
+  // a device may say how many U it takes when the template's default is wrong for this unit
+  if (v.h !== undefined && v.h !== null && v.h !== '') {
+    const h = Number(v.h);
+    if (!Number.isInteger(h) || h < 1 || h > 60) throw new SchematicError('a device height is a whole number of U (1–60)');
+    out.h = h;
+  }
+  return out;
 }
+const unitsOf = (v) => {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 60) throw new SchematicError('a rack has between 1 and 60 U');
+  return n;
+};
 export const RACK_FACES = ['front', 'rear'];
 const numOrNull = (v) => {
   if (v === undefined || v === null || v === '') return null;

@@ -233,3 +233,23 @@ test('a rack position carries the face it is mounted on, front by default', () =
   const moved = applyOps(state, [{ op: 'update_device', id: 'pc', rack: { u: 2, face: 'rear' } }], ctx()).state;
   assert.deepEqual(moved.devices[1].rack, { u: 2, face: 'rear' });
 });
+
+test('a rack location has a model and a U count that can be edited; a device may override its height in U', () => {
+  const { state } = applyOps(
+    emptySchematic({ kind: 'installation', owner: 'sim' }),
+    [
+      { op: 'add_location', id: 'rack-1', label: 'Rack 1', kind: 'rack', unitsU: 24, model: 'Lanberg 24U 800×1000' },
+      { op: 'add_device', id: 'pc', template: 'pc', location: 'rack-1', rack: { u: 1, h: 5 } },
+    ],
+    ctx()
+  );
+  assert.equal(state.locations[0].model, 'Lanberg 24U 800×1000');
+  assert.equal(state.locations[0].unitsU, 24);
+  assert.deepEqual(state.devices[0].rack, { u: 1, face: 'front', h: 5 });
+  const upd = applyOps(state, [{ op: 'update_location', id: 'rack-1', model: 'Triton 42U', unitsU: 42 }, { op: 'update_device', id: 'pc', rack: { u: 1 } }], ctx()).state;
+  assert.equal(upd.locations[0].model, 'Triton 42U');
+  assert.equal(upd.locations[0].unitsU, 42);
+  assert.deepEqual(upd.devices[0].rack, { u: 1, face: 'front' }, 'no h means the template height applies');
+  assert.throws(() => applyOps(state, [{ op: 'update_device', id: 'pc', rack: { u: 1, h: 0.5 } }], ctx()), /whole number of U/);
+  assert.throws(() => applyOps(state, [{ op: 'update_location', id: 'rack-1', unitsU: 0 }], ctx()), /between 1 and 60/);
+});

@@ -52,7 +52,7 @@ export function rackMap(state, lib, locationId, face = 'front') {
   const faceOf = (r) => r?.face || 'front';
   for (const d of state.devices || []) {
     if (d.location !== locationId) continue;
-    const h = Math.max(1, Number(templateOf(lib, state, d.id)?.heightU) || 1);
+    const h = Number(d.rack?.h) || Math.max(1, Number(templateOf(lib, state, d.id)?.heightU) || 1);
     if (d.rack?.u) {
       counts[faceOf(d.rack)] += 1;
       if (faceOf(d.rack) === face) items.push({ id: d.id, kind: 'device', label: d.label, u: Number(d.rack.u), h, face });
@@ -72,5 +72,5 @@ export function rackMap(state, lib, locationId, face = 'front') {
   for (const i of items) for (let u = i.u; u <= top(i); u++) taken.add(u);
   const freeSlots = [];
   for (let u = 1; u <= units; u++) if (!taken.has(u)) freeSlots.push(u);
-  return { units, face, counts, items, unplaced, freeSlots };
+  return { units, model: loc.model, face, counts, items, unplaced, freeSlots };
 }

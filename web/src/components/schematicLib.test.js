@@ -72,4 +72,10 @@ test('rackMap lays rack-mounted devices out by U, flags overlaps and lists the r
   assert.deepEqual(rear.items.map((i) => [i.id, i.overlap]), [['pdu', false]]);
   assert.deepEqual(front.counts, { front: 4, rear: 1 });
   assert.deepEqual(rear.unplaced.map((i) => i.id), ['t'], 'unplaced devices are listed on both faces');
+  // a device's own height wins over the template's
+  const tall = { ...st, devices: st.devices.map((d) => (d.id === 's' ? { ...d, rack: { u: 4, h: 3 } } : d)) };
+  const tm = rackMap(tall, lib2, 'r1');
+  assert.equal(tm.items.find((i) => i.id === 's').h, 3);
+  assert.equal(tm.model, undefined);
+  assert.equal(rackMap({ ...st, locations: [{ ...st.locations[0], model: 'Lanberg 12U' }, st.locations[1]] }, lib2, 'r1').model, 'Lanberg 12U');
 });

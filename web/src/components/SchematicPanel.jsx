@@ -79,7 +79,9 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
   const locations = [...state.locations].sort((a, b) => (a.kind === 'rack' ? 0 : 1) - (b.kind === 'rack' ? 0 : 1));
   const current = locations.find((l) => l.id === location) || null;
   const locOps = (ops, msg) => run(() => api.schematicOps(owner, ops, { summary: msg }), msg);
+  const [editingLoc, setEditingLoc] = useState(false);
   const renameLoc = () => {
+    if (current.kind === 'rack') return setEditingLoc(true);
     const label = window.prompt(t('New name of the location'), current.label);
     if (label && label.trim() && label.trim() !== current.label) locOps([{ op: 'update_location', id: current.id, label: label.trim() }], t('Location renamed'));
   };
@@ -142,14 +144,15 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
             <span className="btn-row">
               <button className="btn btn-sm btn-primary" onClick={() => setAddingDev(true)}>{t('+ Device')}</button>
               <button className="btn btn-sm" onClick={() => setAddingLoc(true)}>{t('+ Rack / area')}</button>
-              {current && <button className="btn btn-sm" onClick={renameLoc}>{t('Rename')}</button>}
+              {current && <button className="btn btn-sm" onClick={renameLoc}>{current.kind === 'rack' ? t('Edit rack…') : t('Rename')}</button>}
               {current && <button className="btn btn-sm btn-danger" onClick={removeLoc} title={t('Only an empty location can be removed')}>{t('Remove')}</button>}
             </span>
           )}
-          {current && <span className="hint">{t('{n} devices in {name}; cables that leave it are drawn to where they go.', { n: (data.view?.deviceIds.length || 0) + (data.view?.blockIds.length || 0), name: current.label })}</span>}
+          {current && <span className="hint">{current.kind === 'rack' ? `${[current.model, t('{n} U', { n: current.unitsU || 42 })].filter(Boolean).join(' · ')} · ` : ''}{t('{n} devices in {name}; cables that leave it are drawn to where they go.', { n: (data.view?.deviceIds.length || 0) + (data.view?.blockIds.length || 0), name: current.label })}</span>}
         </div>
       )}
       {addingLoc && <NewLocation locations={state.locations} onClose={() => setAddingLoc(false)} onCreate={(op) => { setAddingLoc(false); locOps([op], t('Location added')); }} />}
+      {editingLoc && current && <NewLocation locations={state.locations} existing={current} onClose={() => setEditingLoc(false)} onCreate={(op) => { setEditingLoc(false); locOps([op], t('Rack updated')); }} />}
       {state.kind === 'module' && canEdit && editable && <div className="loc-bar"><button className="btn btn-sm btn-primary" onClick={() => setAddingDev(true)}>{t('+ Device')}</button></div>}
       {addingDev && <NewDevice state={state} defaultLocation={location} onClose={() => setAddingDev(false)} onCreate={(op) => { setAddingDev(false); locOps([op], t('Device added')); }} />}
 
@@ -242,19 +245,20 @@ function NewDevice({ state, defaultLocation, onClose, onCreate }) {
 }
 
 /** A new rack or area for an installation — up to four racks per simulator, IOS and the shell beside them. */
-function NewLocation({ locations, onClose, onCreate }) {
+function NewLocation({ locations, existing = null, onClose, onCreate }) {
   const racks = locations.filter((l) => l.kind === 'rack').length;
-  const [kind, setKind] = useState(racks < 4 ? 'rack' : 'area');
-  const [label, setLabel] = useState(racks < 4 ? `Rack ${racks + 1}` : '');
-  const [unitsU, setUnitsU] = useState(42);
+  const [kind, setKind] = useState(existing ? existing.kind : racks < 4 ? 'rack' : 'area');
+  const [label, setLabel] = useState(existing ? existing.label : racks < 4 ? `Rack ${racks + 1}` : '');
+  const [unitsU, setUnitsU] = useState(existing?.unitsU || 42);
+  const [model, setModel] = useState(existing?.model || '');
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head"><h2>{t('New rack or area')}</h2></div>
+        <div className="modal-head"><h2>{existing ? t('Edit rack') : t('New rack or area')}</h2></div>
         <div className="modal-body">
           <div className="pair">
             <label>{t('Kind')}
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <select value={kind} disabled={!!existing} onChange={(e) => setKind(e.target.value)}>
                 <option value="rack">{t('Rack')}</option>
                 <option value="area">{t('Area (IOS, simulator shell, cockpit…)')}</option>
               </select>
@@ -262,11 +266,14 @@ function NewLocation({ locations, onClose, onCreate }) {
             <label style={{ flex: 2 }}>{t('Name')}<input autoFocus value={label} onChange={(e) => setLabel(e.target.value)} placeholder={kind === 'rack' ? t('e.g. S03 Rack AV') : t('e.g. Simulator Shell')} /></label>
             {kind === 'rack' && <label style={{ flex: 0.6 }}>{t('Height (U)')}<input type="number" min="1" max="60" value={unitsU} onChange={(e) => setUnitsU(e.target.value)} /></label>}
           </div>
+          {kind === 'rack' && <label>{t('Rack model')}<input value={model} placeholder={t('e.g. Lanberg FF01-8042-12B 42U 800×1000')} onChange={(e) => setModel(e.target.value)} /></label>}
           {kind === 'rack' && racks >= 4 && <p className="hint warn">{t('This installation already has {n} racks — a simulator holds up to four.', { n: racks })}</p>}
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>{t('Cancel')}</button>
-          <button className="btn btn-primary" disabled={!label.trim()} onClick={() => onCreate({ op: 'add_location', label: label.trim(), kind, unitsU: kind === 'rack' ? Number(unitsU) || 42 : undefined })}>{t('Add')}</button>
+          <button className="btn btn-primary" disabled={!label.trim()} onClick={() => onCreate(existing
+            ? { op: 'update_location', id: existing.id, label: label.trim(), ...(kind === 'rack' ? { unitsU: Number(unitsU) || 42, model: model.trim() } : {}) }
+            : { op: 'add_location', label: label.trim(), kind, ...(kind === 'rack' ? { unitsU: Number(unitsU) || 42, model: model.trim() } : {}) })}>{existing ? t('Save') : t('Add')}</button>
         </div>
       </div>
     </div>

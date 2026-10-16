@@ -880,4 +880,5 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .rack-faces { display: flex; gap: 4px; margin-bottom: 6px; }
 .rack-faces button { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; font-size: 11px; padding: 3px 0; }
 .rack-faces button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-
+.rack-map-sub { margin: -4px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sch-upos label.inline input[type=number] { width: 64px; }
