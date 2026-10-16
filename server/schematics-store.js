@@ -14,6 +14,7 @@ import { renderSvg, scheduleHtml, faceHtml } from './schematic-render.js';
 const now = () => new Date().toISOString();
 const str = (v) => String(v ?? '').trim();
 const json = (v) => JSON.stringify(v, null, 2) + '\n';
+const escHtml = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ------------------------------------------------------------------ */
 /* Device library                                                      */
@@ -24,12 +25,17 @@ export const LIB_DEVICES_FILE = 'library/devices.json';
 
 let libCache = null;
 
-export async function getLibrary() {
-  if (libCache) return libCache;
+/** The library as main holds it right now — what a writer inside the lock must read (the cache may
+ *  predate the write that just finished ahead of it in the lock chain). */
+async function loadLibrary() {
   const files = await readJsonMany([{ ref: 'main', file: LIB_CONNECTORS_FILE }, { ref: 'main', file: LIB_DEVICES_FILE }]);
   const conn = files.get(`main:${LIB_CONNECTORS_FILE}`);
   const dev = files.get(`main:${LIB_DEVICES_FILE}`);
-  libCache = normalizeLibrary({ connectors: conn?.connectors, cables: conn?.cables, devices: dev?.devices });
+  return normalizeLibrary({ connectors: conn?.connectors, cables: conn?.cables, devices: dev?.devices });
+}
+
+export async function getLibrary() {
+  if (!libCache) libCache = await loadLibrary();
   return libCache;
 }
 
@@ -67,6 +73,12 @@ export async function saveConnectors({ connectors, cables }) {
       for (const id of pair) if (!ids.has(id)) throw new Error(`cable kind "${c.id}" joins unknown connector "${id}"`);
     }
   }
+  // a connector a template's port names cannot go: the template would silently stop parsing
+  const current = await getLibrary();
+  for (const t of current.devices) {
+    const gone = t.ports.filter((p) => !ids.has(p.connector)).map((p) => p.connector);
+    if (gone.length) throw new Error(`Connector ${[...new Set(gone)].join(', ')} is used by the device template "${t.name}" (${t.id}) — change its ports first`);
+  }
   const data = { connectors, cables };
   await change(() => writeOnMain(LIB_CONNECTORS_FILE, data, 'library: connectors and cable kinds'));
   return getLibrary();
@@ -76,33 +88,41 @@ async function writeDevices(devices, message) {
   await writeOnMain(LIB_DEVICES_FILE, { devices }, message);
 }
 
+/* The device list is one shared file: it is read and rewritten inside the same lock section, so two
+   writers (the UI and an MCP agent) cannot lose each other's template. */
 export async function createDeviceTemplate(spec) {
-  const lib = await getLibrary();
-  const taken = new Set(lib.devices.map((d) => d.id));
-  const t = normalizeTemplate(spec, taken, lib.connectors);
-  if (taken.has(t.id)) throw new Error(`Device template "${t.id}" already exists`);
-  await change(() => writeDevices([...lib.devices, t], `library: add device ${t.name}`));
-  return t;
+  return change(async () => {
+    const lib = await loadLibrary();
+    const taken = new Set(lib.devices.map((d) => d.id));
+    const t = normalizeTemplate(spec, taken, lib.connectors);
+    if (taken.has(t.id)) throw new Error(`Device template "${t.id}" already exists`);
+    await writeDevices([...lib.devices, t], `library: add device ${t.name}`);
+    return t;
+  });
 }
 
 export async function updateDeviceTemplate(id, patch) {
-  const lib = await getLibrary();
-  const idx = lib.devices.findIndex((d) => d.id === id);
-  if (idx < 0) throw new Error(`Device template "${id}" not found`);
-  const t = normalizeTemplate({ ...lib.devices[idx], ...patch, id }, new Set(), lib.connectors);
-  const devices = lib.devices.slice();
-  devices[idx] = t;
-  await change(() => writeDevices(devices, `library: update device ${t.name}`));
-  return t;
+  return change(async () => {
+    const lib = await loadLibrary();
+    const idx = lib.devices.findIndex((d) => d.id === id);
+    if (idx < 0) throw new Error(`Device template "${id}" not found`);
+    const t = normalizeTemplate({ ...lib.devices[idx], ...patch, id }, new Set(), lib.connectors);
+    const devices = lib.devices.slice();
+    devices[idx] = t;
+    await writeDevices(devices, `library: update device ${t.name}`);
+    return t;
+  });
 }
 
 export async function deleteDeviceTemplate(id) {
-  const lib = await getLibrary();
-  if (!lib.devices.some((d) => d.id === id)) throw new Error(`Device template "${id}" not found`);
-  const users = (await allSchematics()).filter((s) => s.state.devices.some((d) => d.template === id));
-  if (users.length) throw new Error(`Device template "${id}" is used by ${users.map((s) => s.ref).join(', ')} — remove those devices first`);
-  await change(() => writeDevices(lib.devices.filter((d) => d.id !== id), `library: remove device ${id}`));
-  return { ok: true, id };
+  return change(async () => {
+    const lib = await loadLibrary();
+    if (!lib.devices.some((d) => d.id === id)) throw new Error(`Device template "${id}" not found`);
+    const users = (await allSchematics()).filter((s) => s.state.devices.some((d) => d.template === id));
+    if (users.length) throw new Error(`Device template "${id}" is used by ${users.map((s) => s.ref).join(', ')} — remove those devices first`);
+    await writeDevices(lib.devices.filter((d) => d.id !== id), `library: remove device ${id}`);
+    return { ok: true, id };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -398,10 +418,19 @@ export async function releaseSchematic(ref, { note = '' } = {}) {
   if (errors.length) throw Object.assign(new Error(`The schematic cannot be released: ${errors.map((e) => e.message).join('; ')}`), { code: 'blockers', blockers: errors });
   const ts = now();
   const line = { rev: `r${state.revision}`, version: state.version, date: ts, summary, public: true };
-  const final = { ...state, status: 'released', branch: null, hotfix: null, releasedAt: ts, updatedAt: ts, releaseRecord: [...(state.releaseRecord || []), line] };
+  const final = { ...state, status: 'released', branch: null, hotfix: null, releasedAt: ts, updatedAt: ts, releaseRecord: [] };
   await change(async () => {
     await repo.checkout('main');
-    if (!state.hotfix) await repo.merge(branch, `Merge ${branch}: release ${owner.slug} schematic ${state.version}`);
+    // The lines of earlier versions are main's: an author may have reworded one while this draft was
+    // open (setSchematicReleaseNote), and the branch's copy predates that. This version's own lines
+    // (a hotfix keeps the ones already printed) and the new line follow.
+    const onMain = await readJson('main', schematicFile(ref));
+    const inherited = (onMain?.releaseRecord || []).filter((r) => r.version !== state.version).map((r) => ({ ...r, inherited: true }));
+    const own = (state.releaseRecord || []).filter((r) => r.version === state.version && !r.inherited);
+    final.releaseRecord = [...inherited, ...own, line];
+    // main may have moved the same file since the branch was cut (a release line on the previous
+    // version): keep the branch as a parent and write the final record below — no conflict possible
+    if (!state.hotfix) await repo.merge(branch, `Merge ${branch}: release ${owner.slug} schematic ${state.version}`, { ours: true });
     await repo.writeFile(schematicFile(ref), json(final));
     await repo.commitAll(`${owner.slug}: ${state.hotfix ? `publish schematic hotfix ${state.version} r${state.revision}` : `release schematic ${state.version}`}`);
     await repo.deleteBranch(branch);
@@ -559,10 +588,10 @@ async function installationChapterFor(manual, lang = 'en') {
       slug: 'installation-wiring',
       installation: true,
       module: { slug: 'installation-wiring', name: T.installationWiring, code: rec.slug.toUpperCase(), hardwareIds: [], hardwareItems: [], softwares: [] },
-      doc: { version: state.version, revision: state.revision, status: 'released', manual: manual.manual, releasedAt: state.releasedAt, updatedAt: state.updatedAt, revisionRecord: state.releaseRecord || [], covers: [] },
+      doc: { key: `schematic:${state.version}`, version: state.version, revision: state.revision, status: 'released', manual: manual.manual, releasedAt: state.releasedAt, updatedAt: state.updatedAt, revisionRecord: state.releaseRecord || [], covers: [] },
       title: T.installationWiring,
       generated: '',
-      content: `<h2>${T.installationWiring}</h2>\n<figure class="schematic installation" data-size="full">${svg}<figcaption>${T.installationFig(rec.name)} — ${state.version}</figcaption></figure>\n${schedule.length ? `<h2>${T.installationCables}</h2>\n${scheduleHtml(schedule, lang)}` : ''}`,
+      content: `<h2>${T.installationWiring}</h2>\n<figure class="schematic installation" data-size="full">${svg}<figcaption>${T.installationFig(escHtml(rec.name))} — ${escHtml(state.version)}</figcaption></figure>\n${schedule.length ? `<h2>${T.installationCables}</h2>\n${scheduleHtml(schedule, lang)}` : ''}`,
       checklist: null,
       isDraft: false,
       langFallback: false,

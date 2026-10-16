@@ -50,6 +50,10 @@ the canvas is Phase 2 and has its own plan).
   hotfix, discard, next version) are the same.
 - MCP gets dedicated tools (`get_schematic`, `apply_schematic_ops`, `release_schematic`, …) instead of
   teaching `resolveDocKey` a `schematic` manual type.
+- The assembled manual's wiring chapter draws the whole installation and filters only the cable schedule
+  to the manual's chapters (spec §9 asked for a filtered drawing too); and the chat tells the user when a
+  device is not in the library instead of proposing a `create_device_template` to accept (spec §6).
+  Both are deferred to Phase 2 with the canvas.
 
 ## Review Focus
 

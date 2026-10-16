@@ -273,3 +273,69 @@ test('the technician manual and the assembled manual carry the released wiring',
   const html = (await import('./docgen.js')).manualBodyHtml(compiled);
   assert.match(html, /Installation wiring/);
 });
+
+test('a release line written on main does not block releasing the next version', async () => {
+  const slug = await makeModule('Noted module');
+  await sch.createSchematic(slug);
+  await sch.applySchematicOps(slug, [{ op: 'add_device', id: 'hs', template: 'headset', label: 'Headset' }]);
+  await sch.releaseSchematic(slug, { note: 'First.' });
+  const next = await sch.createSchematic(slug);
+  assert.equal(next.version, 'A1.1');
+  await sch.setSchematicReleaseNote(slug, 'First, reworded.');
+  await sch.applySchematicOps(slug, [{ op: 'update_device', id: 'hs', label: 'Headset L' }]);
+  const rel = await sch.releaseSchematic(slug, { note: 'Second.' });
+  assert.equal(rel.version, 'A1.1');
+  const onMain = await sch.releasedSchematicOf(slug);
+  assert.equal(onMain.version, 'A1.1');
+  assert.equal(onMain.devices[0].label, 'Headset L');
+  assert.equal(onMain.releaseRecord.find((r) => r.version === 'A1.0').summary, 'First, reworded.');
+  assert.equal((await store.repo.currentBranch()), 'main');
+});
+
+test('deleting a module drops its schematic draft branch too', async () => {
+  const slug = await makeModule('Doomed module');
+  await sch.createSchematic(slug);
+  const branch = `draft/${slug}-schematic-a1.0`;
+  assert.ok((await store.repo.branches()).includes(branch));
+  const del = await store.deleteModule(slug);
+  assert.ok(del.branchesDeleted.includes(branch), `branchesDeleted: ${del.branchesDeleted}`);
+  assert.ok(!(await store.repo.branches()).includes(branch));
+  assert.ok(!(await store.listModules()).some((m) => m.slug === slug), 'the module is gone from the list');
+});
+
+test('the wiring chapter carries a doc key so the manual signature sees installation changes', async () => {
+  const slug = await makeModule('Keyed module');
+  await sch.createSchematic(slug);
+  await sch.applySchematicOps(slug, [{ op: 'add_device', id: 'hs', template: 'headset' }, { op: 'set_external_port', id: 'jack', label: 'Jack', device: 'hs', port: 'jack' }]);
+  await sch.releaseSchematic(slug, { note: 'Wired.' });
+  const techKey = (await store.getModule(slug)).docs.find((d) => d.manual === 'technician').key;
+  await store.releaseDoc(slug, techKey, { force: true, note: 'Released.' });
+  const inst = await sch.createInstallation({ name: 'Keyed <sim> & co' });
+  const ref = sch.instRef(inst.slug);
+  await sch.applySchematicOps(ref, [{ op: 'place_block', id: 'km', module: slug, location: 'cockpit' }]);
+  await sch.releaseSchematic(ref, { note: 'Issue 1.' });
+  const manual = await store.createManual({ name: 'Keyed manual', manual: 'technician', modules: [slug], installation: inst.slug });
+  const compiled = await store.compileManual(manual.slug);
+  const ch = compiled.chapters.find((c) => c.installation);
+  assert.equal(ch.doc.key, 'schematic:A1.0');
+  assert.match(ch.content, /Keyed &lt;sim&gt; &amp; co/);
+  assert.doesNotMatch(ch.content, /<sim>/);
+});
+
+test('a connector used by a template cannot be removed from the rules', async () => {
+  const lib = await sch.getLibrary();
+  await assert.rejects(
+    sch.saveConnectors({ connectors: lib.connectors.filter((c) => c.id !== 'trs-6.35'), cables: lib.cables.filter((c) => c.id !== 'audio') }),
+    /trs-6\.35.*(headset|behringer)/i
+  );
+  assert.ok((await sch.getLibrary()).devices.some((d) => d.id === 'headset'), 'nothing was lost');
+});
+
+test('two concurrent template creates both land', async () => {
+  const [a, b] = await Promise.all([
+    sch.createDeviceTemplate({ name: 'Concurrent A', ports: [] }),
+    sch.createDeviceTemplate({ name: 'Concurrent B', ports: [] }),
+  ]);
+  const ids = (await sch.getLibrary()).devices.map((d) => d.id);
+  assert.ok(ids.includes(a.id) && ids.includes(b.id), `have ${ids.join(', ')}`);
+});

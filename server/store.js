@@ -2783,7 +2783,10 @@ export async function updateManual(slug, patch) {
 export async function deleteModule(slug) {
   const entry = await moduleOf(slug);
   if (!entry) throw new Error(`Module "${slug}" not found`);
-  const branches = [...new Set(entry.docs.map((d) => d.branch).filter(Boolean))];
+  // its doc drafts, and its schematic draft (draft/<slug>-schematic-a1.0) — a branch left behind carries
+  // a copy of the module folder and would bring the module back on the next listing
+  const schematicBranches = (await repo.branches()).filter((b) => b.startsWith(`draft/${slug}-schematic-`));
+  const branches = [...new Set([...entry.docs.map((d) => d.branch).filter(Boolean), ...schematicBranches])];
   const onMain = !!(await readJson('main', moduleFile(slug)));
   const inManuals = (await listManuals()).filter((m) => (m.modules || []).includes(slug));
   await mutate(async () => {
