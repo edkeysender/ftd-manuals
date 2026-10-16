@@ -234,6 +234,24 @@ The functional spec lives in this file's history and in the Modules spec provide
   and "Edit drawing" edits that file in place (`editOf`) instead of redrawing. Every conversion path (AI-pane
   drop target, chat `generate_images` with `style: "line-art"`, Assets tab button, MCP `convert_to_line_art`)
   goes through `convertToLineArt()`.
+- **Schematics** (`server/schematic.js` pure applier/validator, `server/schematics-store.js` lifecycle,
+  `server/schematic-render.js` elk + SVG, `server/schematic-ai.js` chat, `server/schematic-routes.js`):
+  a schematic is a netlist — devices from the **device library** (`library/devices.json`, ports typed by
+  `library/connectors.json`; Settings → Device library, MCP `list_device_templates` …), cables between
+  ports, locations. It is changed only by **operations** (`applyOps`: `add_device`, `connect`,
+  `set_external_port`, `place_block`, …) applied as one commit or refused as a whole; the chat answers with
+  operations that are dry-run and shown as pending until accepted. A **module schematic**
+  (`modules/<slug>/schematic.json`) wires the module's parts and declares its **external ports**; an
+  **installation** (`installations/<slug>/installation.json` on main + `schematic.json`, `/installations`,
+  owner ref `inst:<slug>`) places modules as **blocks** (pinned to a released module schematic, flagged
+  outdated when a newer one is released) and free library devices in locations. Lifecycle like a doc:
+  `draft/<slug>-schematic-a1.0` / `draft/inst/<slug>-schematic-a1.0`, review, release with a note, hotfix,
+  discard, next version — refused while validation has errors. Only released schematics print: the
+  *Connections* block (figure, External ports, Cable schedule) in a technician manual's section 3, and
+  for an assembled manual with `manual.installation` the *Installation wiring* chapter plus the cover's
+  device / serial / operator from the installation. Infrastructure (switches, PDUs) are library devices;
+  `promoteDeviceToModule` turns one into a module when it deserves a manual. No React Flow canvas yet
+  (Phase 2) — the web shows the server-rendered SVG.
 
 ## Working here
 

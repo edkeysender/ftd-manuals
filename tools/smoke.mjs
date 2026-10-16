@@ -1632,6 +1632,105 @@ try {
   detail = await req('GET', '/api/modules/starting-panel');
   ok(detail.history.length >= 5, `history has ${detail.history.length} commits`);
 
+  // ---- schematics: library → module schematic → installation → manual ----
+  const lib = await req('GET', '/api/library');
+  ok(lib.devices.some((d) => d.id === 'behringer-umc404hd') && lib.cables.length >= 6, 'device library ships with seed templates and cable kinds');
+  const sch_tpl = await req('POST', '/api/library/devices', { name: 'Smoke switch', category: 'switch', ports: [{ id: 'pwr', label: 'Power', connector: 'iec-c14', direction: 'in' }, { id: 'p1', label: 'Port 1', connector: 'rj45' }] });
+  ok(sch_tpl.id === 'smoke-switch' && sch_tpl.ports.length === 2, 'device template created');
+  const badTpl = await req('POST', '/api/library/devices', { name: 'Bad', ports: [{ label: 'X', connector: 'nope' }] }).catch((e) => e);
+  ok(badTpl instanceof Error && /connector/.test(badTpl.message), 'unknown connector is refused');
+
+  const schMod = await req('POST', '/api/modules', { name: 'Smoke audio', type: 'own-module', category: 'cockpit', hardware: [{ name: 'Behringer UMC404HD', type: 'cots', manufacturer: 'Behringer', model: 'UMC404HD' }], softwares: [], start: { mode: 'blank' }, checklist: { mode: 'none' } });
+  const noSch = await req('GET', `/api/modules/${schMod.slug}/schematic`).catch((e) => e);
+  ok(noSch instanceof Error && noSch.status === 404, 'module without schematic → 404');
+  const sch1 = await req('POST', `/api/modules/${schMod.slug}/schematic`);
+  ok(sch1.version === 'A1.0' && sch1.status === 'draft', 'module schematic draft A1.0');
+  const hwId = schMod.hardware[0].id;
+  const opsRes = await req('POST', `/api/modules/${schMod.slug}/schematic/ops`, {
+    ops: [
+      { op: 'add_device', id: 'umc', template: 'behringer-umc404hd', hardwareId: hwId, label: 'UMC404HD' },
+      { op: 'add_device', id: 'hs', template: 'headset', label: 'Captain headset' },
+      { op: 'connect', from: { device: 'umc', port: 'phones-1' }, to: { device: 'hs', port: 'jack' }, label: 'AUD-01', length: 3 },
+      { op: 'set_external_port', id: 'power-in', label: 'Power in', device: 'umc', port: 'pwr' },
+      { op: 'set_external_port', id: 'usb-host', label: 'USB to host PC', device: 'umc', port: 'usb' },
+    ],
+    summary: 'Smoke wiring',
+  });
+  ok(opsRes.state.revision === 2 && opsRes.summary.length === 5 && opsRes.validation.errors.length === 0, 'ops applied as one commit');
+  const badOps = await req('POST', `/api/modules/${schMod.slug}/schematic/ops`, { ops: [{ op: 'connect', from: { device: 'umc', port: 'phones-2' }, to: { device: 'hs', port: 'jack' } }] }).catch((e) => e);
+  ok(badOps instanceof Error && /already has cable/.test(badOps.message), 'busy port refused');
+  const dry = await req('POST', `/api/modules/${schMod.slug}/schematic/ops`, { ops: [{ op: 'add_device', template: 'pc', label: 'Host PC' }], dryRun: true });
+  ok(dry.state.devices.length === 3 && (await req('GET', `/api/modules/${schMod.slug}/schematic`)).state.devices.length === 2, 'dry run writes nothing');
+  const svg = await fetch(`${BASE}/api/modules/${schMod.slug}/schematic/render.svg`).then((r) => r.text());
+  ok(svg.startsWith('<svg') && (svg.match(/class="sch-device"/g) || []).length === 2 && /sch-external/.test(svg), 'server-side SVG renders devices and the connector face');
+  const csv = await fetch(`${BASE}/api/modules/${schMod.slug}/schematic/cables.csv`).then((r) => r.text());
+  ok(csv.split('\n')[1].startsWith('AUD-01,Audio,UMC404HD,Phones 1,Captain headset,Jack,3'), 'cable schedule CSV');
+  const noNote = await req('POST', `/api/modules/${schMod.slug}/schematic/release`, { note: '' }).catch((e) => e);
+  ok(noNote instanceof Error && /revision record/.test(noNote.message), 'schematic release needs a note');
+  const schRel = await req('POST', `/api/modules/${schMod.slug}/schematic/release`, { note: 'Smoke wiring released.' });
+  ok(schRel.status === 'released' && schRel.releaseRecord.at(-1).public, 'module schematic released');
+  const sch_techDoc = await req('GET', `/api/modules/${schMod.slug}/docs/technician:A1.0`);
+  ok(/<h3>Connections<\/h3>/.test(sch_techDoc.generated) && /port-list/.test(sch_techDoc.generated), 'technician manual prints the Connections block');
+
+  const inst = await req('POST', '/api/installations', { name: 'Smoke sim', device: 'FNPT II', serialNumber: 'SMK-1', operator: 'Smoke Academy' });
+  ok(inst.slug === 'smoke-sim', 'installation created');
+  const instDetail = await req('GET', `/api/installations/${inst.slug}`);
+  ok(instDetail.schematic.state.locations.length === 3 && instDetail.schematic.validation.warnings.filter((w) => w.code === 'location-empty').length === 3, 'installation starts with three empty locations');
+  const instOps = await req('POST', `/api/installations/${inst.slug}/schematic/ops`, {
+    ops: [
+      { op: 'place_block', id: 'audio', module: schMod.slug, location: 'rack-1', rack: { u: 12 } },
+      { op: 'add_device', id: 'pdu-1', template: 'pdu-8', label: 'Power strip 1', location: 'rack-1' },
+      { op: 'add_device', id: 'sw-1', template: 'smoke-switch', label: 'Switch 1', location: 'rack-1' },
+      { op: 'connect', from: { device: 'pdu-1', port: 'out-1' }, to: { block: 'audio', port: 'power-in' }, label: 'PWR-01' },
+      { op: 'connect', from: { device: 'pdu-1', port: 'out-2' }, to: { device: 'sw-1', port: 'pwr' }, label: 'PWR-02' },
+    ],
+  });
+  ok(instOps.state.blocks.length === 1 && instOps.state.cables.length === 2 && instOps.validation.errors.length === 0, 'installation wired to the module block');
+  const tplInUse = await req('DELETE', '/api/library/devices/smoke-switch').catch((e) => e);
+  ok(tplInUse instanceof Error && /smoke-sim/.test(tplInUse.message), 'a template in use cannot be deleted');
+
+  await req('POST', `/api/modules/${schMod.slug}/docs/technician:A1.0/release`, { force: true, note: 'Smoke.' });
+  const schManual = await req('POST', '/api/manuals', { name: 'Smoke wiring manual', manual: 'technician', modules: [schMod.slug], installation: inst.slug });
+  let compiledSch = await req('GET', `/api/manuals/${schManual.slug}`);
+  ok(compiledSch.manual.serialNumber === 'SMK-1' && compiledSch.manual.operator === 'Smoke Academy', 'manual cover reads the installation');
+  ok(!compiledSch.chapters.some((c) => c.installation) && compiledSch.state.blockers.some((b) => /installation/.test(b)), 'draft installation does not print and blocks the manual release');
+  await req('POST', `/api/installations/${inst.slug}/schematic/release`, { note: 'Smoke installation issue 1.' });
+  compiledSch = await req('GET', `/api/manuals/${schManual.slug}`);
+  ok(compiledSch.chapters.some((c) => c.installation) && /Installation wiring/.test(compiledSch.html) && /cable-schedule/.test(compiledSch.html), 'released installation prints the wiring chapter');
+  ok(compiledSch.installation?.released === true, 'compile reports the installation');
+
+  // hotfix round trip on the installation
+  const sch_hf = await req('POST', `/api/installations/${inst.slug}/schematic/hotfix`);
+  ok(sch_hf.hotfix && sch_hf.revision === instOps.state.revision + 1, 'installation hotfix opened');
+  await req('POST', `/api/installations/${inst.slug}/schematic/ops`, { ops: [{ op: 'update_cable', id: 'c-1', label: 'PWR-01A' }] });
+  const pub = await req('POST', `/api/installations/${inst.slug}/schematic/release`, { note: 'Relabelled PWR-01.' });
+  ok(!pub.hotfix && pub.version === 'A1.0' && pub.cables[0].label === 'PWR-01A', 'hotfix published into the same version');
+
+  // MCP: the schematic tools answer
+  const mcpSch = await mcpCall({ jsonrpc: '2.0', id: 50, method: 'tools/call', params: { name: 'get_schematic', arguments: { slug: 'Smoke sim' } } });
+  ok(!mcpSch.isError && /"kind": "installation"/.test(mcpSch.content[0].text), 'MCP get_schematic resolves an installation by name');
+  const mcpTpl = await mcpCall({ jsonrpc: '2.0', id: 51, method: 'tools/call', params: { name: 'list_device_templates', arguments: { query: 'smoke' } } });
+  ok(/smoke-switch/.test(mcpTpl.content[0].text), 'MCP list_device_templates filters');
+  const mcpRender = await mcpCall({ jsonrpc: '2.0', id: 52, method: 'tools/call', params: { name: 'render_schematic', arguments: { slug: schMod.slug, released: true } } });
+  ok(mcpRender.content[0].type === 'image' && mcpRender.content[0].mimeType === 'image/png', 'MCP render_schematic returns a PNG');
+  const mcpInst = await mcpCall({ jsonrpc: '2.0', id: 53, method: 'tools/call', params: { name: 'create_installation', arguments: { name: 'MCP sim', serial_number: 'MCP-1' } } });
+  ok(/"slug": "mcp-sim"/.test(mcpInst.content[0].text), 'MCP create_installation');
+  const mcpNext = await mcpCall({ jsonrpc: '2.0', id: 54, method: 'tools/call', params: { name: 'create_schematic', arguments: { slug: schMod.slug, bump: 'major' } } });
+  ok(/"version": "A2.0"/.test(mcpNext.content[0].text), 'MCP create_schematic bumps to A2.0');
+  const mcpDiscard = await mcpCall({ jsonrpc: '2.0', id: 55, method: 'tools/call', params: { name: 'discard_schematic', arguments: { slug: schMod.slug } } });
+  ok(!mcpDiscard.isError, 'MCP discard_schematic');
+  const promoted = await req('POST', '/api/library/devices/smoke-switch/promote', { name: 'Smoke core switch' });
+  ok(promoted.slug === 'smoke-core-switch' && promoted.schematic.externalPorts.length === 2, 'promote: module + schematic with every port external');
+  const delInstLinked = await req('DELETE', `/api/installations/${inst.slug}`).catch((e) => e);
+  ok(delInstLinked instanceof Error && /Smoke wiring manual/.test(delInstLinked.message), 'an installation linked by a manual cannot be deleted');
+  // viewers only read (the first viewer was deleted earlier in this run — make another)
+  const schViewer = await req('POST', '/api/users', { email: 'view2@ftd.aero', name: 'Vi2', password: 'viewpass123', role: 'viewer' });
+  const schViewerCookie = await login('view2@ftd.aero', 'viewpass123');
+  const viewerSch = await req('POST', `/api/installations/${inst.slug}/schematic/ops`, { ops: [{ op: 'tidy' }] }, { cookie: schViewerCookie }).catch((e) => e);
+  ok(viewerSch instanceof Error && viewerSch.status === 403, 'viewer cannot change a schematic');
+  ok((await req('GET', `/api/installations/${inst.slug}`, undefined, { cookie: schViewerCookie })).schematic.state.version === 'A1.0', 'viewer can read a schematic');
+  await req('DELETE', `/api/users/${schViewer.id}`);
+
   // module delete: a released module with an open draft — folder on main and the draft branch go
   const before = (await req('GET', '/api/modules')).length;
   const tmpMod = await req('POST', '/api/modules', { name: 'Tmp Module', group: 'SIM', category: 'cockpit', hardware: { type: 'none' }, softwares: [], start: { mode: 'blank' }, checklist: { mode: 'none' } });

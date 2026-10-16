@@ -14,6 +14,18 @@ a branch, a release is a merge to `main`. Nobody edits files by hand.
 
 ## What it does
 
+**Schematics and installations.** A module also carries its wiring as data: devices from a shared device
+library with typed ports, cables between them, and the connectors that leave the module. An **installation**
+is one simulator delivery (racks, instructor station, cockpit) that places released modules and free devices
+such as switches or power strips and cables them together. Both are built by telling the chat what is
+connected to what, or over MCP, validated as they change (one cable per port, compatible connectors) and
+released with their own revision record. A released module schematic prints in its technician manual as
+a *Connections* block with a port list and cable schedule; a released installation prints as an
+*Installation wiring* chapter of the assembled manual, whose cover takes the device, serial number and
+operator from it. The interactive drag-and-connect canvas is the next phase; today the web shows the
+server-rendered drawing.
+
+
 - **Modules, software and hardware** — a module list with the hardware catalog it is built from and the
   software it runs; a Software page with release feeds and which manuals cover which release.
 - **Manuals per audience** — up to four doc streams per module (`customer`, `technician`,

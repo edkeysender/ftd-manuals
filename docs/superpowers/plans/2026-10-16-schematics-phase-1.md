@@ -4343,9 +4343,13 @@ or lift `mcpCall` to file scope):
   ok(promoted.slug === 'smoke-core-switch' && promoted.schematic.externalPorts.length === 2, 'promote: module + schematic with every port external');
   const delInstLinked = await req('DELETE', `/api/installations/${inst.slug}`).catch((e) => e);
   ok(delInstLinked instanceof Error && /Smoke wiring manual/.test(delInstLinked.message), 'an installation linked by a manual cannot be deleted');
-  // viewers only read
-  const viewerSch = await req('POST', `/api/installations/${inst.slug}/schematic/ops`, { ops: [{ op: 'tidy' }] }, { cookie: viewerCookie }).catch((e) => e);
+  // viewers only read (the first viewer was deleted earlier in this run — make another)
+  const schViewer = await req('POST', '/api/users', { email: 'view2@ftd.aero', name: 'Vi2', password: 'viewpass123', role: 'viewer' });
+  const schViewerCookie = await login('view2@ftd.aero', 'viewpass123');
+  const viewerSch = await req('POST', `/api/installations/${inst.slug}/schematic/ops`, { ops: [{ op: 'tidy' }] }, { cookie: schViewerCookie }).catch((e) => e);
   ok(viewerSch instanceof Error && viewerSch.status === 403, 'viewer cannot change a schematic');
+  ok((await req('GET', `/api/installations/${inst.slug}`, undefined, { cookie: schViewerCookie })).schematic.state.version === 'A1.0', 'viewer can read a schematic');
+  await req('DELETE', `/api/users/${schViewer.id}`);
 ```
 
 `viewerCookie` is defined near the top of the smoke file; keep this block after it. The cable id `c-1`
