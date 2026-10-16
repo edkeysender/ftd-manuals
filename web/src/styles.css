@@ -893,4 +893,5 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .main-full .page.page-wide { max-width: none; }
 .main-full .sch-stage, .main-full .sch-viewport { min-height: 78vh; }
 .btn.active { background: var(--accent-soft-2); border-color: var(--accent); }
-
+.sch-inline { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; padding: 2px 4px; border-radius: 4px; font: inherit; color: inherit; }
+.sch-inline:hover, .sch-inline:focus { border-color: var(--line); background: var(--panel-2); }

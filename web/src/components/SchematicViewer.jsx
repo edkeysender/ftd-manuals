@@ -253,6 +253,7 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
               </div>
             )}
             {selected && <Details selected={selected} state={state} schedule={schedule} lib={lib} owner={owner} onGo={go} onClose={() => setSelected(null)} editable={editable} onConnect={(from) => setConnecting({ from })} onDisconnect={disconnect} onZoomPanel={setLightbox}
+              onEditCable={(c, patch) => applyOps([{ op: 'update_cable', id: c.id, ...patch }], t('Cable {name} updated', { name: c.label || c.id }))}
               onMoveU={(id, u, f = 'front', h = state.devices.find((d) => d.id === id)?.rack?.h || null) => applyOps([{ op: 'update_device', id, rack: u ? { u, face: f, ...(h ? { h } : {}) } : null }], u ? t('{name} moved to U{u} ({face})', { name: state.devices.find((d) => d.id === id)?.label || id, u, face: f === 'rear' ? t('rear') : t('front') }) : t('U position cleared'))} />}
           </aside>
         )}
@@ -395,6 +396,8 @@ function ConnectDialog({ lib, state, from, to, onClose, onConfirm }) {
   const [kind, setKind] = useState('');
   const [label, setLabel] = useState('');
   const [length, setLength] = useState('');
+  const [ctype, setCtype] = useState('');
+  const [color, setColor] = useState('');
   useEffect(() => { setKind(kinds.length === 1 ? kinds[0] : kinds.includes(kind) ? kind : ''); }, [chosen?.device, chosen?.port]);
   const kindLabel = (id) => lib.cables.find((c) => c.id === id)?.label || id;
   const ok = chosen && kind;
@@ -433,10 +436,16 @@ function ConnectDialog({ lib, state, from, to, onClose, onConfirm }) {
               <label style={{ flex: 0.6 }}>{t('Length (m)')}<input type="number" min="0" step="0.1" value={length} onChange={(e) => setLength(e.target.value)} /></label>
             </div>
           )}
+          {chosen && (
+            <div className="pair">
+              <label style={{ flex: 2 }}>{t('Type')}<input value={ctype} placeholder={t('e.g. H05VV-F 3G1.5, Cat 6A S/FTP')} onChange={(e) => setCtype(e.target.value)} /></label>
+              <label>{t('Colour')}<input value={color} placeholder={t('e.g. black, grey, blue')} onChange={(e) => setColor(e.target.value)} /></label>
+            </div>
+          )}
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>{t('Cancel')}</button>
-          <button className="btn btn-primary" disabled={!ok} onClick={() => onConfirm({ op: 'connect', kind, from, to: { device: chosen.device, port: chosen.port }, label: label.trim(), ...(length ? { length: Number(length) } : {}) })}>{t('Connect')}</button>
+          <button className="btn btn-primary" disabled={!ok} onClick={() => onConfirm({ op: 'connect', kind, from, to: { device: chosen.device, port: chosen.port }, label: label.trim(), type: ctype.trim(), color: color.trim(), ...(length ? { length: Number(length) } : {}) })}>{t('Connect')}</button>
         </div>
       </div>
     </div>
@@ -444,7 +453,7 @@ function ConnectDialog({ lib, state, from, to, onClose, onConfirm }) {
 }
 
 /** What the selected thing is and what hangs on it. */
-function Details({ selected, state, schedule, lib, owner, onGo, onClose, editable = false, onConnect, onDisconnect, onMoveU, onZoomPanel }) {
+function Details({ selected, state, schedule, lib, owner, onGo, onClose, editable = false, onConnect, onDisconnect, onMoveU, onZoomPanel, onEditCable }) {
   const locName = (id) => state.locations.find((l) => l.id === id)?.label || id || '';
   const nameOf = (end) => (end.block ? state.blocks.find((b) => b.id === end.block)?.module || end.block : state.devices.find((d) => d.id === end.device)?.label || end.device);
   const row = (c) => schedule.find((s) => s.id === c.id) || {};
@@ -452,14 +461,26 @@ function Details({ selected, state, schedule, lib, owner, onGo, onClose, editabl
     const c = state.cables.find((x) => x.id === selected.id);
     if (!c) return null;
     const s = row(c);
+    // a field the author can change in place: blur or Enter posts update_cable
+    const field = (key, value, { number = false, placeholder = '' } = {}) =>
+      editable ? (
+        <input className="sch-inline" type={number ? 'number' : 'text'} step={number ? '0.1' : undefined} min={number ? '0' : undefined} defaultValue={value ?? ''} placeholder={placeholder} key={`${c.id}:${key}:${value ?? ''}`}
+          onBlur={(e) => { const v = number ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value.trim(); if (v !== (value ?? (number ? null : ''))) onEditCable(c, { [key]: number ? (v === null ? '' : v) : v }); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} />
+      ) : (value || value === 0 ? (number ? `${value} m` : value) : <span className="muted">—</span>);
     return (
       <div className="sch-card">
         <div className="sch-card-head"><strong>{c.label || c.id}</strong><button className="btn-icon" onClick={onClose}>×</button></div>
-        <div className="small muted">{t('Cable')} · {s.kindLabel || c.kind}{c.length != null ? ` · ${c.length} m` : ''}</div>
+        <div className="small muted">{t('Cable')} · {s.kindLabel || c.kind}</div>
         <table className="table sch-table"><tbody>
+          <tr><th>{t('Label')}</th><td>{field('label', c.label, { placeholder: c.id })}</td></tr>
+          <tr><th>{t('Kind')}</th><td>{s.kindLabel || c.kind}</td></tr>
+          <tr><th>{t('Type')}</th><td>{field('type', c.type, { placeholder: t('e.g. H05VV-F 3G1.5, Cat 6A S/FTP') })}</td></tr>
+          <tr><th>{t('Colour')}</th><td>{field('color', c.color, { placeholder: t('e.g. black, grey, blue') })}</td></tr>
+          <tr><th>{t('Length')}</th><td>{field('length', c.length, { number: true, placeholder: 'm' })}{editable && <span className="muted small"> m</span>}</td></tr>
           <tr><th>{t('From')}</th><td><button className="link" onClick={() => onGo(endOf(c.from))}>{nameOf(c.from)}</button> · {s.fromPort || c.from.port}</td></tr>
           <tr><th>{t('To')}</th><td><button className="link" onClick={() => onGo(endOf(c.to))}>{nameOf(c.to)}</button> · {s.toPort || c.to.port}</td></tr>
-          {c.notes && <tr><th>{t('Notes')}</th><td>{c.notes}</td></tr>}
+          <tr><th>{t('Notes')}</th><td>{field('notes', c.notes)}</td></tr>
         </tbody></table>
         <div className="btn-row">
           <a className="btn btn-sm" href={cableLabelsUrl(owner, { ids: [c.id], lang: locale() })} target="_blank" rel="noreferrer">{t('Print label')}</a>

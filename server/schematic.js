@@ -178,13 +178,15 @@ const OPS = {
     const taken = new Set(state.cables.map((c) => c.id));
     const id = str(op.id) || uniqueId(`c-${state.cables.length + 1}`, taken);
     if (taken.has(id)) throw new SchematicError(`cable id "${id}" is already used`);
-    state.cables.push({ id, kind, from: a.end, to: b.end, label: str(op.label), length: numOrNull(op.length), notes: str(op.notes) });
+    state.cables.push({ id, kind, from: a.end, to: b.end, label: str(op.label), type: str(op.type), color: str(op.color), length: numOrNull(op.length), notes: str(op.notes) });
     return `Connected ${endLabel(state, a.end, ctx)} ${portLabel(state, a.end, ctx)} → ${endLabel(state, b.end, ctx)} ${portLabel(state, b.end, ctx)} (${kind})`;
   },
   update_cable(state, op) {
     const c = state.cables.find((x) => x.id === str(op.id));
     if (!c) throw new SchematicError(`unknown cable "${op.id}"`);
     if (op.label !== undefined) c.label = str(op.label);
+    if (op.type !== undefined) c.type = str(op.type); // the cable product: H05VV-F 3G1.5, Cat 6A S/FTP, MR-D05UDL3M-B…
+    if (op.color !== undefined) c.color = str(op.color); // jacket colour as it is on the shelf
     if (op.length !== undefined) c.length = numOrNull(op.length);
     if (op.notes !== undefined) c.notes = str(op.notes);
     return `Updated cable ${c.label || c.id}`;
@@ -470,6 +472,8 @@ export function cableSchedule(state, ctx) {
     label: c.label,
     kind: c.kind,
     kindLabel: cableFor(ctx.library, c.kind)?.label || c.kind,
+    type: c.type || '',
+    color: c.color || '',
     from: endLabel(state, c.from, ctx),
     fromPort: portLabel(state, c.from, ctx),
     to: endLabel(state, c.to, ctx),

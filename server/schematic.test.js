@@ -253,3 +253,27 @@ test('a rack location has a model and a U count that can be edited; a device may
   assert.throws(() => applyOps(state, [{ op: 'update_device', id: 'pc', rack: { u: 1, h: 0.5 } }], ctx()), /whole number of U/);
   assert.throws(() => applyOps(state, [{ op: 'update_location', id: 'rack-1', unitsU: 0 }], ctx()), /between 1 and 60/);
 });
+
+test('a cable carries type and colour, editable and listed in the schedule', () => {
+  const s = moduleWithUmc();
+  const { state } = applyOps(
+    s,
+    [
+      { op: 'add_device', id: 'hs2', template: 'headset', label: 'Headset R' },
+      { op: 'connect', id: 'c2', from: { device: 'umc', port: 'phones-2' }, to: { device: 'hs2', port: 'jack' }, label: 'AUD-02', type: 'Sommer Cable Stage 22', color: 'black', length: 2 },
+      { op: 'update_cable', id: 'c1', type: 'H05VV-F 3G1.5', color: 'grey' },
+    ],
+    ctx()
+  );
+  const c2 = state.cables.find((c) => c.id === 'c2');
+  assert.equal(c2.type, 'Sommer Cable Stage 22');
+  assert.equal(c2.color, 'black');
+  const c1 = state.cables.find((c) => c.id === 'c1');
+  assert.equal(c1.type, 'H05VV-F 3G1.5');
+  assert.equal(c1.color, 'grey');
+  const rows = cableSchedule(state, ctx());
+  assert.equal(rows.find((r) => r.id === 'c2').type, 'Sommer Cable Stage 22');
+  assert.equal(rows.find((r) => r.id === 'c2').color, 'black');
+  const cleared = applyOps(state, [{ op: 'update_cable', id: 'c1', color: '' }], ctx()).state;
+  assert.equal(cleared.cables.find((c) => c.id === 'c1').color, '');
+});

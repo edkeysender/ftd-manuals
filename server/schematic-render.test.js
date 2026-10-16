@@ -70,7 +70,7 @@ test('tables and csv', () => {
   const s = fixture();
   const html = scheduleHtml(cableSchedule(s, ctx()), 'en');
   assert.match(html, /<table class="cable-schedule">/);
-  assert.match(html, /<th>Cable<\/th><th>Kind<\/th><th>From<\/th><th>Port<\/th><th>To<\/th><th>Port<\/th><th>Length<\/th>/);
+  assert.match(html, /<th>Cable<\/th><th>Kind<\/th><th>Type<\/th><th>Colour<\/th><th>From<\/th><th>Port<\/th><th>To<\/th><th>Port<\/th><th>Length<\/th>/);
   assert.match(html, /PWR-01/);
   assert.match(html, /3 m/);
   const pl = scheduleHtml(cableSchedule(s, ctx()), 'pl');
@@ -79,8 +79,8 @@ test('tables and csv', () => {
   assert.match(face, /<table class="port-list">/);
   assert.match(face, /IEC C14/);
   const csv = schematicCsv(cableSchedule(s, ctx()));
-  assert.equal(csv.split('\n')[0], 'label,kind,from,from_port,to,to_port,length_m,notes');
-  assert.match(csv, /PWR-01,Power,Power strip 1,Socket 1,UMC404HD,Power,,/);
+  assert.equal(csv.split('\n')[0], 'label,kind,type,color,from,from_port,to,to_port,length_m,notes');
+  assert.match(csv, /PWR-01,Power,,,Power strip 1,Socket 1,UMC404HD,Power,,/);
 });
 
 test('a block draws each external port once, on its left edge', async () => {
@@ -119,6 +119,8 @@ test('cableLabelsHtml prints two labels per cable with its name, code and both e
   assert.match(html, /UMC404HD · Power/);
   assert.match(html, /3 m/);
   assert.match(html, /@page/);
+  const typed = cableLabelsHtml(cableSchedule(applyOps(s, [{ op: 'update_cable', id: 'aud', type: 'MR-D05UDL3M-B 6×0.13', color: 'black' }], ctx()).state, ctx()), { code: 'S2602' });
+  assert.match(typed, /MR-D05UDL3M-B 6×0\.13 · black/);
   assert.doesNotMatch(html, /<script/);
   const one = cableLabelsHtml(cableSchedule(s, ctx()).filter((r) => r.id === 'aud'), { code: 'S2602' });
   assert.equal((one.match(/class="label"/g) || []).length, 2);

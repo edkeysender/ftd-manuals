@@ -173,8 +173,8 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
       {tab === 'cables' && (
         schedule.length === 0 ? <div className="empty">{t('No cables yet.')}</div> : (
           <table className="table">
-            <thead><tr><th>{t('Cable')}</th><th>{t('Kind')}</th><th>{t('From')}</th><th>{t('Port')}</th><th>{t('To')}</th><th>{t('Port')}</th><th>{t('Length')}</th></tr></thead>
-            <tbody>{schedule.map((r) => <tr key={r.id}><td>{r.label || r.id}</td><td>{r.kindLabel}</td><td>{r.from}</td><td>{r.fromPort}</td><td>{r.to}</td><td>{r.toPort}</td><td>{r.length != null ? `${r.length} m` : ''}</td></tr>)}</tbody>
+            <thead><tr><th>{t('Cable')}</th><th>{t('Kind')}</th><th>{t('Type')}</th><th>{t('Colour')}</th><th>{t('From')}</th><th>{t('Port')}</th><th>{t('To')}</th><th>{t('Port')}</th><th>{t('Length')}</th></tr></thead>
+            <tbody>{schedule.map((r) => <tr key={r.id}><td>{r.label || r.id}</td><td>{r.kindLabel}</td><td>{r.type}</td><td>{r.color}</td><td>{r.from}</td><td>{r.fromPort}</td><td>{r.to}</td><td>{r.toPort}</td><td>{r.length != null ? `${r.length} m` : ''}</td></tr>)}</tbody>
           </table>
         )
       )}

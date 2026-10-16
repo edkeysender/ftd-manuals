@@ -19,8 +19,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 
 /** English fallbacks; docgen's STRINGS override these once Task 9 adds the keys. */
 const WORDS = {
-  en: { cable: 'Cable', kind: 'Kind', from: 'From', port: 'Port', to: 'To', length: 'Length', notes: 'Notes', connector: 'Connector', inside: 'Inside', externalPorts: 'External ports', m: 'm', block: 'module' },
-  pl: { cable: 'Kabel', kind: 'Rodzaj', from: 'Z', port: 'Port', to: 'Do', length: 'Długość', notes: 'Uwagi', connector: 'Złącze', inside: 'Wewnątrz', externalPorts: 'Porty zewnętrzne', m: 'm', block: 'moduł' },
+  en: { cable: 'Cable', kind: 'Kind', type: 'Type', colour: 'Colour', from: 'From', port: 'Port', to: 'To', length: 'Length', notes: 'Notes', connector: 'Connector', inside: 'Inside', externalPorts: 'External ports', m: 'm', block: 'module' },
+  pl: { cable: 'Kabel', kind: 'Rodzaj', type: 'Typ', colour: 'Kolor', from: 'Z', port: 'Port', to: 'Do', length: 'Długość', notes: 'Uwagi', connector: 'Złącze', inside: 'Wewnątrz', externalPorts: 'Porty zewnętrzne', m: 'm', block: 'moduł' },
 };
 const words = (lang) => WORDS[lang] || WORDS.en;
 
@@ -183,8 +183,8 @@ const fmtLen = (n, W) => (n === null || n === undefined ? '' : `${n} ${W.m}`);
 
 export function scheduleHtml(schedule, lang = 'en') {
   const W = words(lang);
-  const rows = schedule.map((r) => `<tr><td>${esc(r.label || r.id)}</td><td>${esc(r.kindLabel)}</td><td>${esc(r.from)}</td><td>${esc(r.fromPort)}</td><td>${esc(r.to)}</td><td>${esc(r.toPort)}</td><td>${fmtLen(r.length, W)}</td></tr>`).join('\n');
-  return `<table class="cable-schedule">\n<thead><tr><th>${W.cable}</th><th>${W.kind}</th><th>${W.from}</th><th>${W.port}</th><th>${W.to}</th><th>${W.port}</th><th>${W.length}</th></tr></thead>\n<tbody>\n${rows}\n</tbody>\n</table>`;
+  const rows = schedule.map((r) => `<tr><td>${esc(r.label || r.id)}</td><td>${esc(r.kindLabel)}</td><td>${esc(r.type || '')}</td><td>${esc(r.color || '')}</td><td>${esc(r.from)}</td><td>${esc(r.fromPort)}</td><td>${esc(r.to)}</td><td>${esc(r.toPort)}</td><td>${fmtLen(r.length, W)}</td></tr>`).join('\n');
+  return `<table class="cable-schedule">\n<thead><tr><th>${W.cable}</th><th>${W.kind}</th><th>${W.type}</th><th>${W.colour}</th><th>${W.from}</th><th>${W.port}</th><th>${W.to}</th><th>${W.port}</th><th>${W.length}</th></tr></thead>\n<tbody>\n${rows}\n</tbody>\n</table>`;
 }
 
 export function faceHtml(face, lang = 'en', library = null) {
@@ -199,8 +199,8 @@ export function schematicCsv(schedule) {
     const s = String(v ?? '');
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const head = 'label,kind,from,from_port,to,to_port,length_m,notes';
-  return [head, ...schedule.map((r) => [r.label || r.id, r.kindLabel, r.from, r.fromPort, r.to, r.toPort, r.length ?? '', r.notes].map(cell).join(','))].join('\n');
+  const head = 'label,kind,type,color,from,from_port,to,to_port,length_m,notes';
+  return [head, ...schedule.map((r) => [r.label || r.id, r.kindLabel, r.type || '', r.color || '', r.from, r.fromPort, r.to, r.toPort, r.length ?? '', r.notes].map(cell).join(','))].join('\n');
 }
 
 /* ---- printable cable labels ---- */
@@ -223,7 +223,7 @@ export function cableLabelsHtml(schedule, { code = '', title = '', lang = 'en' }
 <div class="name">${esc(r.label || r.id)}</div>
 <div class="end"><span class="k">${W.thisEnd}</span> ${esc(here)} · ${esc(herePort)}</div>
 <div class="end"><span class="k">${W.otherEnd}</span> ${esc(there)} · ${esc(therePort)}</div>
-<div class="meta">${esc(r.kindLabel)}${r.length != null ? ` · ${esc(r.length)} m` : ''}${code ? ` · ${esc(code)}` : ''}</div>
+<div class="meta">${esc([r.kindLabel, r.type, r.color].filter(Boolean).join(' · '))}${r.length != null ? ` · ${esc(r.length)} m` : ''}${code ? ` · ${esc(code)}` : ''}</div>
 </div>`;
   const labels = schedule.flatMap((r) => [one(r, r.from, r.fromPort, r.to, r.toPort), one(r, r.to, r.toPort, r.from, r.fromPort)]);
   return `<!doctype html>
