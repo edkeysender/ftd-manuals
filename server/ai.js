@@ -4,6 +4,7 @@
  * edits to the draft, marking every touched block as a pending AI edit.
  */
 
+import { secret, SECRET_NAMES } from './secrets.js';
 import { manualTypeOf, DEFAULT_MANUAL, LANGUAGES, DEFAULT_LANG, langOf } from './docgen.js';
 
 const API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -64,7 +65,10 @@ async function apiFetch(url, init, { attempts = 3, label = 'The AI service' } = 
 /* Image generation and speech-to-text are OpenAI-only models.           */
 /* ------------------------------------------------------------------ */
 
-export function providerOf(env = process.env) {
+/** A key from Settings (secrets.json) wins over the environment. */
+export const keyFor = (name) => secret(name) || process.env[name] || '';
+const effectiveEnv = () => ({ ...process.env, ...Object.fromEntries(SECRET_NAMES.map((n) => [n, keyFor(n)])) });
+export function providerOf(env = effectiveEnv()) {
   const want = env.AI_PROVIDER;
   if (want === 'anthropic' && env.ANTHROPIC_API_KEY) return 'anthropic';
   if (want === 'openai' && env.OPENAI_API_KEY) return 'openai';
@@ -76,7 +80,7 @@ export function aiAvailable() {
   return providerOf() !== 'none';
 }
 /** The parts that need an OpenAI model regardless of the chat provider: images and transcription. */
-export const openaiAvailable = () => !!process.env.OPENAI_API_KEY;
+export const openaiAvailable = () => !!keyFor('OPENAI_API_KEY');
 export const aiModel = () => (providerOf() === 'anthropic' ? ANTHROPIC_MODEL : MODEL);
 
 const DATA_URL = /^data:([^;,]+);base64,(.*)$/s;
@@ -125,9 +129,11 @@ export function jsonFromText(text) {
 
 let anthropicClient = null;
 async function callClaude(messages, { json = false } = {}) {
-  if (!anthropicClient) {
+  const apiKey = keyFor('ANTHROPIC_API_KEY');
+  if (!anthropicClient || anthropicClient._ftdKey !== apiKey) {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 240000 });
+    anthropicClient = new Anthropic({ apiKey, timeout: 240000 });
+    anthropicClient._ftdKey = apiKey;
   }
   const { system, messages: msgs } = toAnthropicRequest(messages, { json });
   const params = { model: ANTHROPIC_MODEL, max_tokens: 64000, output_config: { effort: ANTHROPIC_EFFORT }, ...(system ? { system } : {}), messages: msgs };
@@ -167,7 +173,7 @@ export async function transcribe(buffer, filename = 'speech.webm', lang = '') {
   if (lang) form.append('language', lang);
   const res = await apiFetch(TRANSCRIBE_URL, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    headers: { Authorization: `Bearer ${keyFor('OPENAI_API_KEY')}` },
     body: form,
     signal: AbortSignal.timeout(120000),
   });
@@ -187,7 +193,7 @@ export async function callOpenAI(messages, { json = false } = {}) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${keyFor('OPENAI_API_KEY')}`,
     },
     signal: AbortSignal.timeout(240000),
     body: JSON.stringify({
@@ -402,7 +408,7 @@ const IMAGE_QUALITY = process.env.OPENAI_IMAGE_QUALITY || 'medium';
  */
 export async function generateImage({ prompt, reference = null, references = [] }) {
   if (!openaiAvailable()) throw new Error('Image generation needs OPENAI_API_KEY (an OpenAI image model) — the chat itself runs on the Anthropic key');
-  const headers = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
+  const headers = { Authorization: `Bearer ${keyFor('OPENAI_API_KEY')}` };
   const inputs = [reference, ...references].filter((r) => r && r.buffer && r.buffer.length);
   let res;
   if (inputs.length) {

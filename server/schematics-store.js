@@ -11,6 +11,8 @@ import { normalizeLibrary, normalizeTemplate, DEFAULT_LIBRARY, PANEL_NAME } from
 import { sniff } from './images.js';
 import { emptySchematic, applyOps, validateSchematic, connectorFace, cableSchedule, SchematicError } from './schematic.js';
 import { renderSvg, scheduleHtml, faceHtml } from './schematic-render.js';
+import { splitOps, previewLibrary, picturesOf, pictureSource, describeLibraryOp } from './library-ops.js';
+import { fetchFile } from './sources.js';
 
 const now = () => new Date().toISOString();
 const str = (v) => String(v ?? '').trim();
@@ -449,20 +451,79 @@ async function writeDraft(ref, branch, state, message) {
   await repo.checkout('main');
 }
 
+/* ---- library ops riding in a schematic's op list (chat, MCP): see library-ops.js ---- */
+
+/** The bytes of a picture source — inline data or a URL fetched here; an attachment never reaches the server. */
+async function pictureBytes(src, where) {
+  if (src.dataBase64) return { buffer: Buffer.from(src.dataBase64, 'base64'), type: src.type || '' };
+  if (src.url) {
+    const f = await fetchFile(src.url);
+    if (!(f.type || '').startsWith('image/') && !sniff(f.buffer)) throw new Error(`${where}: ${src.url} is not an image`);
+    return { buffer: f.buffer, type: f.type || '' };
+  }
+  throw new Error(`${where}: the picture "${src.attachment}" was an attachment that did not come with the request — send it again or give a url`);
+}
+
+/** Write library ops for real, in order; every picture is fetched/decoded before the first write. Returns one line per op. */
+export async function applyLibraryOps(libraryOps) {
+  if (!libraryOps.length) return [];
+  const lines = [];
+  // resolve picture bytes first so a bad url refuses the whole change before the library moved
+  const pics = await Promise.all(libraryOps.map(async (op) => {
+    if (op.op === 'set_picture') return { [str(op.side) || 'front']: await pictureBytes(pictureSource(op.picture, 'set_picture'), `set_picture ${op.template}`) };
+    const sources = op.op === 'create_template' || op.op === 'update_template' ? picturesOf(op, op.op) : {};
+    const out = {};
+    for (const [side, src] of Object.entries(sources)) out[side] = await pictureBytes(src, `${op.op} ${op.name || op.id} picture "${side}"`);
+    return out;
+  }));
+  for (let i = 0; i < libraryOps.length; i++) {
+    const op = libraryOps[i];
+    const { op: _o, pictures: _p, addPorts, ...spec } = op;
+    let templateId = null;
+    if (op.op === 'create_connector') {
+      const lib = await getLibrary();
+      await saveConnectors({ connectors: [...lib.connectors, { id: str(op.id), label: str(op.label), color: str(op.color) || '#555' }], cables: lib.cables });
+    } else if (op.op === 'create_cable_kind') {
+      const lib = await getLibrary();
+      const style = op.style && typeof op.style === 'object' ? op.style : {};
+      await saveConnectors({ connectors: lib.connectors, cables: [...lib.cables, { id: str(op.id), label: str(op.label), joins: op.joins, style: { color: str(style.color) || '#555', width: Number(style.width) || 1.2, dash: str(style.dash) } }] });
+    } else if (op.op === 'create_template') {
+      templateId = (await createDeviceTemplate(spec)).id;
+    } else if (op.op === 'update_template') {
+      const cur = (await getLibrary()).devices.find((d) => d.id === str(op.id));
+      if (!cur) throw new Error(`Device template "${op.id}" not found`);
+      const ports = Array.isArray(spec.ports) ? spec.ports : [...cur.ports, ...(Array.isArray(addPorts) ? addPorts : [])];
+      templateId = (await updateDeviceTemplate(cur.id, { ...spec, ports })).id;
+    } else if (op.op === 'set_picture') {
+      templateId = str(op.template);
+    }
+    for (const [side, pic] of Object.entries(pics[i])) await saveDevicePanel(templateId, side, pic.buffer, pic.type);
+    lines.push(describeLibraryOp(op));
+  }
+  return lines;
+}
+
 export async function applySchematicOps(ref, ops, { summary = '', dryRun = false } = {}) {
   const { owner, state, branch } = await loadDraft(ref);
-  const ctx = await schematicContext();
-  const applied = applyOps(state, ops, ctx);
+  const { libraryOps, schematicOps } = splitOps(ops);
+  const base = await schematicContext();
+  // everything is checked against a preview of the library before a single write — a refused add_device
+  // never leaves a half-made template behind
+  const ctx = libraryOps.length ? { ...base, library: previewLibrary(base.library, libraryOps) } : base;
+  const applied = schematicOps.length ? applyOps(state, schematicOps, ctx) : { state, summary: [] };
   const next = applied.state;
   const validation = validateSchematic(next, ctx);
-  if (dryRun) return { state: next, summary: applied.summary, validation };
+  if (dryRun) return { state: next, summary: [...libraryOps.map(describeLibraryOp), ...applied.summary], validation };
+  const libLines = await applyLibraryOps(libraryOps);
+  const lines = [...libLines, ...applied.summary];
+  if (!schematicOps.length) return { state, summary: lines, validation: validateSchematic(state, await schematicContext()) };
   const ts = now();
   next.revision = state.revision + 1;
-  const line = str(summary) || applied.summary[0] + (applied.summary.length > 1 ? ` (+${applied.summary.length - 1})` : '');
+  const line = str(summary) || lines[0] + (lines.length > 1 ? ` (+${lines.length - 1})` : '');
   next.revisions = [...(state.revisions || []), { rev: `r${next.revision}`, date: ts, summary: line }];
   next.updatedAt = ts;
   await change(() => writeDraft(ref, branch, next, `${owner.slug} schematic ${next.version} r${next.revision}: ${line}`));
-  return { state: next, summary: applied.summary, validation };
+  return { state: next, summary: lines, validation };
 }
 
 export async function setSchematicStatus(ref, status) {

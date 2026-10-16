@@ -5,6 +5,7 @@
  */
 import * as ai from './ai.js';
 import { applyOps, validateSchematic, OP_NAMES, SchematicError, endpointKey } from './schematic.js';
+import { splitOps, previewLibrary, LIBRARY_OP_NAMES } from './library-ops.js';
 import { templateFor } from './library.js';
 
 export function describeState(state, ctx) {
@@ -56,8 +57,9 @@ export function describeState(state, ctx) {
 export function describeLibrary(ctx) {
   const dev = ctx.library.devices.map((d) => `- ${d.id} "${d.name}" (${d.category}): ${d.ports.map((p) => `${p.id}:${p.connector}/${p.direction}`).join(' ')}`).join('\n');
   const cables = ctx.library.cables.map((c) => `- ${c.id}: joins ${c.joins.map((j) => j.join('↔')).join(', ')}`).join('\n');
+  const conns = ctx.library.connectors.map((c) => `${c.id} "${c.label}"`).join(', ');
   const mods = [...ctx.releasedSchematics.keys()].map((slug) => `- ${slug} "${ctx.modules.find((m) => m.slug === slug)?.name || slug}"`).join('\n');
-  return `DEVICE TEMPLATES (template id "name" (category): port:connector/direction …):\n${dev || '- none'}\nCABLE KINDS:\n${cables}\nMODULES WITH A RELEASED SCHEMATIC (placeable as blocks in an installation):\n${mods || '- none'}`;
+  return `DEVICE TEMPLATES (template id "name" (category): port:connector/direction …):\n${dev || '- none'}\nCONNECTORS (id "label"): ${conns}\nCABLE KINDS:\n${cables}\nMODULES WITH A RELEASED SCHEMATIC (placeable as blocks in an installation):\n${mods || '- none'}`;
 }
 
 const OP_SCHEMA = `OPERATIONS (JSON objects, "op" plus fields):
@@ -68,7 +70,14 @@ const OP_SCHEMA = `OPERATIONS (JSON objects, "op" plus fields):
 - {"op":"update_cable","id","label"?,"length"?,"notes"?}
 - {"op":"disconnect","id"}
 - module schematic only: {"op":"set_external_port","id"?,"label","device","port"} · {"op":"unset_external_port","id"}
-- installation only: {"op":"add_location","id"?,"label","kind":"rack"|"area","unitsU"?} · {"op":"update_location",…} · {"op":"remove_location","id"} · {"op":"place_block","id"?,"module","location"?,"rack"?} · {"op":"refresh_block","id"} · {"op":"remove_block","id","cascade"?}`;
+- installation only: {"op":"add_location","id"?,"label","kind":"rack"|"area","unitsU"?} · {"op":"update_location",…} · {"op":"remove_location","id"} · {"op":"place_block","id"?,"module","location"?,"rack"?} · {"op":"refresh_block","id"} · {"op":"remove_block","id","cascade"?}
+- "rack" on a device is {"u": n, "face": "front"|"rear", "h"?: unitsHigh} — the lowest U the device occupies and which face of the rack it is mounted on.
+LIBRARY OPERATIONS (change the shared device library; they run before the schematic operations of the same answer, so a template defined here can be placed with add_device right after it):
+- {"op":"create_template","id"?,"name","manufacturer"?,"model"?,"category":"switch"|"router"|"pc"|"audio-interface"|"power-strip"|"headset"|"display"|"panel"|"other","heightU"?,"ports":[{"id","label","connector","direction":"in"|"out"|"bidir"}],"notes"?,"pictures"?:{"front":PICTURE,"rear":PICTURE,"<kebab-name>":PICTURE}}
+- {"op":"update_template","id","model"?,"manufacturer"?,"heightU"?,"notes"?,"addPorts"?:[…ports to append],"ports"?:[…the full replacement list],"pictures"?:{…}}
+- {"op":"create_connector","id","label","color"?} · {"op":"create_cable_kind","id","label","joins":[["connectorA","connectorB"],…],"style"?:{"color","width","dash"}}
+- {"op":"set_picture","template","side":"front"|"rear"|"<kebab-name>","picture":PICTURE}
+- PICTURE is {"attachment":"<exact file name of an image attached to this message>"} or {"url":"https://…"} (a manufacturer's product photo). Never invent a url.`;
 
 export function buildPrompt({ state, ctx, guidelines = '', lang = 'en', attachments = [] }) {
   const kind = state.kind === 'module' ? `the wiring schematic of module "${state.owner}"` : `the installation schematic "${state.owner}"`;
@@ -80,7 +89,8 @@ ${OP_SCHEMA}
 RULES:
 - Reuse what exists: match devices by label or id ("power strip 1" → pdu-1, "first socket" → out-1, "rack 1" → rack-1). Add a device only when the sentence names one that is not placed yet; take its template from DEVICE TEMPLATES by name or model.
 - A device that is a module with a released schematic is placed as a block (place_block), and cables end on its external ports.
-- Never invent a template, a port or a module. If the user names a device that is not in the library, say so in "reply" and return no ops for it — the user adds it with its ports first.
+- Never invent a port or a module. When the user names a device that is not in the library, DEFINE it: create_template with the ports the user, the attached files or your knowledge of that exact product give (manufacturer and model when known, the ports named as on the device — "HDMI 1", "LAN 1", "Power"; every port's connector from CONNECTORS, a new connector with create_connector when none fits), an attached photo as its front/rear picture, and then place it with add_device in the same answer. Say in "reply" which ports you assumed so the user can correct them. Ask only when you cannot tell what the device is at all.
+- A template that exists but lacks a port the user wires is extended with update_template addPorts, not duplicated.
 - A port takes one cable. Outputs feed inputs. Pick the cable kind that joins the two connectors; name it with "kind" when several fit.
 - Give every cable a short label when the user does not ("PWR-03", "NET-12", "AUD-01"), numbered after the existing ones of that kind.
 - When a sentence is ambiguous (which socket, which headset), ask in "reply" and return no ops. One clear question beats a guess.
@@ -107,7 +117,7 @@ export function parseOps(raw) {
   }
   const dropped = [];
   const ops = (Array.isArray(parsed.ops) ? parsed.ops : []).filter((o) => {
-    const ok = o && typeof o === 'object' && OP_NAMES.includes(o.op);
+    const ok = o && typeof o === 'object' && (OP_NAMES.includes(o.op) || LIBRARY_OP_NAMES.includes(o.op));
     if (!ok) dropped.push(o && typeof o === 'object' ? String(o.op) : typeof o);
     return ok;
   });
@@ -119,13 +129,17 @@ export async function schematicChat({ state, ctx, messages, guidelines = '', lan
   const convo = (messages || []).slice(-12).map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '') }));
   const raw = await callModel([{ role: 'system', content: sys }, ...convo], { json: true });
   const parsed = parseOps(raw);
-  if (!parsed.ops.length) return { ...parsed, validation: null, preview: null };
+  if (!parsed.ops.length) return { ...parsed, validation: null, preview: null, library: null };
   try {
-    const { state: preview } = applyOps(state, parsed.ops, ctx);
-    return { ...parsed, validation: validateSchematic(preview, ctx), preview };
+    // library ops first, on a copy of the library, so the schematic ops that use the new template preview against it
+    const { libraryOps, schematicOps } = splitOps(parsed.ops);
+    const library = libraryOps.length ? previewLibrary(ctx.library, libraryOps) : ctx.library;
+    const pctx = { ...ctx, library };
+    const { state: preview } = schematicOps.length ? applyOps(state, schematicOps, pctx) : { state };
+    return { ...parsed, ops: [...libraryOps, ...schematicOps], validation: validateSchematic(preview, pctx), preview, library: libraryOps.length ? library : null };
   } catch (e) {
-    if (!(e instanceof SchematicError)) throw e;
-    return { reply: parsed.reply, ops: [], preview: null, validation: null, note: [parsed.note, `The proposed change was refused: ${e.message}`].filter(Boolean).join(' ') };
+    if (!(e instanceof Error)) throw e; // the applier's and the library's refusals are both answers, not crashes
+    return { reply: parsed.reply, ops: [], preview: null, validation: null, library: null, note: [parsed.note, `The proposed change was refused: ${e.message}`].filter(Boolean).join(' ') };
   }
 }
 

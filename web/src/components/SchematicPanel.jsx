@@ -26,6 +26,12 @@ export function describeOp(op) {
     case 'remove_block': return t('Remove block {id}', { id: op.id });
     case 'move': return t('Move {id}', { id: op.id });
     case 'tidy': return t('Tidy the layout');
+    // library operations: the shared device library changes with the schematic
+    case 'create_template': return t('Add device template {name}{pics}', { name: op.name || op.id, pics: op.pictures && Object.keys(op.pictures).length ? ` (${t('{n} picture(s)', { n: Object.keys(op.pictures).length })})` : '' });
+    case 'update_template': return t('Update device template {id}', { id: op.id });
+    case 'create_connector': return t('Add connector {label}', { label: op.label || op.id });
+    case 'create_cable_kind': return t('Add cable kind {label}', { label: op.label || op.id });
+    case 'set_picture': return t('Picture {side} of {template}', { side: op.side || 'front', template: op.template });
     default: return op.op;
   }
 }
@@ -167,7 +173,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
         <button className={tab === 'checks' ? 'active' : ''} onClick={() => setTab('checks')}>{t('Checks')}{errors + warnings ? ` (${errors + warnings})` : ''}</button>
       </div>
 
-      {tab === 'drawing' && <SchematicViewer owner={owner} data={data} v={v} location={location} canEdit={canEdit} onChanged={changed} />}
+      {tab === 'drawing' && <SchematicViewer owner={owner} data={data} v={v} location={location} onLocation={setLocation} canEdit={canEdit} onChanged={changed} />}
       {tab === 'cables' && schedule.length > 0 && (
         <div className="btn-row" style={{ marginBottom: 10 }}>
           <a className="btn btn-sm" href={cableLabelsUrl(owner, { location, lang: locale() })} target="_blank" rel="noreferrer">{t('Print cable labels')}{current ? ` (${current.label})` : ''}</a>
@@ -287,13 +293,15 @@ function NewLocation({ locations, existing = null, onClose, onCreate }) {
 /**
  * The chat as a messenger bubble: a round button that sticks to the left or right edge of the window,
  * dragged anywhere along it (release snaps it to the nearer edge), opening into a panel docked beside
- * it. Side, height, panel size and open state are remembered in the browser.
+ * it. Side, height and panel size are remembered in the browser; it always starts closed, bottom right.
  */
 function FloatingChat({ owner, onApplied }) {
   const KEY = 'ftd-sch-chat-bubble';
   const [b, setB] = useState(() => {
-    const d = { side: 'right', y: Math.max(120, window.innerHeight - 180), open: false, w: 420, h: 460 };
-    try { return { ...d, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return d; }
+    // starts minimized in the bottom-right corner; the side and height it was dragged to are remembered,
+    // the open state is not — a page always opens with the drawing, the chat one tap away
+    const d = { side: 'right', y: Math.max(8, window.innerHeight - 56 - 24), open: false, w: 420, h: 460 };
+    try { return { ...d, ...JSON.parse(localStorage.getItem(KEY) || '{}'), open: false }; } catch { return d; }
   });
   const [drag, setDrag] = useState(null); // { x, y } of the bubble while it is being dragged
   const ref = useRef(null);
@@ -351,6 +359,7 @@ function SchematicChat({ owner, onApplied, embedded = false }) {
   const [pending, setPending] = useState(null); // { ops, validation, reply }
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState([]); // attachments waiting for the next message: {name, type, size, dataBase64}
+  const sentFiles = useRef([]); // the files that went with the last message — a proposed picture names one of them by file name
   const fileRef = useRef(null);
   const endRef = useRef(null);
   const MAX_FILE = 8 * 1024 * 1024;
@@ -372,6 +381,7 @@ function SchematicChat({ owner, onApplied, embedded = false }) {
     const content = text.trim();
     if ((!content && files.length === 0) || busy) return;
     const sent = files;
+    sentFiles.current = sent;
     // the log shows what went along; the model gets the files' contents through the route
     const shown = sent.length ? `${content}${content ? '\n' : ''}📎 ${sent.map((f) => f.name).join(', ')}` : content;
     const next = [...messages, { role: 'user', content: content || t('See the attached files.') }];
@@ -392,7 +402,15 @@ function SchematicChat({ owner, onApplied, embedded = false }) {
   async function accept() {
     setBusy(true);
     try {
-      await api.schematicOps(owner, pending.ops, { summary: `AI edit: ${pending.reply}`.slice(0, 120) });
+      // a picture proposed as {attachment: name} gets the bytes of that file here — the server never kept them
+      const byName = new Map(sentFiles.current.map((f) => [f.name, f]));
+      const withBytes = (pic) => (pic?.attachment && byName.has(pic.attachment) ? { dataBase64: byName.get(pic.attachment).dataBase64, type: byName.get(pic.attachment).type } : pic);
+      const ops = pending.ops.map((op) => {
+        if (op.pictures) return { ...op, pictures: Object.fromEntries(Object.entries(op.pictures).map(([k, v]) => [k, withBytes(v)])) };
+        if (op.op === 'set_picture') return { ...op, picture: withBytes(op.picture) };
+        return op;
+      });
+      await api.schematicOps(owner, ops, { summary: `AI edit: ${pending.reply}`.slice(0, 120) });
       setPending(null);
       toast(t('Change applied'));
       onApplied();

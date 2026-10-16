@@ -13,7 +13,9 @@ The functional spec lives in this file's history and in the Modules spec provide
 - `data/repo/` — runtime git repository holding the documents (gitignored; created by the server).
   One module = one folder. Drafts on `draft/<slug>-a<maj>.<min>` branches; release = merge to `main`.
   Never edit `data/` by hand — go through the API so every change is a commit.
-- `.env` — `OPENAI_API_KEY` (never commit, never print).
+- `.env` — `ANTHROPIC_API_KEY` (assistant, `server/ai.js` `providerOf`) and `OPENAI_API_KEY` (illustrations, dictation);
+  keys pasted in Settings → AI agent live in `data/secrets.json` (`server/secrets.js`, outside the doc repo) and win
+  over the environment. Never commit, never print, never return a key from the API (masked tail only).
 
 ## Domain rules (from the Modules spec)
 
@@ -252,6 +254,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   device / serial / operator from the installation. Infrastructure (switches, PDUs) are library devices;
   `promoteDeviceToModule` turns one into a module when it deserves a manual. No React Flow canvas yet
   (Phase 2) — the web shows the server-rendered SVG.
+
+- Schematic chat / MCP `apply_schematic_ops` accept **library ops** in the same list (`server/library-ops.js`:
+  `create_template`, `update_template`, `create_connector`, `create_cable_kind`, `set_picture`); they are previewed on a
+  copy of the library, written first, and a picture is `{attachment}` (bytes swapped in by the browser on accept),
+  `{url}` (fetched server-side) or `{dataBase64}`. The device library card lives on the Parts page.
 
 ## Working here
 

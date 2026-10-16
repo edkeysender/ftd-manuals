@@ -87,7 +87,7 @@ export function registerSchematicRoutes(app, { wrap, auth }) {
   app.post(paths('/discard'), wrap(async (req, res) => res.json(await sch.discardSchematic(schematicRef(req)))));
 
   app.post(paths('/chat'), wrap(async (req, res) => {
-    if (!ai.aiAvailable()) throw new Error('OPENAI_API_KEY is not set — the schematic chat is unavailable');
+    if (!ai.aiAvailable()) throw new Error('No AI API key — set one in Settings → AI agent (or ANTHROPIC_API_KEY / OPENAI_API_KEY in .env); the schematic chat is unavailable until then');
     const s = await sch.getSchematic(schematicRef(req));
     if (!s) throw new Error('No schematic — create one first');
     if (!s.editable) throw new Error(`Schematic ${s.state.version} is ${s.state.status} — start the next version or a hotfix to change it`);

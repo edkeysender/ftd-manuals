@@ -90,3 +90,29 @@ test('attachmentsToText reads text files, describes images, and skips what it ca
   assert.equal(r.notes.length, 2);
   assert.match(r.notes.join(' '), /big\.bin/);
 });
+
+test('library ops: the chat may define a template (with a picture from an attachment) and place it in the same answer', async () => {
+  const callModel = async (messages) => {
+    assert.match(messages[0].content, /create_template/);
+    assert.match(messages[0].content, /CONNECTORS/);
+    return JSON.stringify({
+      reply: 'Added the projector.',
+      ops: [
+        { op: 'create_template', name: 'Optoma ZU506', category: 'display', heightU: 0, ports: [{ id: 'hdmi-1', label: 'HDMI 1', connector: 'hdmi', direction: 'in' }], pictures: { front: { attachment: 'zu506.jpg' } } },
+        { op: 'add_device', id: 'proj-l', template: 'optoma-zu506', label: 'Projector L' },
+      ],
+    });
+  };
+  const r = await schematicChat({ state: inst(), ctx: ctx(), messages: [{ role: 'user', content: 'add the projector from the photo' }], attachments: [{ name: 'zu506.jpg', text: 'A projector' }], callModel });
+  assert.equal(r.ops.length, 2, 'both ops kept');
+  assert.equal(r.preview.devices.find((d) => d.id === 'proj-l').template, 'optoma-zu506');
+  assert.ok(r.library.devices.some((d) => d.id === 'optoma-zu506'), 'the previewed library comes back for the UI');
+  assert.deepEqual(r.validation.errors, []);
+});
+
+test('library ops the library would refuse are reported, not applied', async () => {
+  const callModel = async () => JSON.stringify({ reply: 'x', ops: [{ op: 'create_template', name: 'Bad', ports: [{ id: 'a', label: 'A', connector: 'nope' }] }] });
+  const r = await schematicChat({ state: inst(), ctx: ctx(), messages: [{ role: 'user', content: 'x' }], callModel });
+  assert.deepEqual(r.ops, []);
+  assert.match(r.note, /nope/);
+});

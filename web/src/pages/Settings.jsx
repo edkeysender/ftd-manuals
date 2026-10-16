@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, readFileAsBase64 } from '../api.js';
-import { useToast } from '../App.jsx';
+import { useAuth, useToast } from '../App.jsx';
 import { PasswordCard, UsersCard } from '../components/AccountCards.jsx';
-import LibraryCard from '../components/LibraryCard.jsx';
 import { t, plural } from '../i18n.jsx';
 
 /** t() for sentences with inline markup: each `{name}` placeholder is replaced by the given React node. */
@@ -212,6 +212,66 @@ function IllustrationStyleCard() {
   );
 }
 
+/** API keys entered in the browser: Anthropic runs the assistant (text + vision), OpenAI the image
+    generation and dictation. Stored server-side outside the document repo; only a masked tail comes back. */
+function ApiKeys({ keys, onSaved }) {
+  const toast = useToast();
+  const { isAdmin } = useAuth();
+  const [values, setValues] = useState({ anthropic: '', openai: '' });
+  const [saving, setSaving] = useState(false);
+  const fields = [
+    { id: 'anthropic', label: t('Anthropic API key'), hint: t('assistant: chat, drafts, vision') },
+    { id: 'openai', label: t('OpenAI API key'), hint: t('image generation and dictation') },
+  ];
+  async function save(id, value) {
+    setSaving(true);
+    try {
+      const r = await api.saveAiKeys({ [id]: value });
+      onSaved(r);
+      setValues((v) => ({ ...v, [id]: '' }));
+      toast(value ? t('API key saved — it applies to the next request') : t('API key removed'));
+    } catch (e) {
+      toast(e.message, 'err');
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="api-keys">
+      {fields.map((f) => (
+        <div key={f.id} className="api-key-row">
+          <label>
+            <span>{f.label}</span>
+            <small className="muted">{f.hint}</small>
+          </label>
+          <span className={`api-key-state ${keys?.[f.id] ? 'set' : ''}`}>{keys?.[f.id] ? t('set ({tail})', { tail: keys[f.id] }) : t('not set')}</span>
+          {isAdmin && (
+            <>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={keys?.[f.id] ? t('paste a new key to replace it') : t('paste the key')}
+                value={values[f.id]}
+                onChange={(e) => setValues((v) => ({ ...v, [f.id]: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && values[f.id].trim() && save(f.id, values[f.id].trim())}
+              />
+              <button className="btn btn-primary btn-sm" disabled={saving || !values[f.id].trim()} onClick={() => save(f.id, values[f.id].trim())}>
+                {t('Save')}
+              </button>
+              {keys?.[f.id] && (
+                <button className="btn btn-sm" disabled={saving} onClick={() => confirm(t('Remove the stored {name}? The assistant falls back to the key in .env, if any.', { name: f.label })) && save(f.id, '')}>
+                  {t('Remove')}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+      <p className="muted small">{tx('Keys are kept on the console machine in {file}, outside the document repository, and are never shown again.', { file: <code>secrets.json</code> })}</p>
+    </div>
+  );
+}
+
 export default function Settings() {
   const toast = useToast();
   const [aiSettings, setAiSettings] = useState(null);
@@ -251,16 +311,18 @@ export default function Settings() {
         <h2>{t('AI agent')}</h2>
         {aiSettings && (
           <p className="muted">
-            {tx('Model {model} · reasoning effort {effort} · {status} (set {modelVar} / {effortVar} in {envFile} to change).', {
+            {tx('Provider {provider} · model {model} · reasoning effort {effort} · {status} (set {modelVar} / {effortVar} in {envFile} to change).', {
+              provider: <code>{aiSettings.provider}</code>,
               model: <code>{aiSettings.model}</code>,
               effort: <code>{aiSettings.reasoningEffort}</code>,
               status: aiSettings.available ? t('API key configured') : t('no API key — assistant disabled'),
-              modelVar: <code>OPENAI_MODEL</code>,
-              effortVar: <code>OPENAI_REASONING_EFFORT</code>,
+              modelVar: <code>{aiSettings.provider === 'openai' ? 'OPENAI_MODEL' : 'ANTHROPIC_MODEL'}</code>,
+              effortVar: <code>{aiSettings.provider === 'openai' ? 'OPENAI_REASONING_EFFORT' : 'ANTHROPIC_EFFORT'}</code>,
               envFile: <code>.env</code>,
             })}
           </p>
         )}
+        {aiSettings && <ApiKeys keys={aiSettings.keys} onSaved={(r) => setAiSettings((s) => ({ ...s, ...r }))} />}
         <p>
           {tx('Basic information and guidelines the AI agent follows in {every} AI first draft and chat edit — company facts, terminology, tone rules, things it must never invent.', { every: <strong>{t('every')}</strong> })}{' '}
           {tx('Stored in the document repository ({file}), so changes are versioned.', { file: <code>settings/ai-guidelines.md</code> })}
@@ -284,7 +346,10 @@ export default function Settings() {
 
       <IllustrationStyleCard />
 
-      <LibraryCard />
+      <section className="settings-card">
+        <h2>{t('Device library')}</h2>
+        <p className="muted">{tx('Connector and device templates for schematics are managed on the {parts} page, with the parts catalog.', { parts: <Link to="/parts">{t('Parts')}</Link> })}</p>
+      </section>
 
       <BrandingCard />
 

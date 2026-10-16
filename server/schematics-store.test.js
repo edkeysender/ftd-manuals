@@ -98,6 +98,28 @@ test('module schematic: create, ops as commits, review, release with note, next 
   assert.equal(r.summary.length, 4);
   await assert.rejects(sch.applySchematicOps(slug, [{ op: 'connect', from: { device: 'umc', port: 'nope' }, to: { device: 'hs', port: 'jack' } }]), (e) => e instanceof SchematicError && e.index === 0);
 
+  // library ops ride in the same list: the template is written to the library (with its picture), then the device is placed
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const libDry = await sch.applySchematicOps(slug, [
+    { op: 'create_template', name: 'Optoma ZU506', category: 'display', heightU: 0, ports: [{ id: 'hdmi-1', label: 'HDMI 1', connector: 'hdmi', direction: 'in' }], pictures: { front: { dataBase64: PNG, type: 'image/png' } } },
+    { op: 'add_device', id: 'proj', template: 'optoma-zu506', label: 'Projector' },
+  ], { dryRun: true });
+  assert.equal(libDry.state.devices.length, 3);
+  assert.ok(!(await sch.getLibrary()).devices.some((d) => d.id === 'optoma-zu506'), 'a dry run writes no template');
+  const libR = await sch.applySchematicOps(slug, [
+    { op: 'create_connector', id: 'bnc', label: 'BNC' },
+    { op: 'create_template', name: 'Optoma ZU506', category: 'display', heightU: 0, ports: [{ id: 'hdmi-1', label: 'HDMI 1', connector: 'hdmi', direction: 'in' }, { id: 'sdi', label: 'SDI', connector: 'bnc', direction: 'in' }], pictures: { front: { dataBase64: PNG, type: 'image/png' } } },
+    { op: 'add_device', id: 'proj', template: 'optoma-zu506', label: 'Projector' },
+  ], { summary: 'Projector' });
+  assert.equal(libR.state.revision, 3);
+  assert.equal(libR.summary.length, 3);
+  const tpl = (await sch.getLibrary()).devices.find((d) => d.id === 'optoma-zu506');
+  assert.equal(tpl.ports.length, 2);
+  assert.deepEqual(tpl.panels, { front: 'png' });
+  assert.ok((await sch.getDevicePanel('optoma-zu506', 'front'))?.buffer.length > 0);
+  await assert.rejects(sch.applySchematicOps(slug, [{ op: 'create_template', name: 'Bad', pictures: { front: { attachment: 'left-in-the-browser.jpg' } } }]), /attachment/);
+  await sch.applySchematicOps(slug, [{ op: 'remove_device', id: 'proj' }]);
+
   let g = await sch.getSchematic(slug);
   assert.equal(g.owner.kind, 'module');
   assert.equal(g.owner.name, 'Audio system');

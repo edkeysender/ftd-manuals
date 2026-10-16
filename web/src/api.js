@@ -172,6 +172,8 @@ export const api = {
   uploadLogo: (file) => request('/api/settings/logo', { method: 'POST', body: file }),
   aiSettings: () => request('/api/settings/ai'),
   saveAiSettings: (guidelines) => request('/api/settings/ai', { method: 'PUT', body: { guidelines } }),
+  /** {anthropic?, openai?} — a key to store, or '' to remove it; keys never come back, only masked tails. */
+  saveAiKeys: (keys) => request('/api/settings/ai-keys', { method: 'PUT', body: keys }),
   mcpInfo: () => request('/api/mcp-info'),
   // opts.attachments: keep every file as it is (a download), instead of expanding documents into pictures
   uploadAssets: (slug, version, files, opts = {}) =>

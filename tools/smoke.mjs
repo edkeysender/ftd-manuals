@@ -1664,7 +1664,7 @@ try {
   const svg = await fetch(`${BASE}/api/modules/${schMod.slug}/schematic/render.svg`).then((r) => r.text());
   ok(svg.startsWith('<svg') && (svg.match(/class="sch-device"/g) || []).length === 2 && /sch-external/.test(svg), 'server-side SVG renders devices and the connector face');
   const csv = await fetch(`${BASE}/api/modules/${schMod.slug}/schematic/cables.csv`).then((r) => r.text());
-  ok(csv.split('\n')[1].startsWith('AUD-01,Audio,UMC404HD,Phones 1,Captain headset,Jack,3'), 'cable schedule CSV');
+  ok(csv.split('\n')[1].startsWith('AUD-01,Audio,,,UMC404HD,Phones 1,Captain headset,Jack,3'), 'cable schedule CSV');
   const noNote = await req('POST', `/api/modules/${schMod.slug}/schematic/release`, { note: '' }).catch((e) => e);
   ok(noNote instanceof Error && /revision record/.test(noNote.message), 'schematic release needs a note');
   const schRel = await req('POST', `/api/modules/${schMod.slug}/schematic/release`, { note: 'Smoke wiring released.' });

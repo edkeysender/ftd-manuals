@@ -18,7 +18,7 @@ const endOf = (e) => (e.block ? { kind: 'block', id: e.block, port: e.port } : {
  * the cursor, with a device, block or cable selected by a click — highlighted with everything it is
  * connected to, and described in the card beside it. No editing here: that is the Phase 2 canvas.
  */
-export default function SchematicViewer({ owner, data, v = 0, location = '', canEdit = false, onChanged }) {
+export default function SchematicViewer({ owner, data, v = 0, location = '', onLocation, canEdit = false, onChanged }) {
   const { state, schedule, view: scope } = data; // `scope` = one location's ids when the panel filters by rack
   const editable = canEdit && data.editable;
   const toast = useToast();
@@ -253,10 +253,21 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', can
         <span className="hint">{editable ? t('Scroll to zoom, drag to pan, click to select, Esc to clear — drag from a port stub to another port to connect them.') : t('Scroll to zoom, drag to pan, click a device or cable to select it, Esc to clear.')}</span>
         <span className="sch-walker">
           <button className="btn btn-sm" onClick={() => step(-1)} title={t('Previous device')} disabled={!walkList.length}>‹</button>
-          <select value={walkIndex >= 0 ? `${walkList[walkIndex].kind}:${walkList[walkIndex].id}` : ''} onChange={(e) => { const [kind, ...rest] = e.target.value.split(':'); if (kind) go({ kind, id: rest.join(':') }); }} title={t('Go to a device')}>
-            <option value="">{t('Go to device…')} ({walkList.length})</option>
-            {walkList.map((i) => <option key={`${i.kind}:${i.id}`} value={`${i.kind}:${i.id}`}>{i.label}</option>)}
-          </select>
+          {/* one dropdown, two steps: with the whole installation shown it lists the racks and areas — picking
+              one narrows the view to it — and inside a rack or area it lists that location's devices, with
+              the first entry leading back out */}
+          {!location && onLocation && state.locations.length ? (
+            <select value="" onChange={(e) => { if (e.target.value) onLocation(e.target.value); }} title={t('Go to a rack or area')}>
+              <option value="">{t('Go to rack / area…')} ({state.locations.length})</option>
+              {state.locations.map((l) => <option key={l.id} value={l.id}>{l.kind === 'rack' ? '▭ ' : '◌ '}{l.label}</option>)}
+            </select>
+          ) : (
+            <select value={walkIndex >= 0 ? `${walkList[walkIndex].kind}:${walkList[walkIndex].id}` : ''} onChange={(e) => { const [kind, ...rest] = e.target.value.split(':'); if (kind === 'loc') onLocation?.(''); else if (kind) go({ kind, id: rest.join(':') }); }} title={t('Go to a device')}>
+              <option value="">{t('Go to device…')} ({walkList.length})</option>
+              {location && onLocation && <option value="loc:">{t('← All racks / areas')}</option>}
+              {walkList.map((i) => <option key={`${i.kind}:${i.id}`} value={`${i.kind}:${i.id}`}>{i.label}</option>)}
+            </select>
+          )}
           <button className="btn btn-sm" onClick={() => step(1)} title={t('Next device')} disabled={!walkList.length}>›</button>
           <button className="btn btn-sm" onClick={toggleFullscreen} title={fullscreen ? t('Exit full screen') : t('Full screen')}>{fullscreen ? '⤡' : '⤢'}</button>
         </span>

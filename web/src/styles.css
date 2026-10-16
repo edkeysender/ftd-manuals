@@ -920,3 +920,33 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .sch-viewer:fullscreen .sch-stage, .sch-viewer.fullscreen .sch-stage { flex: 1; min-height: 0; }
 .sch-viewer:fullscreen .sch-viewport, .sch-viewer.fullscreen .sch-viewport { min-height: 0; height: 100%; }
 
+
+/* Settings → AI agent: API key rows */
+.api-keys { margin: 8px 0 14px; display: grid; gap: 8px; }
+.api-key-row { display: grid; grid-template-columns: 180px 130px 1fr auto auto; gap: 8px; align-items: center; }
+.api-key-row label { display: flex; flex-direction: column; }
+.api-key-row label span { font-weight: 600; }
+.api-key-row input { font-family: ui-monospace, monospace; }
+.api-key-state { font-size: 13px; color: var(--muted); }
+.api-key-state.set { color: var(--ok, #2e7d32); }
+@media (max-width: 800px) { .api-key-row { grid-template-columns: 1fr 1fr; } }
+
+/* Schematic in dark mode: the drawing surface follows the theme and the server-rendered SVG's paper
+   colours are overridden here — CSS beats SVG presentation attributes. A cable drawn in black (the
+   default colour and the "black" cable colour) is redrawn in the ink colour so the dark canvas never
+   swallows it; coloured cables keep their colour. */
+[data-theme='dark'] .schematic-drawing, [data-theme='dark'] .sch-viewport { background: var(--panel-2); }
+[data-theme='dark'] .sch-content svg text { fill: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-device > rect, [data-theme='dark'] .sch-content svg .sch-block > rect { fill: var(--panel); stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-frame > rect { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-frame-rack > rect { fill: var(--panel-2); }
+[data-theme='dark'] .sch-content svg .sch-external > rect { fill: var(--panel); stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-port line[stroke='#000'], [data-theme='dark'] .sch-content svg .sch-port line[stroke='#000000'], [data-theme='dark'] .sch-content svg .sch-port line[stroke='black'], [data-theme='dark'] .sch-content svg .sch-port line[stroke='#111'], [data-theme='dark'] .sch-content svg .sch-port line[stroke='#222'] { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='#000'], [data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='#000000'], [data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='black'], [data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='#111'], [data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='#222'] { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-device.sel > rect, [data-theme='dark'] .sch-content svg .sch-block.sel > rect { fill: #3a1026; }
+[data-theme='dark'] .sch-content svg .sch-device.sel-end > rect, [data-theme='dark'] .sch-content svg .sch-block.sel-end > rect { fill: #3a2a08; }
+[data-theme='dark'] .rack-item.sel { background: #3a1026; color: var(--ink); }
+[data-theme='dark'] .sch-zoom-badge { background: rgb(255 255 255 / 0.18); }
+[data-theme='dark'] .sch-content svg .sch-paper { fill: var(--panel-2); }
+[data-theme='dark'] .sch-content svg .sch-frame-area > rect { fill: rgb(255 255 255 / 0.03); }
+[data-theme='dark'] .sch-content svg text[fill='#444'] { fill: var(--muted); }

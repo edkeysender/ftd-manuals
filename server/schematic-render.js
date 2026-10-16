@@ -187,7 +187,7 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
   }
   const width = Math.max(l.width, 300);
   const height = Math.max(l.height, 120, state.kind === 'module' ? 40 + state.externalPorts.length * 18 : 0);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" font-family="${FONT}" class="schematic" role="img"${title ? ` aria-label="${esc(title)}"` : ''}>${title ? `<title>${esc(title)}</title>` : ''}<rect width="${width}" height="${height}" fill="#fff"/>${parts.join('')}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" font-family="${FONT}" class="schematic" role="img"${title ? ` aria-label="${esc(title)}"` : ''}>${title ? `<title>${esc(title)}</title>` : ''}<rect class="sch-paper" width="${width}" height="${height}" fill="#fff"/>${parts.join('')}</svg>`;
 }
 
 /* ---- tables ---- */
