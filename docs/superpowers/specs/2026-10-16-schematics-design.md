@@ -99,8 +99,7 @@ is seeded on first start (`initStore`) and is the fallback when the file is miss
 
 ### 3.2 Module schematic
 
-Stored at `modules/<slug>/schematic/schematic.json` (own folder beside `docs/`), one per module,
-versioned (section 4). Shape:
+Stored at `modules/<slug>/schematic.json`, one per module, versioned (section 4). Shape:
 
 ```json
 {
@@ -133,7 +132,9 @@ versioned (section 4). Shape:
 
 ### 3.3 Installation
 
-Stored at `installations/<slug>/installation.json`, a new top-level owner kind:
+Stored at `installations/<slug>/schematic.json` (the versioned netlist, same lifecycle as a module
+schematic) next to `installations/<slug>/installation.json` on `main` (`slug`, `name`, `device`,
+`serialNumber`, `operator`, `createdAt`, `updatedAt`), a new top-level owner kind:
 
 ```json
 {
@@ -178,10 +179,11 @@ own owner (`inst:<slug>`, resolved by `ownerOf()` beside `sw:<slug>`), key `sche
 - Draft branch `draft/<slug>-schematic-a1.0` (module) and `draft/inst/<slug>-schematic-a1.0`
   (installation), built by the existing `ownerBranch` rules. One open draft per owner. Release = merge
   to `main`. Every applied operation list is one commit on the draft branch.
-- Lifecycle reuses `setDocStatus`, `releaseDoc` (note required), `setReleaseNote`, `startHotfix`,
-  `discardDraft`, `createNextDocVersion`. The parts of those functions that assume HTML content are
-  branched on `doc.manual === 'schematic'`; the record keeps `revisions[]` and `releaseRecord[]`
-  exactly as docs do, so the revision record prints the same way.
+- Lifecycle lives in `server/schematics-store.js` (`createSchematic`, `applySchematicOps`,
+  `setSchematicStatus`, `releaseSchematic` with a required note, `setSchematicReleaseNote`,
+  `startSchematicHotfix`, `discardSchematic`, `nextSchematicVersion`), built on the store's `repo`
+  and `mutate`. The record keeps `revisions[]` and `releaseRecord[]` shaped like a doc's so the
+  revision record prints the same way. The doc functions in `store.js` are untouched.
 - Presence (`item = doc:<owner>:schematic:A1.0`) and review comments work unchanged: a comment
   anchors on a device or cable id instead of a text quote (`anchor.node`).
 - Rules carried over: only a **released** module schematic feeds an installation block; only a
@@ -224,12 +226,12 @@ HTTP, all behind the existing auth (`viewerGuard` for writes):
   plus the existing submit-review / release / release-note / hotfix / discard routes.
 - `POST …/docs/schematic:A1.0/chat {messages}` → `{reply, ops, applied: false}` (section 6)
 
-MCP tools, each spreading `SLUG_VER` (slug = module slug or `inst:<slug>`, manual fixed to
-`schematic`): `get_schematic`, `apply_schematic_ops`, `create_installation`, `list_installations`,
-`list_device_templates`, `create_device_template`, `update_device_template`,
-`promote_device_to_module`, `render_schematic` (returns the SVG as image content). The existing
-`submit_for_review`, `release_doc`, `set_release_note`, `start_hotfix`, `discard_doc`,
-`list_comments`, `reply_comment`, `resolve_comment` accept `manual: "schematic"`.
+MCP tools (`slug` = module slug, installation slug or `inst:<slug>`; a module wins a tie):
+`get_schematic`, `create_schematic`, `apply_schematic_ops`, `submit_schematic_for_review`,
+`schematic_back_to_draft`, `release_schematic`, `set_schematic_release_note`,
+`start_schematic_hotfix`, `discard_schematic`, `render_schematic` (PNG image content),
+`list_installations`, `create_installation`, `list_device_templates`, `create_device_template`,
+`update_device_template`, `promote_device_to_module`.
 
 ## 6. AI chat and promotion
 
