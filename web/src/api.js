@@ -70,6 +70,12 @@ export async function releaseDoc(slug, key, { hotfix = false } = {}) {
   }
 }
 
+/** Where an owner's schematic lives: a module by slug, an installation as `inst:<slug>`. */
+export const schematicPath = (owner) =>
+  String(owner).startsWith('inst:') ? `/api/installations/${encodeURIComponent(String(owner).slice(5))}/schematic` : `/api/modules/${owner}/schematic`;
+export const schematicSvgUrl = (owner, { released = false, lang = 'en', v = '' } = {}) =>
+  `${schematicPath(owner)}/render.svg?${new URLSearchParams({ ...(released ? { released: '1' } : {}), ...(lang !== 'en' ? { lang } : {}), v }).toString()}`;
+
 export const api = {
   /* login & users */
   me: () => request('/api/auth/me'),
@@ -189,6 +195,25 @@ export const api = {
   setCommentStatus: (slug, version, id, body) => request(`${ownerPath(slug)}/docs/${version}/comments/${id}`, { method: 'PUT', body }),
   deleteComment: (slug, version, id) => request(`${ownerPath(slug)}/docs/${version}/comments/${id}`, { method: 'DELETE' }),
   checklist: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/checklist`),
+  // ----- schematics, installations, device library -----
+  library: () => request('/api/library'),
+  saveConnectors: (body) => request('/api/library/connectors', { method: 'PUT', body }),
+  createDeviceTemplate: (body) => request('/api/library/devices', { method: 'POST', body }),
+  updateDeviceTemplate: (id, body) => request(`/api/library/devices/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteDeviceTemplate: (id) => request(`/api/library/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  promoteDevice: (id, body) => request(`/api/library/devices/${encodeURIComponent(id)}/promote`, { method: 'POST', body }),
+  installations: () => request('/api/installations'),
+  createInstallation: (body) => request('/api/installations', { method: 'POST', body }),
+  installation: (slug) => request(`/api/installations/${slug}`),
+  updateInstallation: (slug, body) => request(`/api/installations/${slug}`, { method: 'PUT', body }),
+  deleteInstallation: (slug) => request(`/api/installations/${slug}`, { method: 'DELETE' }),
+  schematic: (owner) => request(schematicPath(owner)),
+  createSchematic: (owner, bump = 'minor') => request(schematicPath(owner), { method: 'POST', body: { bump } }),
+  schematicOps: (owner, ops, { summary = '', dryRun = false } = {}) => request(`${schematicPath(owner)}/ops`, { method: 'POST', body: { ops, summary, dryRun } }),
+  schematicAction: (owner, action) => request(`${schematicPath(owner)}/${action}`, { method: 'POST' }),
+  releaseSchematic: (owner, note) => request(`${schematicPath(owner)}/release`, { method: 'POST', body: { note } }),
+  schematicReleaseNote: (owner, note) => request(`${schematicPath(owner)}/release-note`, { method: 'PUT', body: { note } }),
+  schematicChat: (owner, messages, lang = 'en') => request(`${schematicPath(owner)}/chat`, { method: 'POST', body: { messages, lang } }),
   saveChecklist: (slug, version, checklist, summary = '') =>
     request(`${ownerPath(slug)}/docs/${version}/checklist`, { method: 'PUT', body: { checklist, summary } }),
 };
