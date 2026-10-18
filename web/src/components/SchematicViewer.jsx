@@ -133,7 +133,9 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', onL
       setWire({ from, x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       markTargets(from);
     } else {
-      drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, target: e.target };
+      // in an editable drawing a device or block is dragged to a new place; everything else pans
+      const node = editable && e.target.closest ? e.target.closest('.sch-device[data-id], .sch-block[data-id]') : null;
+      drag.current = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, moved: false, target: e.target, node };
     }
     e.currentTarget.setPointerCapture(e.pointerId);
   };
@@ -148,7 +150,9 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', onL
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
-    if (d.moved) setView((vw) => ({ ...vw, x: d.vx + dx, y: d.vy + dy }));
+    if (!d.moved) return;
+    if (d.node) d.node.setAttribute('transform', `translate(${dx / view.z}, ${dy / view.z})`);
+    else setView((vw) => ({ ...vw, x: d.vx + dx, y: d.vy + dy }));
   };
   const onPointerUp = (e) => {
     const d = drag.current;
@@ -167,9 +171,26 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', onL
       setConnecting({ from: d.from, to });
       return;
     }
-    if (d.moved) return;
+    if (d.moved) {
+      if (d.node) moveNode(d.node, (e.clientX - d.x) / view.z, (e.clientY - d.y) / view.z);
+      return;
+    }
     const hit = d.target.closest ? d.target.closest(SELECTABLE) : null;
     setSelected(hit ? { kind: kindOf(hit), id: hit.getAttribute('data-id') } : null);
+  };
+  // a dragged node is written down where it landed, measured from its location frame (or the page when it
+  // has none) — the same offset the server applies in the whole drawing and in a one-rack view
+  const moveNode = (g, dx, dy) => {
+    const id = g.getAttribute('data-id');
+    const box = g.querySelector('rect');
+    const loc = (state.devices.find((d) => d.id === id) || state.blocks.find((b) => b.id === id))?.location;
+    const frame = loc ? contentRef.current?.querySelector(`.sch-frame[data-id="${CSS.escape(loc)}"] rect`) : null;
+    const fx = frame ? +frame.getAttribute('x') : 0;
+    const fy = frame ? +frame.getAttribute('y') : 0;
+    const x = Math.round(+box.getAttribute('x') + dx - fx);
+    const y = Math.round(+box.getAttribute('y') + dy - fy);
+    const label = state.devices.find((d) => d.id === id)?.label || state.blocks.find((b) => b.id === id)?.module || id;
+    applyOps([{ op: 'move', id, x, y }], t('{name} moved', { name: label }));
   };
   const applyOps = async (ops, msg) => {
     try {
@@ -249,8 +270,9 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', onL
           <button className="btn btn-sm" onClick={() => setView((vw) => centerOn(vw, boxSize(), { x: size.w / 2, y: size.h / 2 }, 1))}>100%</button>
           {selected && <button className="btn btn-sm" onClick={() => centerSelected()}>{t('Centre on selection')}</button>}
           {location && lib && rackMap(state, lib, location, face) && <button className={`btn btn-sm ${showRack ? 'active' : ''}`} onClick={toggleRack} title={showRack ? t('Hide the rack elevation') : t('Show the rack elevation')}>{showRack ? t('Hide rack view') : t('Show rack view')}</button>}
+          {editable && state.layout?.manual?.length > 0 && <button className="btn btn-sm" onClick={() => applyOps([{ op: 'tidy' }], t('Layout reset to the default positions'))} title={t('Put every hand-moved device back where the layout puts it')}>{t('Reset layout')}</button>}
         </div>
-        <span className="hint">{editable ? t('Scroll to zoom, drag to pan, click to select, Esc to clear — drag from a port stub to another port to connect them.') : t('Scroll to zoom, drag to pan, click a device or cable to select it, Esc to clear.')}</span>
+        <span className="hint">{editable ? t('Scroll to zoom, drag the page to pan, drag a device to move it, click to select, Esc to clear — drag from a port stub to another port to connect them.') : t('Scroll to zoom, drag to pan, click a device or cable to select it, Esc to clear.')}</span>
         <span className="sch-walker">
           <button className="btn btn-sm" onClick={() => step(-1)} title={t('Previous device')} disabled={!walkList.length}>‹</button>
           {/* one dropdown, two steps: with the whole installation shown it lists the racks and areas — picking
@@ -278,7 +300,7 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', onL
             onGo={(it) => go({ kind: it.kind, id: it.id })}
             onMove={(u) => selected && applyOps([{ op: 'update_device', id: selected.id, rack: { u, face } }], t('{name} moved to U{u} ({face})', { name: state.devices.find((d) => d.id === selected.id)?.label || selected.id, u, face: face === 'rear' ? t('rear') : t('front') }))} />
         )}
-        <div ref={boxRef} className="sch-viewport" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => (drag.current = null)}>
+        <div ref={boxRef} className={`sch-viewport ${editable ? 'sch-editable' : ''}`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => (drag.current = null)}>
           <div ref={contentRef} className="sch-content" style={{ width: size.w, height: size.h, transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }} dangerouslySetInnerHTML={{ __html: svg }} />
           {wire && (
             <svg className="sch-overlay" width={size.w} height={size.h} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>

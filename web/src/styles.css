@@ -823,6 +823,8 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .sch-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .sch-content svg { display: block; }
 .sch-content svg .sch-device, .sch-content svg .sch-block, .sch-content svg .sch-cable { cursor: pointer; }
+.sch-editable .sch-content svg .sch-device, .sch-editable .sch-content svg .sch-block { cursor: move; }
+.sch-editable .sch-content svg .sch-port { cursor: crosshair; }
 .sch-content svg .sch-device:hover > rect, .sch-content svg .sch-block:hover > rect { stroke: #1f5fbf; stroke-width: 2.5; }
 .sch-content svg .sch-cable:hover polyline { stroke-width: 4 !important; }
 .sch-content svg .sch-device.sel > rect, .sch-content svg .sch-block.sel > rect { stroke: #e0007a; stroke-width: 5; fill: #fff0f7; }

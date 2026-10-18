@@ -253,7 +253,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   for an assembled manual with `manual.installation` the *Installation wiring* chapter plus the cover's
   device / serial / operator from the installation. Infrastructure (switches, PDUs) are library devices;
   `promoteDeviceToModule` turns one into a module when it deserves a manual. No React Flow canvas yet
-  (Phase 2) — the web shows the server-rendered SVG.
+  (Phase 2) — the web shows the server-rendered SVG. Inside a rack frame the drawing keeps the rack's order
+  (highest U on top, devices without a U below; elk semi-interactive crossing minimisation on `elk.position`);
+  dragging a device in an editable drawing writes a `move` op whose x/y are measured from its location frame
+  (page for a loose node), so the offset holds in the whole drawing and in a one-rack view, and the frame
+  grows around it; **Reset layout** on the toolbar is `tidy`. The chat never emits `move`.
 
 - Schematic chat / MCP `apply_schematic_ops` accept **library ops** in the same list (`server/library-ops.js`:
   `create_template`, `update_template`, `create_connector`, `create_cable_kind`, `set_picture`); they are previewed on a

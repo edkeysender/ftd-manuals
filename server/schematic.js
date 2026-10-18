@@ -287,6 +287,7 @@ const OPS = {
     state.layout.manual = state.layout.manual.filter((x) => x !== b.id);
     return `Removed ${moduleName(ctx, b.module)}`;
   },
+  // x, y are measured from the node's location frame (top-left corner), or from the page for a node with no location
   move(state, op) {
     const id = str(op.id);
     if (!deviceOf(state, id) && !blockOf(state, id) && !locationOf(state, id)) throw new SchematicError(`unknown node "${id}"`);

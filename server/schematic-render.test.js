@@ -34,11 +34,25 @@ test('layout places every node inside its frame and routes every cable', async (
   assert.ok(l.width > 0 && l.height > 0);
 });
 
-test('a hand-moved node keeps its position', async () => {
-  const s = applyOps(fixture(), [{ op: 'move', id: 'hs', x: 900, y: 40 }], ctx()).state;
+test('a hand-moved node keeps its position, measured from its location frame, and the frame grows to keep it inside', async () => {
+  const s = applyOps(fixture(), [{ op: 'move', id: 'hs', x: 400, y: 300 }], ctx()).state;
   const l = await layoutSchematic(s, ctx());
-  assert.equal(l.nodes.hs.x, 900);
-  assert.equal(l.nodes.hs.y, 40);
+  const f = l.frames.cockpit;
+  assert.equal(l.nodes.hs.x, f.x + 400);
+  assert.equal(l.nodes.hs.y, f.y + 300);
+  assert.ok(l.nodes.hs.x + l.nodes.hs.w <= f.x + f.w && l.nodes.hs.y + l.nodes.hs.h <= f.y + f.h, 'frame encloses the moved node');
+  // the same offset holds in a one-location view, whose frame sits elsewhere on the page
+  const { filterSchematic } = await import('./schematic.js');
+  const l2 = await layoutSchematic(filterSchematic(s, { location: 'cockpit' }), ctx());
+  assert.equal(l2.nodes.hs.x - l2.frames.cockpit.x, 400);
+  assert.equal(l2.nodes.hs.y - l2.frames.cockpit.y, 300);
+});
+
+test('a node with no location is moved in page coordinates', async () => {
+  const s = applyOps(fixture(), [{ op: 'add_device', id: 'spare', template: 'headset', label: 'Spare' }, { op: 'move', id: 'spare', x: 900, y: 40 }], ctx()).state;
+  const l = await layoutSchematic(s, ctx());
+  assert.equal(l.nodes.spare.x, 900);
+  assert.equal(l.nodes.spare.y, 40);
 });
 
 test('renderSvg emits one svg with a group per device, a frame per location, a path per cable, and port labels', async () => {
@@ -146,4 +160,27 @@ test('a device with long port labels on both sides gets a wider symbol and short
   assert.match(svg, />Input 1</, 'the parenthetical detail is dropped on the drawing');
   assert.doesNotMatch(svg, /<text[^>]*>Input 1 \(front/, 'the drawing text is the short form; only the tooltip has the full label');
   assert.match(svg, /<title>Input 1 \(front, XLR\/TRS combo, mic\/line\/inst\)<\/title>/, 'the full label is the tooltip');
+});
+
+test('devices in a rack are drawn in rack order: the higher its U, the higher on the drawing', async () => {
+  const s = applyOps(
+    emptySchematic({ kind: 'installation', owner: 'sim' }),
+    [
+      { op: 'add_location', id: 'rack-1', label: 'Rack 1', kind: 'rack', unitsU: 30 },
+      { op: 'add_device', id: 'pdu', template: 'pdu-8', label: 'PDU', location: 'rack-1', rack: { u: 2, face: 'rear' } },
+      { op: 'add_device', id: 'low', template: 'pc', label: 'PC low', location: 'rack-1', rack: { u: 4 } },
+      { op: 'add_device', id: 'mid', template: 'pc', label: 'PC mid', location: 'rack-1', rack: { u: 9 } },
+      { op: 'add_device', id: 'high', template: 'pc', label: 'PC high', location: 'rack-1', rack: { u: 14 } },
+      { op: 'add_device', id: 'loose', template: 'pc', label: 'PC no U', location: 'rack-1' },
+      { op: 'connect', from: { device: 'pdu', port: 'out-1' }, to: { device: 'low', port: 'pwr' } },
+      { op: 'connect', from: { device: 'pdu', port: 'out-2' }, to: { device: 'mid', port: 'pwr' } },
+      { op: 'connect', from: { device: 'pdu', port: 'out-3' }, to: { device: 'high', port: 'pwr' } },
+      { op: 'connect', from: { device: 'pdu', port: 'out-4' }, to: { device: 'loose', port: 'pwr' } },
+    ],
+    ctx()
+  ).state;
+  const l = await layoutSchematic(s, ctx());
+  assert.ok(l.nodes.high.y < l.nodes.mid.y, `high (${l.nodes.high.y}) above mid (${l.nodes.mid.y})`);
+  assert.ok(l.nodes.mid.y < l.nodes.low.y, `mid (${l.nodes.mid.y}) above low (${l.nodes.low.y})`);
+  assert.ok(l.nodes.low.y < l.nodes.loose.y, 'a device with no U goes under the ones that have one');
 });

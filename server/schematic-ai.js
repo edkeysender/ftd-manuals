@@ -72,6 +72,7 @@ const OP_SCHEMA = `OPERATIONS (JSON objects, "op" plus fields):
 - module schematic only: {"op":"set_external_port","id"?,"label","device","port"} · {"op":"unset_external_port","id"}
 - installation only: {"op":"add_location","id"?,"label","kind":"rack"|"area","unitsU"?} · {"op":"update_location",…} · {"op":"remove_location","id"} · {"op":"place_block","id"?,"module","location"?,"rack"?} · {"op":"refresh_block","id"} · {"op":"remove_block","id","cascade"?}
 - "rack" on a device is {"u": n, "face": "front"|"rear", "h"?: unitsHigh} — the lowest U the device occupies and which face of the rack it is mounted on.
+- {"op":"tidy","ids"?:[…]} puts hand-moved nodes back where the layout wants them (all of them, or the ids named). Never emit "move": positions are the user's to drag.
 LIBRARY OPERATIONS (change the shared device library; they run before the schematic operations of the same answer, so a template defined here can be placed with add_device right after it):
 - {"op":"create_template","id"?,"name","manufacturer"?,"model"?,"category":"switch"|"router"|"pc"|"audio-interface"|"power-strip"|"headset"|"display"|"panel"|"other","heightU"?,"ports":[{"id","label","connector","direction":"in"|"out"|"bidir"}],"notes"?,"pictures"?:{"front":PICTURE,"rear":PICTURE,"<kebab-name>":PICTURE}}
 - {"op":"update_template","id","model"?,"manufacturer"?,"heightU"?,"notes"?,"addPorts"?:[…ports to append],"ports"?:[…the full replacement list],"pictures"?:{…}}

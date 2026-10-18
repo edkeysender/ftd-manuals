@@ -78,27 +78,36 @@ export async function layoutSchematic(state, ctx) {
     return [n.id, { by, size: nodeSize(by) }];
   }));
   const manual = new Set(state.layout?.manual || []);
+  const manualPos = (id) => (manual.has(id) && state.layout.nodes[id]) || null;
+  // the order a rack reads in: the device mounted highest comes first, devices with no U after them,
+  // and a hand-moved node sits where it was put — elk keeps that order among nodes of one layer
+  const rankOf = (n) => {
+    const m = manualPos(n.id);
+    if (m) return m.y;
+    const u = n.rack?.u;
+    return Number.isFinite(u) && u > 0 ? 100000 - u * 10 : 200000;
+  };
   const childOf = (n) => {
     const { size } = meta.get(n.id);
-    const fixed = manual.has(n.id) && state.layout.nodes[n.id];
-    return { id: n.id, width: size.w, height: size.h, ...(fixed ? { x: fixed.x, y: fixed.y, layoutOptions: { 'elk.position': `(${fixed.x},${fixed.y})` } } : {}) };
+    return { id: n.id, width: size.w, height: size.h, layoutOptions: { 'elk.position': `(0,${rankOf(n)})` } };
   };
   // racks first, areas after; the frames sit far enough apart that a cable between two racks reads as leaving one
   const ordered = [...state.locations].sort((a, b) => (a.kind === 'rack' ? 0 : 1) - (b.kind === 'rack' ? 0 : 1));
   const frames = ordered.map((l) => {
-    const children = nodes.filter((n) => n.location === l.id).map(childOf);
+    const children = nodes.filter((n) => n.location === l.id).sort((a, b) => rankOf(a) - rankOf(b)).map(childOf);
     return {
       id: l.id,
-      layoutOptions: { 'elk.padding': `[top=${FRAME_PAD + 14},left=${FRAME_PAD},bottom=${FRAME_PAD},right=${FRAME_PAD}]`, 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.margins': '[top=40,left=60,bottom=40,right=60]' },
+      layoutOptions: { 'elk.padding': `[top=${FRAME_PAD + 14},left=${FRAME_PAD},bottom=${FRAME_PAD},right=${FRAME_PAD}]`, 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.margins': '[top=40,left=60,bottom=40,right=60]', 'elk.layered.crossingMinimization.semiInteractive': 'true' },
       children,
       // an empty location is still a place on the drawing, not a dot
       ...(children.length ? {} : { width: 160, height: 60 }),
     };
   });
-  const loose = nodes.filter((n) => !n.location || !state.locations.some((l) => l.id === n.location)).map(childOf);
+  const framed = (n) => n.location && state.locations.some((l) => l.id === n.location);
+  const loose = nodes.filter((n) => !framed(n)).map(childOf);
   const graph = {
     id: 'root',
-    layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': '30', 'elk.layered.spacing.nodeNodeBetweenLayers': '60', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN', 'elk.spacing.componentComponent': '160' },
+    layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'RIGHT', 'elk.spacing.nodeNode': '30', 'elk.layered.spacing.nodeNodeBetweenLayers': '60', 'elk.hierarchyHandling': 'INCLUDE_CHILDREN', 'elk.spacing.componentComponent': '160', 'elk.layered.crossingMinimization.semiInteractive': 'true' },
     children: [...frames, ...loose],
     edges: state.cables.map((c) => ({ id: c.id, sources: [endNode(c.from)], targets: [endNode(c.to)] })),
   };
@@ -111,8 +120,23 @@ export async function layoutSchematic(state, ctx) {
     for (const c of n.children || []) walk(c, x, y, false);
   };
   for (const c of out.children || []) walk(c, 0, 0, state.locations.some((l) => l.id === c.id));
-  // a manual position is absolute: overwrite what elk did with it
-  for (const id of manual) if (state.layout.nodes[id] && abs.nodes[id]) Object.assign(abs.nodes[id], state.layout.nodes[id]);
+  // a hand-moved node goes where it was put: measured from its location frame (so the offset holds in
+  // the whole drawing and in a one-rack view alike), or from the page when it has no location — and
+  // the frame grows to keep it inside
+  for (const n of nodes) {
+    const m = manualPos(n.id);
+    const box = abs.nodes[n.id];
+    if (!m || !box) continue;
+    const f = framed(n) ? abs.frames[n.location] : null;
+    box.x = (f ? f.x : 0) + m.x;
+    box.y = (f ? f.y : 0) + m.y;
+    if (!f) continue;
+    const x0 = Math.min(f.x, box.x - FRAME_PAD);
+    const y0 = Math.min(f.y, box.y - FRAME_PAD - 14);
+    const x1 = Math.max(f.x + f.w, box.x + box.w + FRAME_PAD);
+    const y1 = Math.max(f.y + f.h, box.y + box.h + FRAME_PAD);
+    Object.assign(f, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  }
   // cables go port to port: straight stubs out of each port, then an orthogonal dog-leg
   for (const c of state.cables) {
     const a = portAbs(state, abs, meta, c.from);
