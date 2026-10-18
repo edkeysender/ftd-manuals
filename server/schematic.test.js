@@ -277,3 +277,27 @@ test('a cable carries type and colour, editable and listed in the schedule', () 
   const cleared = applyOps(state, [{ op: 'update_cable', id: 'c1', color: '' }], ctx()).state;
   assert.equal(cleared.cables.find((c) => c.id === 'c1').color, '');
 });
+
+test('a rack carries a depth in mm, and a device deeper than its rack is a warning', () => {
+  const c = ctx();
+  let s = applyOps(emptySchematic({ kind: 'installation', owner: 'sim' }), [{ op: 'add_location', id: 'rack-1', label: 'Rack 1', kind: 'rack', unitsU: 30, depthMm: 600 }], c).state;
+  assert.equal(s.locations[0].depthMm, 600);
+  s = applyOps(s, [{ op: 'update_location', id: 'rack-1', depthMm: 800 }], c).state;
+  assert.equal(s.locations[0].depthMm, 800);
+  assert.throws(() => applyOps(s, [{ op: 'update_location', id: 'rack-1', depthMm: -5 }], c), /depth/);
+  assert.throws(() => applyOps(s, [{ op: 'add_location', label: 'Shell', depthMm: 500 }], c), /rack/);
+  // a 468 mm case in an 800 mm rack fits; in a 450 mm rack it does not
+  const lib = { ...DEFAULT_LIBRARY, devices: [...DEFAULT_LIBRARY.devices, { ...DEFAULT_LIBRARY.devices.find((d) => d.id === 'pc'), id: 'big-pc', sizeMm: { w: 430, h: 176, d: 468 } }] };
+  const c2 = { ...c, library: lib };
+  s = applyOps(s, [{ op: 'add_device', id: 'pc-1', template: 'big-pc', label: 'IG1', location: 'rack-1', rack: { u: 4 } }], c2).state;
+  assert.ok(!validateSchematic(s, c2).warnings.some((w) => w.code === 'device-too-deep'));
+  s = applyOps(s, [{ op: 'update_location', id: 'rack-1', depthMm: 450 }], c2).state;
+  const w = validateSchematic(s, c2).warnings.find((w) => w.code === 'device-too-deep');
+  assert.ok(w, 'too deep is reported');
+  assert.match(w.message, /IG1.*468 mm.*Rack 1.*450 mm/);
+  assert.equal(w.ref, 'pc-1');
+  // clearing the depth clears the check
+  s = applyOps(s, [{ op: 'update_location', id: 'rack-1', depthMm: null }], c2).state;
+  assert.equal(s.locations[0].depthMm, undefined);
+  assert.ok(!validateSchematic(s, c2).warnings.some((w) => w.code === 'device-too-deep'));
+});

@@ -74,5 +74,5 @@ export function rackMap(state, lib, locationId, face = 'front') {
   for (const i of items) for (let u = i.u; u <= top(i); u++) taken.add(u);
   const freeSlots = [];
   for (let u = 1; u <= units; u++) if (!taken.has(u)) freeSlots.push(u);
-  return { units, model: loc.model, face, counts, items, unplaced, freeSlots };
+  return { units, model: loc.model, depthMm: loc.depthMm || null, face, counts, items, unplaced, freeSlots };
 }

@@ -158,7 +158,7 @@ export default function SchematicPanel({ owner, canEdit = false, isAdmin = false
               {current && <button className="btn btn-sm btn-danger" onClick={removeLoc} title={t('Only an empty location can be removed')}>{t('Remove')}</button>}
             </span>
           )}
-          {current && <span className="hint">{current.kind === 'rack' ? `${[current.model, t('{n} U', { n: current.unitsU || 42 })].filter(Boolean).join(' · ')} · ` : ''}{t('{n} devices in {name}; cables that leave it are drawn to where they go.', { n: (data.view?.deviceIds.length || 0) + (data.view?.blockIds.length || 0), name: current.label })}</span>}
+          {current && <span className="hint">{current.kind === 'rack' ? `${[current.model, t('{n} U', { n: current.unitsU || 42 }), current.depthMm ? t('{n} mm deep', { n: current.depthMm }) : ''].filter(Boolean).join(' · ')} · ` : ''}{t('{n} devices in {name}; cables that leave it are drawn to where they go.', { n: (data.view?.deviceIds.length || 0) + (data.view?.blockIds.length || 0), name: current.label })}</span>}
         </div>
       )}
       {addingLoc && <NewLocation locations={state.locations} onClose={() => setAddingLoc(false)} onCreate={(op) => { setAddingLoc(false); locOps([op], t('Location added')); }} />}
@@ -261,6 +261,7 @@ function NewLocation({ locations, existing = null, onClose, onCreate }) {
   const [label, setLabel] = useState(existing ? existing.label : racks < 4 ? `Rack ${racks + 1}` : '');
   const [unitsU, setUnitsU] = useState(existing?.unitsU || 42);
   const [model, setModel] = useState(existing?.model || '');
+  const [depthMm, setDepthMm] = useState(existing?.depthMm || '');
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -276,14 +277,19 @@ function NewLocation({ locations, existing = null, onClose, onCreate }) {
             <label style={{ flex: 2 }}>{t('Name')}<input autoFocus value={label} onChange={(e) => setLabel(e.target.value)} placeholder={kind === 'rack' ? t('e.g. S03 Rack AV') : t('e.g. Simulator Shell')} /></label>
             {kind === 'rack' && <label style={{ flex: 0.6 }}>{t('Height (U)')}<input type="number" min="1" max="60" value={unitsU} onChange={(e) => setUnitsU(e.target.value)} /></label>}
           </div>
-          {kind === 'rack' && <label>{t('Rack model')}<input value={model} placeholder={t('e.g. Lanberg FF01-8042-12B 42U 800×1000')} onChange={(e) => setModel(e.target.value)} /></label>}
+          {kind === 'rack' && (
+            <div className="pair">
+              <label style={{ flex: 2 }}>{t('Rack model')}<input value={model} placeholder={t('e.g. Lanberg FF01-8042-12B 42U 800×1000')} onChange={(e) => setModel(e.target.value)} /></label>
+              <label style={{ flex: 0.8 }}>{t('Depth (mm)')}<input type="number" min="1" max="3000" value={depthMm} placeholder={t('e.g. 1000')} onChange={(e) => setDepthMm(e.target.value)} title={t('The usable depth of the cabinet — a chassis deeper than this is flagged in Checks')} /></label>
+            </div>
+          )}
           {kind === 'rack' && racks >= 4 && <p className="hint warn">{t('This installation already has {n} racks — a simulator holds up to four.', { n: racks })}</p>}
         </div>
         <div className="modal-foot">
           <button className="btn" onClick={onClose}>{t('Cancel')}</button>
           <button className="btn btn-primary" disabled={!label.trim()} onClick={() => onCreate(existing
-            ? { op: 'update_location', id: existing.id, label: label.trim(), ...(kind === 'rack' ? { unitsU: Number(unitsU) || 42, model: model.trim() } : {}) }
-            : { op: 'add_location', label: label.trim(), kind, ...(kind === 'rack' ? { unitsU: Number(unitsU) || 42, model: model.trim() } : {}) })}>{existing ? t('Save') : t('Add')}</button>
+            ? { op: 'update_location', id: existing.id, label: label.trim(), ...(kind === 'rack' ? { unitsU: Number(unitsU) || 42, model: model.trim(), depthMm: Number(depthMm) || null } : {}) }
+            : { op: 'add_location', label: label.trim(), kind, ...(kind === 'rack' ? { unitsU: Number(unitsU) || 42, model: model.trim(), ...(Number(depthMm) ? { depthMm: Number(depthMm) } : {}) } : {}) })}>{existing ? t('Save') : t('Add')}</button>
         </div>
       </div>
     </div>

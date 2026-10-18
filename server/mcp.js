@@ -784,7 +784,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         name: { type: 'string' }, device: { type: 'string' }, serial_number: { type: 'string' }, operator: { type: 'string' },
-        locations: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, kind: { type: 'string', enum: ['rack', 'area'] }, unitsU: { type: 'number' } }, required: ['label'] } },
+        locations: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, kind: { type: 'string', enum: ['rack', 'area'] }, unitsU: { type: 'number' }, depthMm: { type: 'number', description: 'usable cabinet depth in mm' } }, required: ['label'] } },
       },
       required: ['name'],
     },
@@ -802,7 +802,7 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, symbol: { type: 'string' }, hardware_id: { type: 'string' }, notes: { type: 'string' },
+        name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, size_mm: { type: 'object', description: 'physical size {w, h, d} in mm', properties: { w: { type: 'number' }, h: { type: 'number' }, d: { type: 'number' } } }, symbol: { type: 'string' }, hardware_id: { type: 'string' }, notes: { type: 'string' },
         ports: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, connector: { type: 'string' }, direction: { type: 'string', enum: ['in', 'out', 'bidir'] }, side: { type: 'string', enum: ['left', 'right', 'top', 'bottom'] } }, required: ['label', 'connector'] } },
       },
       required: ['name', 'ports'],
@@ -812,7 +812,7 @@ export const TOOLS = [
   {
     name: 'update_device_template',
     description: 'Change a library device: any field of create_device_template; `ports` replaces the whole port list.',
-    inputSchema: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, symbol: { type: 'string' }, hardware_id: { type: 'string' }, notes: { type: 'string' }, ports: { type: 'array', items: { type: 'object' } } }, required: ['id'] },
+    inputSchema: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, size_mm: { type: 'object', description: 'physical size {w, h, d} in mm', properties: { w: { type: 'number' }, h: { type: 'number' }, d: { type: 'number' } } }, symbol: { type: 'string' }, hardware_id: { type: 'string' }, notes: { type: 'string' }, ports: { type: 'array', items: { type: 'object' } } }, required: ['id'] },
     annotations: { title: 'Update device template', ...RW },
   },
   {
@@ -835,7 +835,7 @@ export const TOOLS = [
   },
   {
     name: 'apply_schematic_ops',
-    description: `Change an open schematic with a list of operations — all applied as one commit, or none when any fails (the error names the op). Ops: ${OP_NAMES.join(', ')}. Shapes: {op:"add_device", id?, template, hardwareId?, label?, location?, rack?:{u}} · {op:"connect", id?, kind?, from:{device,port}|{block,port}, to:…, label?, length?} (kind inferred when one cable kind joins the connectors) · {op:"set_external_port", id?, label, device, port} (module) · {op:"add_location", id?, label, kind:"rack"|"area", unitsU?} · {op:"place_block", id?, module, location?, rack?} (module with a released schematic) · {op:"refresh_block", id} · {op:"remove_device"|"remove_block", id, cascade?} · {op:"disconnect"|"unset_external_port"|"remove_location", id} · {op:"update_device"|"update_cable"|"update_location", id, …fields} · {op:"move", id, x, y} · {op:"tidy", ids?}. dry_run validates and returns the would-be state without writing. Library ops may ride in the same list and run first: {op:"create_template", id?, name, manufacturer?, model?, category, heightU?, ports:[{id,label,connector,direction}], pictures?:{front:{url}, rear:{url}}} · {op:"update_template", id, addPorts?, ports?, …, pictures?} · {op:"create_connector", id, label, color?} · {op:"create_cable_kind", id, label, joins:[[a,b]], style?} · {op:"set_picture", template, side, picture:{url}} — a picture over MCP is a url the console fetches (or upload one with the panel route); the template defined here can be placed with add_device in the same call.`,
+    description: `Change an open schematic with a list of operations — all applied as one commit, or none when any fails (the error names the op). Ops: ${OP_NAMES.join(', ')}. Shapes: {op:"add_device", id?, template, hardwareId?, label?, location?, rack?:{u}} · {op:"connect", id?, kind?, from:{device,port}|{block,port}, to:…, label?, length?} (kind inferred when one cable kind joins the connectors) · {op:"set_external_port", id?, label, device, port} (module) · {op:"add_location", id?, label, kind:"rack"|"area", unitsU?, depthMm?} · {op:"place_block", id?, module, location?, rack?} (module with a released schematic) · {op:"refresh_block", id} · {op:"remove_device"|"remove_block", id, cascade?} · {op:"disconnect"|"unset_external_port"|"remove_location", id} · {op:"update_device"|"update_cable"|"update_location", id, …fields} · {op:"move", id, x, y} · {op:"tidy", ids?}. dry_run validates and returns the would-be state without writing. Library ops may ride in the same list and run first: {op:"create_template", id?, name, manufacturer?, model?, category, heightU?, sizeMm?:{w,h,d}, ports:[{id,label,connector,direction}], pictures?:{front:{url}, rear:{url}}} · {op:"update_template", id, addPorts?, ports?, …, pictures?} · {op:"create_connector", id, label, color?} · {op:"create_cable_kind", id, label, joins:[[a,b]], style?} · {op:"set_picture", template, side, picture:{url}} — a picture over MCP is a url the console fetches (or upload one with the panel route); the template defined here can be placed with add_device in the same call.`,
     inputSchema: { type: 'object', properties: { slug: SCH_SLUG, ops: { type: 'array', items: { type: 'object' } }, summary: { type: 'string', description: 'One line for the revision history' }, dry_run: { type: 'boolean' } }, required: ['slug', 'ops'] },
     annotations: { title: 'Apply schematic operations', ...RW },
   },
@@ -984,11 +984,12 @@ async function callTool(name, args) {
       return args.include_rules ? { devices, connectors: lib.connectors, cables: lib.cables } : devices;
     }
     case 'create_device_template':
-      return await sch.createDeviceTemplate({ ...args, heightU: args.height_u, hardwareId: args.hardware_id });
+      return await sch.createDeviceTemplate({ ...args, heightU: args.height_u, sizeMm: args.size_mm, hardwareId: args.hardware_id });
     case 'update_device_template': {
-      const { id, height_u, hardware_id, ...rest } = args;
+      const { id, height_u, size_mm, hardware_id, ...rest } = args;
       const patch = { ...rest };
       if (height_u !== undefined) patch.heightU = height_u;
+      if (size_mm !== undefined) patch.sizeMm = size_mm;
       if (hardware_id !== undefined) patch.hardwareId = hardware_id;
       return await sch.updateDeviceTemplate(id, patch);
     }

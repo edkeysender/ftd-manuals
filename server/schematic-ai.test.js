@@ -19,7 +19,7 @@ const inst = () =>
 
 test('describeState lists locations, devices with free/used ports, and cables', () => {
   const text = describeState(inst(), ctx());
-  assert.match(text, /LOCATIONS:\n- rack-1 "Rack 1" \(rack\)/);
+  assert.match(text, /LOCATIONS:\n- rack-1 "Rack 1" \(rack, 42 U\)/);
   assert.match(text, /- pdu-1 "Power strip 1" \[pdu-8\] in rack-1: in\(iec-c14, in\), out-1\(schuko, out, used by PWR-01\), out-2\(schuko, out\)/);
   assert.match(text, /CABLES:\n- c-1 "PWR-01" power: pdu-1\.out-1 -> umc\.pwr/);
 });

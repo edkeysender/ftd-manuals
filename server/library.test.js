@@ -58,3 +58,11 @@ test('normalizeTemplate keeps the panel pictures a template has', () => {
   // beyond the two faces, a template may carry named pictures: a mainboard's rear I/O, a card's bracket
   assert.deepEqual(normalizeTemplate({ name: 'PC', panels: { front: 'jpg', 'mainboard-io': 'png', 'gpu-io': 'png' } }).panels, { front: 'jpg', 'mainboard-io': 'png', 'gpu-io': 'png' });
 });
+
+test('normalizeTemplate keeps the physical size (mm) of a device and refuses a nonsense one', () => {
+  const t = normalizeTemplate({ name: 'Case', category: 'pc', heightU: 4, sizeMm: { w: '430', h: 176, d: 468 } });
+  assert.deepEqual(t.sizeMm, { w: 430, h: 176, d: 468 });
+  assert.equal(normalizeTemplate({ name: 'Plain', category: 'pc' }).sizeMm, null);
+  assert.deepEqual(normalizeTemplate({ name: 'Deep only', category: 'pc', sizeMm: { d: 300 } }).sizeMm, { d: 300 });
+  assert.throws(() => normalizeTemplate({ name: 'Bad', category: 'pc', sizeMm: { d: -1 } }), /size/i);
+});

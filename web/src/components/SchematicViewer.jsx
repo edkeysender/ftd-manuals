@@ -405,7 +405,7 @@ function RackMap({ map, rackLabel, selected, editable, face, onFace, onGo, onMov
   return (
     <aside className="rack-map" title={rackLabel}>
       <div className="rack-map-title">{rackLabel}</div>
-      <div className="small muted rack-map-sub">{[map.model, t('{n} U', { n: map.units })].filter(Boolean).join(' · ')}</div>
+      <div className="small muted rack-map-sub">{[map.model, t('{n} U', { n: map.units }), map.depthMm ? t('{n} mm deep', { n: map.depthMm }) : ''].filter(Boolean).join(' · ')}</div>
       <div className="rack-faces">
         <button className={face === 'front' ? 'active' : ''} onClick={() => onFace('front')}>{t('Front')} ({map.counts.front})</button>
         <button className={face === 'rear' ? 'active' : ''} onClick={() => onFace('rear')}>{t('Rear')} ({map.counts.rear})</button>
@@ -578,6 +578,7 @@ function Details({ selected, state, schedule, lib, owner, onGo, onClose, editabl
       <div className="small muted">
         {isBlock ? t('Module block') : tpl ? `${tpl.name}${tpl.manufacturer || tpl.model ? ` · ${[tpl.manufacturer, tpl.model].filter(Boolean).join(' ')}` : ''}` : d.template}
         {d.location ? ` · ${locName(d.location)}` : ''}{d.rack?.u ? ` · ${d.rack.u} U` : ''}
+        {tpl?.sizeMm && <span title={t('Width × height × depth')}> · {['w', 'h', 'd'].map((k) => (tpl.sizeMm[k] ? tpl.sizeMm[k] : '?')).join(' × ')} mm</span>}
       </div>
       {d.notes && <p className="small">{d.notes}</p>}
       {tpl?.notes && <p className="small muted">{tpl.notes}</p>}

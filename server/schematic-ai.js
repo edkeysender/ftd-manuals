@@ -22,7 +22,7 @@ export function describeState(state, ctx) {
   const lines = [];
   if (state.kind === 'installation') {
     lines.push('LOCATIONS:');
-    for (const l of state.locations) lines.push(`- ${l.id} "${l.label}" (${l.kind})`);
+    for (const l of state.locations) lines.push(`- ${l.id} "${l.label}" (${l.kind}${l.kind === 'rack' ? `, ${l.unitsU || 42} U${l.depthMm ? `, ${l.depthMm} mm deep` : ''}` : ''})`);
     if (!state.locations.length) lines.push('- none yet');
   }
   lines.push('DEVICES:');
@@ -70,12 +70,12 @@ const OP_SCHEMA = `OPERATIONS (JSON objects, "op" plus fields):
 - {"op":"update_cable","id","label"?,"length"?,"notes"?}
 - {"op":"disconnect","id"}
 - module schematic only: {"op":"set_external_port","id"?,"label","device","port"} · {"op":"unset_external_port","id"}
-- installation only: {"op":"add_location","id"?,"label","kind":"rack"|"area","unitsU"?} · {"op":"update_location",…} · {"op":"remove_location","id"} · {"op":"place_block","id"?,"module","location"?,"rack"?} · {"op":"refresh_block","id"} · {"op":"remove_block","id","cascade"?}
+- installation only: {"op":"add_location","id"?,"label","kind":"rack"|"area","unitsU"?,"depthMm"?} · {"op":"update_location",…} · {"op":"remove_location","id"} · {"op":"place_block","id"?,"module","location"?,"rack"?} · {"op":"refresh_block","id"} · {"op":"remove_block","id","cascade"?}
 - "rack" on a device is {"u": n, "face": "front"|"rear", "h"?: unitsHigh} — the lowest U the device occupies and which face of the rack it is mounted on.
 - {"op":"tidy","ids"?:[…]} puts hand-moved nodes back where the layout wants them (all of them, or the ids named). Never emit "move": positions are the user's to drag.
 LIBRARY OPERATIONS (change the shared device library; they run before the schematic operations of the same answer, so a template defined here can be placed with add_device right after it):
-- {"op":"create_template","id"?,"name","manufacturer"?,"model"?,"category":"switch"|"router"|"pc"|"audio-interface"|"power-strip"|"headset"|"display"|"panel"|"other","heightU"?,"ports":[{"id","label","connector","direction":"in"|"out"|"bidir"}],"notes"?,"pictures"?:{"front":PICTURE,"rear":PICTURE,"<kebab-name>":PICTURE}}
-- {"op":"update_template","id","model"?,"manufacturer"?,"heightU"?,"notes"?,"addPorts"?:[…ports to append],"ports"?:[…the full replacement list],"pictures"?:{…}}
+- {"op":"create_template","id"?,"name","manufacturer"?,"model"?,"category":"switch"|"router"|"pc"|"audio-interface"|"power-strip"|"headset"|"display"|"panel"|"other","heightU"?,"sizeMm"?:{"w","h","d"},"ports":[{"id","label","connector","direction":"in"|"out"|"bidir"}],"notes"?,"pictures"?:{"front":PICTURE,"rear":PICTURE,"<kebab-name>":PICTURE}}
+- {"op":"update_template","id","model"?,"manufacturer"?,"heightU"?,"sizeMm"?,"notes"?,"addPorts"?:[…ports to append],"ports"?:[…the full replacement list],"pictures"?:{…}}
 - {"op":"create_connector","id","label","color"?} · {"op":"create_cable_kind","id","label","joins":[["connectorA","connectorB"],…],"style"?:{"color","width","dash"}}
 - {"op":"set_picture","template","side":"front"|"rear"|"<kebab-name>","picture":PICTURE}
 - PICTURE is {"attachment":"<exact file name of an image attached to this message>"} or {"url":"https://…"} (a manufacturer's product photo). Never invent a url.`;

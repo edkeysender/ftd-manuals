@@ -61,7 +61,7 @@ export default function LibraryCard() {
 function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
   const toast = useToast();
   const isNew = !template.id;
-  const [form, setForm] = useState({ name: template.name || '', category: template.category || 'other', manufacturer: template.manufacturer || '', model: template.model || '', heightU: template.heightU ?? 1, hardwareId: template.hardwareId || '', notes: template.notes || '', ports: template.ports?.length ? template.ports.map((p) => ({ ...p })) : [{ id: '', label: '', connector: lib.connectors[0].id, direction: 'bidir', side: 'right' }] });
+  const [form, setForm] = useState({ name: template.name || '', category: template.category || 'other', manufacturer: template.manufacturer || '', model: template.model || '', heightU: template.heightU ?? 1, sizeMm: { w: template.sizeMm?.w ?? '', h: template.sizeMm?.h ?? '', d: template.sizeMm?.d ?? '' }, hardwareId: template.hardwareId || '', notes: template.notes || '', ports: template.ports?.length ? template.ports.map((p) => ({ ...p })) : [{ id: '', label: '', connector: lib.connectors[0].id, direction: 'bidir', side: 'right' }] });
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setPort = (i, k, v) => setForm((f) => ({ ...f, ports: f.ports.map((p, k2) => (k2 === i ? { ...p, [k]: v } : p)) }));
@@ -70,7 +70,7 @@ function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
   async function save() {
     setBusy(true);
     try {
-      const body = { ...form, heightU: Number(form.heightU), hardwareId: form.hardwareId || null, ports: form.ports.filter((p) => p.label.trim() || p.id.trim()) };
+      const body = { ...form, heightU: Number(form.heightU), sizeMm: form.sizeMm, hardwareId: form.hardwareId || null, ports: form.ports.filter((p) => p.label.trim() || p.id.trim()) };
       if (isNew) await api.createDeviceTemplate(body); else await api.updateDeviceTemplate(template.id, body);
       onSaved();
     } catch (e) { toast(e.message, 'err'); setBusy(false); }
@@ -88,6 +88,12 @@ function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
             <label>{t('Manufacturer')}<input value={form.manufacturer} onChange={set('manufacturer')} /></label>
             <label>{t('Model')}<input value={form.model} onChange={set('model')} /></label>
             <label style={{ flex: 0.5 }}>{t('Height (U)')}<input type="number" min="0" step="1" value={form.heightU} onChange={set('heightU')} /></label>
+          </div>
+          {/* the physical size: what has to fit into a rack of a given depth */}
+          <div className="pair size-mm">
+            <label>{t('Width (mm)')}<input type="number" min="1" value={form.sizeMm.w} onChange={(e) => setForm((f) => ({ ...f, sizeMm: { ...f.sizeMm, w: e.target.value } }))} /></label>
+            <label>{t('Height (mm)')}<input type="number" min="1" value={form.sizeMm.h} onChange={(e) => setForm((f) => ({ ...f, sizeMm: { ...f.sizeMm, h: e.target.value } }))} /></label>
+            <label>{t('Depth (mm)')}<input type="number" min="1" value={form.sizeMm.d} onChange={(e) => setForm((f) => ({ ...f, sizeMm: { ...f.sizeMm, d: e.target.value } }))} placeholder={t('e.g. 468')} /></label>
           </div>
           <label>{t('Hardware catalog item')}
             <select value={form.hardwareId} onChange={set('hardwareId')}>

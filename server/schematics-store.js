@@ -253,7 +253,7 @@ const DEFAULT_LOCATIONS = [
 function startingState(ref, locations) {
   const state = emptySchematic({ kind: isInstRef(ref) ? 'installation' : 'module', owner: refSlug(ref) });
   if (state.kind === 'installation' && locations.length) {
-    const ops = locations.map((l) => ({ op: 'add_location', id: l.id, label: l.label, kind: l.kind, unitsU: l.unitsU }));
+    const ops = locations.map((l) => ({ op: 'add_location', id: l.id, label: l.label, kind: l.kind, unitsU: l.unitsU, depthMm: l.depthMm }));
     return applyOps(state, ops, { library: DEFAULT_LIBRARY, catalog: [], modules: [], releasedSchematics: new Map() }).state;
   }
   return state;

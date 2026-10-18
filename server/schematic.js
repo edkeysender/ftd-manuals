@@ -224,6 +224,10 @@ const OPS = {
     if (!['rack', 'area'].includes(kind)) throw new SchematicError('location kind must be rack or area');
     const loc = { id, label, kind, unitsU: kind === 'rack' ? (op.unitsU === undefined || op.unitsU === null || op.unitsU === '' ? 42 : unitsOf(op.unitsU)) : null };
     if (str(op.model)) loc.model = str(op.model); // the cabinet itself: maker, series, size
+    if (op.depthMm !== undefined && op.depthMm !== null && op.depthMm !== '') {
+      if (kind !== 'rack') throw new SchematicError('only a rack has a depth');
+      loc.depthMm = depthOf(op.depthMm);
+    }
     state.locations.push(loc);
     return `Added location ${label}`;
   },
@@ -238,6 +242,10 @@ const OPS = {
       l.unitsU = l.kind === 'rack' ? l.unitsU || 42 : null;
     }
     if (op.unitsU !== undefined && l.kind === 'rack') l.unitsU = unitsOf(op.unitsU);
+    if (op.depthMm !== undefined) {
+      if (op.depthMm === null || op.depthMm === '' || l.kind !== 'rack') delete l.depthMm;
+      else l.depthMm = depthOf(op.depthMm);
+    }
     if (op.model !== undefined) {
       if (str(op.model)) l.model = str(op.model);
       else delete l.model;
@@ -325,6 +333,12 @@ const unitsOf = (v) => {
   const n = Number(v);
   if (!Number.isInteger(n) || n < 1 || n > 60) throw new SchematicError('a rack has between 1 and 60 U');
   return n;
+};
+/** The usable depth of a rack cabinet in mm — what a chassis has to fit into. */
+const depthOf = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0 || n > 3000) throw new SchematicError('a rack depth is a number of millimetres (1–3000)');
+  return Math.round(n);
 };
 export const RACK_FACES = ['front', 'rear'];
 const numOrNull = (v) => {
@@ -415,6 +429,12 @@ export function validateSchematic(state, ctx) {
   }
   for (const l of state.locations) {
     if (![...state.devices, ...state.blocks].some((x) => x.location === l.id)) warn('location-empty', `${l.label} holds nothing`, l.id);
+  }
+  // a chassis deeper than the cabinet it is racked in
+  for (const d of state.devices) {
+    const depth = templateFor(ctx.library, d.template)?.sizeMm?.d;
+    const rack = d.location ? locationOf(state, d.location) : null;
+    if (depth && rack?.kind === 'rack' && rack.depthMm && depth > rack.depthMm) warn('device-too-deep', `${d.label} is ${depth} mm deep — ${rack.label} is ${rack.depthMm} mm`, d.id);
   }
   // a simulator ships with up to four racks; a fifth is usually a rack that belongs to another installation
   const racks = state.locations.filter((l) => l.kind === 'rack');

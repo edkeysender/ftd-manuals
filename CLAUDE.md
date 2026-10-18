@@ -257,7 +257,10 @@ The functional spec lives in this file's history and in the Modules spec provide
   (highest U on top, devices without a U below; elk semi-interactive crossing minimisation on `elk.position`);
   dragging a device in an editable drawing writes a `move` op whose x/y are measured from its location frame
   (page for a loose node), so the offset holds in the whole drawing and in a one-rack view, and the frame
-  grows around it; **Reset layout** on the toolbar is `tidy`. The chat never emits `move`.
+  grows around it; **Reset layout** on the toolbar is `tidy`. The chat never emits `move`. A rack location carries
+  `depthMm` (usable cabinet depth; Edit rack, `add_location`/`update_location`) and a template `sizeMm: {w, h, d}`
+  (Device library form, `create_template`/`update_template`, MCP `size_mm`); `validateSchematic` warns
+  `device-too-deep` when a racked chassis is deeper than its rack.
 
 - Schematic chat / MCP `apply_schematic_ops` accept **library ops** in the same list (`server/library-ops.js`:
   `create_template`, `update_template`, `create_connector`, `create_cable_kind`, `set_picture`); they are previewed on a

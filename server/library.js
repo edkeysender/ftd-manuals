@@ -130,6 +130,19 @@ export function normalizeTemplate(spec, takenIds = new Set(), connectors = DEFAU
     if (ext) panels[side] = String(ext);
   }
   if (!Number.isFinite(heightU) || heightU < 0) throw new Error('heightU must be a number of rack units (0 for a device outside a rack)');
+  // the physical size in mm — width, height, depth — any of them, for fitting a chassis into a rack
+  let sizeMm = null;
+  if (spec.sizeMm && typeof spec.sizeMm === 'object') {
+    sizeMm = {};
+    for (const k of ['w', 'h', 'd']) {
+      const v = spec.sizeMm[k];
+      if (v === undefined || v === null || v === '') continue;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n <= 0 || n > 5000) throw new Error(`A device size is in millimetres (1–5000), not "${v}"`);
+      sizeMm[k] = Math.round(n);
+    }
+    if (!Object.keys(sizeMm).length) sizeMm = null;
+  }
   return {
     id: str(spec.id) || templateIdFor(name, takenIds),
     name,
@@ -137,6 +150,7 @@ export function normalizeTemplate(spec, takenIds = new Set(), connectors = DEFAU
     manufacturer: str(spec.manufacturer),
     model: str(spec.model),
     heightU,
+    sizeMm,
     symbol,
     ports,
     hardwareId: str(spec.hardwareId) || null,
