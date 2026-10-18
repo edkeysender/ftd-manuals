@@ -815,8 +815,10 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .sch-viewer { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
 .sch-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .sch-search { min-width: 240px; border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; }
-.sch-stage { display: flex; min-height: 70vh; }
-.sch-viewport { position: relative; flex: 1; overflow: hidden; background: #fff; cursor: grab; touch-action: none; user-select: none; min-height: 70vh; }
+/* a fixed-height stage: the drawing, the rack strip and the detail panel each scroll on their own instead of
+   growing the page when a selected device's card runs long */
+.sch-stage { display: flex; height: 70vh; min-height: 0; }
+.sch-viewport { position: relative; flex: 1; overflow: hidden; background: #fff; cursor: grab; touch-action: none; user-select: none; min-height: 0; min-width: 0; }
 .sch-viewport:active { cursor: grabbing; }
 .sch-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .sch-content svg { display: block; }
@@ -828,7 +830,7 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .sch-content svg .sch-device.sel-end > rect, .sch-content svg .sch-block.sel-end > rect { stroke: #ff9500; stroke-width: 4; fill: #fff7e6; }
 .sch-content svg .sch-cable.sel-end polyline { stroke: #ff9500 !important; stroke-width: 4 !important; stroke-dasharray: none !important; }
 .sch-zoom-badge { position: absolute; right: 10px; bottom: 8px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 6px; pointer-events: none; }
-.sch-side { width: 340px; max-width: 45%; border-left: 1px solid var(--line); overflow: auto; padding: 10px 12px; display: grid; gap: 12px; align-content: start; }
+.sch-side { width: 340px; max-width: 45%; flex: none; min-height: 0; border-left: 1px solid var(--line); overflow: auto; overscroll-behavior: contain; padding: 10px 12px; display: grid; gap: 12px; align-content: start; }
 .sch-results { display: grid; gap: 4px; }
 .sch-result { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 8px; }
 .sch-result:hover { border-color: var(--accent); }
@@ -891,7 +893,7 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .rack-unplaced select { width: 100%; font-size: 12px; }
 .main.main-full { max-width: none; padding: 16px 18px; }
 .main-full .page.page-wide { max-width: none; }
-.main-full .sch-stage, .main-full .sch-viewport { min-height: 78vh; }
+.main-full .sch-stage { height: 78vh; }
 .btn.active { background: var(--accent-soft-2); border-color: var(--accent); }
 .sch-inline { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; padding: 2px 4px; border-radius: 4px; font: inherit; color: inherit; }
 .sch-inline:hover, .sch-inline:focus { border-color: var(--line); background: var(--panel-2); }
@@ -917,7 +919,7 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 .sch-walker { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 .sch-walker select { max-width: 260px; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; font-size: 13px; }
 .sch-viewer.fullscreen, .sch-viewer:fullscreen { background: var(--panel); display: flex; flex-direction: column; width: 100vw; height: 100vh; border-radius: 0; }
-.sch-viewer:fullscreen .sch-stage, .sch-viewer.fullscreen .sch-stage { flex: 1; min-height: 0; }
+.sch-viewer:fullscreen .sch-stage, .sch-viewer.fullscreen .sch-stage { flex: 1; height: auto; min-height: 0; }
 .sch-viewer:fullscreen .sch-viewport, .sch-viewer.fullscreen .sch-viewport { min-height: 0; height: 100%; }
 
 
