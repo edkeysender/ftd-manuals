@@ -11,7 +11,7 @@ import { normalizeLibrary, normalizeTemplate, DEFAULT_LIBRARY, PANEL_NAME } from
 import { sniff } from './images.js';
 import { emptySchematic, applyOps, validateSchematic, connectorFace, cableSchedule, SchematicError } from './schematic.js';
 import { renderSvg, scheduleHtml, faceHtml } from './schematic-render.js';
-import { splitOps, previewLibrary, picturesOf, pictureSource, describeLibraryOp } from './library-ops.js';
+import { splitOps, previewLibrary, picturesOf, pictureSource, describeLibraryOp, connectorFromOp, cableKindFromOp } from './library-ops.js';
 import { fetchFile } from './sources.js';
 
 const now = () => new Date().toISOString();
@@ -482,11 +482,10 @@ export async function applyLibraryOps(libraryOps) {
     let templateId = null;
     if (op.op === 'create_connector') {
       const lib = await getLibrary();
-      await saveConnectors({ connectors: [...lib.connectors, { id: str(op.id), label: str(op.label), color: str(op.color) || '#555' }], cables: lib.cables });
+      await saveConnectors({ connectors: [...lib.connectors, connectorFromOp(op)], cables: lib.cables });
     } else if (op.op === 'create_cable_kind') {
       const lib = await getLibrary();
-      const style = op.style && typeof op.style === 'object' ? op.style : {};
-      await saveConnectors({ connectors: lib.connectors, cables: [...lib.cables, { id: str(op.id), label: str(op.label), joins: op.joins, style: { color: str(style.color) || '#555', width: Number(style.width) || 1.2, dash: str(style.dash) } }] });
+      await saveConnectors({ connectors: lib.connectors, cables: [...lib.cables, cableKindFromOp(op)] });
     } else if (op.op === 'create_template') {
       templateId = (await createDeviceTemplate(spec)).id;
     } else if (op.op === 'update_template') {

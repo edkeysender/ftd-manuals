@@ -17,6 +17,36 @@ export const PANEL_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
 /** Default symbol per category, when a template names none. */
 const SYMBOL_OF = { switch: 'switch', router: 'switch', pc: 'pc', 'power-strip': 'power-strip', headset: 'headset', display: 'display' };
 
+/**
+ * How a port's contact is drawn, after PN-EN 60617 / IEC 60617: `socket` is the female contact (an
+ * open semicircle), `plug` the male contact (a solid bar), `terminal` a terminal (a small circle), `pe`
+ * a protective-earth terminal (the earth symbol). A connected port shows the mated pair.
+ */
+export const CONNECTOR_SYMBOLS = ['socket', 'plug', 'terminal', 'pe'];
+/** The symbol of every connector the console has ever shipped, for a library file written before symbols existed. */
+const CONNECTOR_SYMBOL_OF = {
+  'iec-c14': 'plug', 'xlr-m': 'plug', db9: 'plug', cee32: 'plug', 'cn-servo': 'plug',
+  term: 'terminal', spk: 'terminal', pe: 'pe',
+};
+/** A device-side receptacle is female unless the connector is known to be male (an inlet, an XLR male). */
+export const connectorSymbolOf = (c) => (CONNECTOR_SYMBOLS.includes(c?.symbol) ? c.symbol : CONNECTOR_SYMBOL_OF[c?.id] || 'socket');
+/** A cable kind's conductor count (null = not stated) and whether it is screened. */
+export const coresOf = (v) => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 1 || n > 999) throw new Error('cores must be a whole number of conductors (1–999)');
+  return n;
+};
+const normalizeConnector = (c) => ({ ...c, symbol: connectorSymbolOf(c) });
+/** cores / screened of the shipped cable kinds, for a library file written before they were stated. */
+const CABLE_DEFAULTS_OF = { ethernet: { cores: 8 }, power: { cores: 3 }, usb: { cores: 4, screened: true }, audio: { cores: 3, screened: true }, video: { screened: true }, bonding: { cores: 1 } };
+const normalizeCableKind = (c) => {
+  const d = CABLE_DEFAULTS_OF[c.id] || {};
+  let cores = null;
+  try { cores = coresOf(c.cores === undefined ? d.cores : c.cores); } catch { cores = null; }
+  return { ...c, cores, screened: Boolean(c.screened === undefined ? d.screened : c.screened) };
+};
+
 const DEFAULT_CONNECTORS = [
   { id: 'rj45', label: 'RJ45', color: '#2b7bba' },
   { id: 'usb-a', label: 'USB-A', color: '#555' },
@@ -31,17 +61,19 @@ const DEFAULT_CONNECTORS = [
   { id: 'hdmi', label: 'HDMI', color: '#8a4bb8' },
   { id: 'dp', label: 'DisplayPort', color: '#8a4bb8' },
   { id: 'db9', label: 'DB9', color: '#b8722b' },
-];
+  { id: 'pe', label: 'PE terminal', color: '#2a7a2a' },
+].map(normalizeConnector);
 
-/** `joins` lists the unordered connector pairs a cable kind may terminate in; `style` is how it prints. */
+/** `joins` lists the unordered connector pairs a cable kind may terminate in; `style` is how it prints; `cores` is the conductor count the drawing marks. */
 const DEFAULT_CABLES = [
-  { id: 'ethernet', label: 'Ethernet', joins: [['rj45', 'rj45']], style: { color: '#2b7bba', width: 1.2, dash: '' } },
-  { id: 'power', label: 'Power', joins: [['iec-c14', 'schuko'], ['iec-c14', 'iec-c13']], style: { color: '#111', width: 2, dash: '' } },
-  { id: 'usb', label: 'USB', joins: [['usb-a', 'usb-b'], ['usb-a', 'usb-c'], ['usb-c', 'usb-c']], style: { color: '#555', width: 1.2, dash: '2 2' } },
-  { id: 'audio', label: 'Audio', joins: [['trs-6.35', 'trs-6.35'], ['xlr-m', 'xlr-f']], style: { color: '#2a9d4b', width: 1.2, dash: '6 3' } },
-  { id: 'video', label: 'Video', joins: [['hdmi', 'hdmi'], ['dp', 'dp']], style: { color: '#8a4bb8', width: 1.2, dash: '' } },
+  { id: 'ethernet', label: 'Ethernet', joins: [['rj45', 'rj45']], style: { color: '#2b7bba', width: 1.2, dash: '' }, cores: 8 },
+  { id: 'power', label: 'Power', joins: [['iec-c14', 'schuko'], ['iec-c14', 'iec-c13']], style: { color: '#111', width: 2, dash: '' }, cores: 3 },
+  { id: 'usb', label: 'USB', joins: [['usb-a', 'usb-b'], ['usb-a', 'usb-c'], ['usb-c', 'usb-c']], style: { color: '#555', width: 1.2, dash: '2 2' }, cores: 4, screened: true },
+  { id: 'audio', label: 'Audio', joins: [['trs-6.35', 'trs-6.35'], ['xlr-m', 'xlr-f']], style: { color: '#2a9d4b', width: 1.2, dash: '6 3' }, cores: 3, screened: true },
+  { id: 'video', label: 'Video', joins: [['hdmi', 'hdmi'], ['dp', 'dp']], style: { color: '#8a4bb8', width: 1.2, dash: '' }, screened: true },
   { id: 'serial', label: 'Serial', joins: [['db9', 'db9']], style: { color: '#b8722b', width: 1.2, dash: '1 3' } },
-];
+  { id: 'bonding', label: 'Bonding', joins: [['pe', 'pe']], style: { color: '#2a7a2a', width: 1.6, dash: '8 2 2 2' }, cores: 1 },
+].map(normalizeCableKind);
 
 const SEED_DEVICES = [
   {
@@ -161,8 +193,8 @@ export function normalizeTemplate(spec, takenIds = new Set(), connectors = DEFAU
 
 /** What a stored library file resolves to: broken rows dropped, missing parts filled from the defaults. */
 export function normalizeLibrary(raw) {
-  const connectors = Array.isArray(raw?.connectors) && raw.connectors.length ? raw.connectors.filter((c) => c && c.id && c.label) : DEFAULT_CONNECTORS;
-  const cables = Array.isArray(raw?.cables) && raw.cables.length ? raw.cables.filter((c) => c && c.id && Array.isArray(c.joins)) : DEFAULT_CABLES;
+  const connectors = Array.isArray(raw?.connectors) && raw.connectors.length ? raw.connectors.filter((c) => c && c.id && c.label).map(normalizeConnector) : DEFAULT_CONNECTORS;
+  const cables = Array.isArray(raw?.cables) && raw.cables.length ? raw.cables.filter((c) => c && c.id && Array.isArray(c.joins)).map(normalizeCableKind) : DEFAULT_CABLES;
   const devices = [];
   const taken = new Set();
   for (const d of Array.isArray(raw?.devices) ? raw.devices : SEED_DEVICES) {

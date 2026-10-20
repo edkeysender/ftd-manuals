@@ -187,7 +187,7 @@ function RulesEditor({ lib, onSaved }) {
   }
   return (
     <div className="rules-editor">
-      <p className="hint">{t('connectors: [{id, label, color}] · cables: [{id, label, joins: [[connectorA, connectorB], …], style: {color, width, dash}}]. Every join must name existing connectors.')}</p>
+      <p className="hint">{t('connectors: [{id, label, color, symbol}] · cables: [{id, label, joins: [[connectorA, connectorB], …], style: {color, width, dash}, cores, screened}]. Every join must name existing connectors. symbol is the IEC 60617 contact drawn on the device: socket (female, the default), plug (male), terminal, pe (protective earth); cores is the conductor count marked on the line, screened draws the screen symbol.')}</p>
       <textarea className="guidelines-edit" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
       <button className="btn btn-primary" disabled={busy} onClick={save}>{busy ? t('Saving…') : t('Save connector rules')}</button>
     </div>

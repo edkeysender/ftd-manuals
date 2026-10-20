@@ -76,7 +76,7 @@ const OP_SCHEMA = `OPERATIONS (JSON objects, "op" plus fields):
 LIBRARY OPERATIONS (change the shared device library; they run before the schematic operations of the same answer, so a template defined here can be placed with add_device right after it):
 - {"op":"create_template","id"?,"name","manufacturer"?,"model"?,"category":"switch"|"router"|"pc"|"audio-interface"|"power-strip"|"headset"|"display"|"panel"|"other","heightU"?,"sizeMm"?:{"w","h","d"},"ports":[{"id","label","connector","direction":"in"|"out"|"bidir"}],"notes"?,"pictures"?:{"front":PICTURE,"rear":PICTURE,"<kebab-name>":PICTURE}}
 - {"op":"update_template","id","model"?,"manufacturer"?,"heightU"?,"sizeMm"?,"notes"?,"addPorts"?:[…ports to append],"ports"?:[…the full replacement list],"pictures"?:{…}}
-- {"op":"create_connector","id","label","color"?} · {"op":"create_cable_kind","id","label","joins":[["connectorA","connectorB"],…],"style"?:{"color","width","dash"}}
+- {"op":"create_connector","id","label","color"?,"symbol"?:"socket"|"plug"|"terminal"|"pe"} (the IEC 60617 contact drawn on the device: socket = female receptacle (the default), plug = male inlet or pins, terminal = screw/spring terminal, pe = protective-earth stud) · {"op":"create_cable_kind","id","label","joins":[["connectorA","connectorB"],…],"style"?:{"color","width","dash"},"cores"?:n,"screened"?:true} (cores = conductor count marked on the line, screened = draws the screen symbol)
 - {"op":"set_picture","template","side":"front"|"rear"|"<kebab-name>","picture":PICTURE}
 - PICTURE is {"attachment":"<exact file name of an image attached to this message>"} or {"url":"https://…"} (a manufacturer's product photo). Never invent a url.`;
 

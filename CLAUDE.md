@@ -260,7 +260,14 @@ The functional spec lives in this file's history and in the Modules spec provide
   grows around it; **Reset layout** on the toolbar is `tidy`. The chat never emits `move`. A rack location carries
   `depthMm` (usable cabinet depth; Edit rack, `add_location`/`update_location`) and a template `sizeMm: {w, h, d}`
   (Device library form, `create_template`/`update_template`, MCP `size_mm`); `validateSchematic` warns
-  `device-too-deep` when a racked chassis is deeper than its rack.
+  `device-too-deep` when a racked chassis is deeper than its rack. The drawing uses the graphical symbols of
+  **PN-EN 60617 / IEC 60617**: every connector kind carries a `symbol` (`CONNECTOR_SYMBOLS` in `library.js`:
+  `socket` female contact = open semicircle, `plug` male = solid bar, `terminal` = small circle, `pe` = earth;
+  `connectorSymbolOf` fills it for a stored library without one — device-side receptacles are sockets unless known
+  male), a connected socket/plug is drawn as the mated pair, a cable kind's `cores` puts the oblique stroke with the
+  conductor count on the line and `screened` the screen oval (`contactSymbol`/`cableMarks` in `schematic-render.js`),
+  and a legend under the drawing lists the symbols used and names the standard (EN/PL `WORDS`). The general-object
+  rectangle with port stubs is the standard's device symbol; nothing else is pictorial.
 
 - Schematic chat / MCP `apply_schematic_ops` accept **library ops** in the same list (`server/library-ops.js`:
   `create_template`, `update_template`, `create_connector`, `create_cable_kind`, `set_picture`); they are previewed on a

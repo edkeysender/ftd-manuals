@@ -184,3 +184,39 @@ test('devices in a rack are drawn in rack order: the higher its U, the higher on
   assert.ok(l.nodes.mid.y < l.nodes.low.y, `mid (${l.nodes.mid.y}) above low (${l.nodes.low.y})`);
   assert.ok(l.nodes.low.y < l.nodes.loose.y, 'a device with no U goes under the ones that have one');
 });
+
+test('ports are drawn with the IEC 60617 contact symbols: a socket is an open arc, a plug a solid bar, a connected port shows the mated pair', async () => {
+  const s = fixture();
+  const svg = await renderSvg(s, ctx());
+  const port = (dev, id) => {
+    const m = svg.match(new RegExp(`<g class="sch-device" data-id="${dev}"[\\s\\S]*?</g></g>`));
+    assert.ok(m, `device ${dev}`);
+    const p = m[0].match(new RegExp(`<g class="sch-port" data-port="${id}"[\\s\\S]*?</g>`));
+    assert.ok(p, `port ${dev}.${id}`);
+    return p[0];
+  };
+  // the UMC's mains inlet (C14) is male: a bar — and mated, since PWR-01 plugs into it
+  assert.match(port('umc', 'pwr'), /sch-sym-plug/);
+  assert.match(port('umc', 'pwr'), /sch-sym-mate/);
+  // Phones 2 is a free jack: an open arc and no mate
+  assert.match(port('umc', 'phones-2'), /sch-sym-socket/);
+  assert.doesNotMatch(port('umc', 'phones-2'), /sch-sym-mate/);
+  // the strip's outlet 1 is a socket with a plug in it
+  assert.match(port('pdu-1', 'out-1'), /sch-sym-socket/);
+  assert.match(port('pdu-1', 'out-1'), /sch-sym-mate/);
+  assert.doesNotMatch(port('pdu-1', 'out-2'), /sch-sym-mate/);
+});
+
+test('a multi-core cable carries the oblique stroke with its conductor count, a screened one the screen oval, and the drawing names the standard', async () => {
+  const s = fixture();
+  const svg = await renderSvg(s, ctx());
+  const cable = (id) => svg.match(new RegExp(`<g class="sch-cable[^"]*" data-id="${id}"[\\s\\S]*?(?=<g class="sch-(?:cable|legend|external)|</svg>)`))[0];
+  assert.match(cable('pwr'), /class="sch-cores"[\s\S]*>3</, 'power: 3 conductors');
+  assert.doesNotMatch(cable('pwr'), /sch-screen/);
+  assert.match(cable('aud'), /sch-screen/, 'audio is screened');
+  assert.match(svg, /class="sch-legend"/);
+  assert.match(svg, /PN-EN 60617 \(IEC 60617\)/);
+  assert.match(await renderSvg(s, ctx(), { lang: 'pl' }), /Symbole graficzne wg PN-EN 60617/);
+  // a legend lists only what the drawing uses: no PE terminal here
+  assert.doesNotMatch(svg, /sch-legend-pe/);
+});

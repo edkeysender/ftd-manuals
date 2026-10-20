@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_LIBRARY, normalizeLibrary, normalizeTemplate, cableKindsFor, templateFor, templateIdFor } from './library.js';
+import { DEFAULT_LIBRARY, CONNECTOR_SYMBOLS, connectorSymbolOf, normalizeLibrary, normalizeTemplate, cableKindsFor, templateFor, templateIdFor } from './library.js';
 
 test('default library has the connectors and cable kinds the spec lists', () => {
   const ids = DEFAULT_LIBRARY.connectors.map((c) => c.id);
   for (const id of ['rj45', 'usb-a', 'usb-b', 'usb-c', 'iec-c13', 'iec-c14', 'schuko', 'trs-6.35', 'xlr-m', 'xlr-f', 'hdmi', 'dp', 'db9']) {
     assert.ok(ids.includes(id), `connector ${id}`);
   }
-  assert.deepEqual(DEFAULT_LIBRARY.cables.map((c) => c.id).sort(), ['audio', 'ethernet', 'power', 'serial', 'usb', 'video']);
+  assert.deepEqual(DEFAULT_LIBRARY.cables.map((c) => c.id).sort(), ['audio', 'bonding', 'ethernet', 'power', 'serial', 'usb', 'video']);
   assert.ok(DEFAULT_LIBRARY.devices.some((d) => d.id === 'behringer-umc404hd'));
 });
 
@@ -65,4 +65,25 @@ test('normalizeTemplate keeps the physical size (mm) of a device and refuses a n
   assert.equal(normalizeTemplate({ name: 'Plain', category: 'pc' }).sizeMm, null);
   assert.deepEqual(normalizeTemplate({ name: 'Deep only', category: 'pc', sizeMm: { d: 300 } }).sizeMm, { d: 300 });
   assert.throws(() => normalizeTemplate({ name: 'Bad', category: 'pc', sizeMm: { d: -1 } }), /size/i);
+});
+
+test('normalizeLibrary gives every connector its IEC 60617 contact symbol and every cable kind its cores and screen', () => {
+  const lib = normalizeLibrary({ connectors: [{ id: 'rj45', label: 'RJ45' }, { id: 'iec-c14', label: 'IEC C14' }, { id: 'pe', label: 'PE stud' }, { id: 'mystery', label: 'Mystery' }, { id: 'bnc', label: 'BNC', symbol: 'plug' }, { id: 'bad', label: 'Bad', symbol: 'nope' }], cables: [{ id: 'power', label: 'Power', joins: [['iec-c14', 'rj45']] }, { id: 'x', label: 'X', joins: [['bnc', 'bnc']], cores: '2', screened: 1 }], devices: [] });
+  const sym = (id) => lib.connectors.find((c) => c.id === id).symbol;
+  // a device-side receptacle is female unless the connector is known to be male (an inlet, an XLR male)
+  assert.equal(sym('rj45'), 'socket');
+  assert.equal(sym('iec-c14'), 'plug');
+  assert.equal(sym('pe'), 'pe');
+  assert.equal(sym('mystery'), 'socket');
+  assert.equal(sym('bnc'), 'plug', 'a stated symbol is kept');
+  assert.equal(sym('bad'), 'socket', 'an unknown symbol falls back');
+  const kind = (id) => lib.cables.find((c) => c.id === id);
+  assert.equal(kind('power').cores, 3, 'the shipped power cord is three-core');
+  assert.equal(kind('power').screened, false);
+  assert.deepEqual([kind('x').cores, kind('x').screened], [2, true]);
+  for (const c of DEFAULT_LIBRARY.connectors) assert.ok(CONNECTOR_SYMBOLS.includes(c.symbol), `${c.id} has a symbol`);
+  assert.equal(connectorSymbolOf({ id: 'term' }), 'terminal', 'the live store\'s screw terminal');
+  assert.equal(DEFAULT_LIBRARY.connectors.find((c) => c.id === 'xlr-m').symbol, 'plug');
+  assert.ok(DEFAULT_LIBRARY.connectors.some((c) => c.id === 'pe'), 'a protective earth terminal is shipped');
+  assert.ok(DEFAULT_LIBRARY.cables.some((c) => c.id === 'bonding' && c.joins.some(([a, b]) => a === 'pe' && b === 'pe')), 'and a bonding conductor kind joins two of them');
 });

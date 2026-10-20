@@ -1164,7 +1164,7 @@ export const PL = {
   "Update cable {id}": "Zmień kabel {id}",
   "Update device {id}": "Zmień urządzenie {id}",
   "Update location {id}": "Zmień lokalizację {id}",
-  "connectors: [{id, label, color}] · cables: [{id, label, joins: [[connectorA, connectorB], …], style: {color, width, dash}}]. Every join must name existing connectors.": "connectors: [{id, label, color}] · cables: [{id, label, joins: [[złączeA, złączeB], …], style: {color, width, dash}}]. Każde połączenie musi wskazywać istniejące złącza.",
+  "connectors: [{id, label, color, symbol}] · cables: [{id, label, joins: [[connectorA, connectorB], …], style: {color, width, dash}, cores, screened}]. Every join must name existing connectors. symbol is the IEC 60617 contact drawn on the device: socket (female, the default), plug (male), terminal, pe (protective earth); cores is the conductor count marked on the line, screened draws the screen symbol.": "connectors: [{id, label, color, symbol}] · cables: [{id, label, joins: [[złączeA, złączeB], …], style: {color, width, dash}, cores, screened}]. Każde połączenie musi wskazywać istniejące złącza. symbol to styk wg PN-EN 60617 rysowany na urządzeniu: socket (gniazdo, domyślnie), plug (wtyk), terminal (zacisk), pe (uziemienie ochronne); cores to liczba żył zaznaczana na linii, screened rysuje symbol ekranu.",
   "e.g. B737 NG FTD #001": "np. B737 NG FTD #001",
   "no released wiring yet — the wiring chapter is left out": "brak wydanego okablowania — rozdział z okablowaniem jest pomijany",
   "wiring {v} printed": "drukowane okablowanie {v}",

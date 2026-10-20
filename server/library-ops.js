@@ -9,7 +9,7 @@
  * A picture is {attachment: "<file name sent with the chat message>"} — the browser swaps the bytes in on
  * accept — {url: "https://…"} fetched server-side, or {dataBase64, type}. In a preview it is `pending`.
  */
-import { normalizeTemplate, PANEL_NAME } from './library.js';
+import { normalizeTemplate, PANEL_NAME, CONNECTOR_SYMBOLS, connectorSymbolOf, coresOf } from './library.js';
 
 export const LIBRARY_OP_NAMES = ['create_template', 'update_template', 'create_connector', 'create_cable_kind', 'set_picture'];
 export const isLibraryOp = (op) => !!op && typeof op === 'object' && LIBRARY_OP_NAMES.includes(op.op);
@@ -54,6 +54,20 @@ export function previewLibrary(library, libraryOps) {
   return lib;
 }
 
+/** The connector record a create_connector op describes: its IEC 60617 contact symbol defaults to a socket. */
+export function connectorFromOp(op) {
+  const symbol = str(op.symbol);
+  if (symbol && !CONNECTOR_SYMBOLS.includes(symbol)) throw new Error(`create_connector "${op.id}": symbol must be one of ${CONNECTOR_SYMBOLS.join(', ')}`);
+  return { id: str(op.id), label: str(op.label), color: str(op.color) || '#555', symbol: symbol || connectorSymbolOf({ id: str(op.id) }) };
+}
+
+/** The cable-kind record a create_cable_kind op describes (joins already checked by the caller). */
+export function cableKindFromOp(op) {
+  const style = op.style && typeof op.style === 'object' ? op.style : {};
+  const joins = (Array.isArray(op.joins) ? op.joins : []).map((j) => [str(j[0]), str(j[1])]);
+  return { id: str(op.id), label: str(op.label), joins, style: { color: str(style.color) || '#555', width: Number(style.width) || 1.2, dash: str(style.dash) }, cores: coresOf(op.cores), screened: Boolean(op.screened) };
+}
+
 /** One op on an in-memory library (mutates `lib`). Returns the human line for it. */
 export function applyLibraryOp(lib, op) {
   const where = op.op;
@@ -63,7 +77,7 @@ export function applyLibraryOp(lib, op) {
       const label = str(op.label);
       if (!id || !label) throw new Error('create_connector needs an id and a label');
       if (lib.connectors.some((c) => c.id === id)) throw new Error(`Connector "${id}" already exists`);
-      lib.connectors.push({ id, label, color: str(op.color) || '#555' });
+      lib.connectors.push(connectorFromOp(op));
       return `Added connector ${label}`;
     }
     case 'create_cable_kind': {
@@ -77,8 +91,7 @@ export function applyLibraryOp(lib, op) {
         if (!Array.isArray(pair) || pair.length !== 2) throw new Error(`create_cable_kind "${id}": every join is a pair of connector ids`);
         for (const c of pair) if (!lib.connectors.some((x) => x.id === c)) throw new Error(`create_cable_kind "${id}" joins unknown connector "${c}"`);
       }
-      const style = op.style && typeof op.style === 'object' ? op.style : {};
-      lib.cables.push({ id, label, joins: joins.map((j) => [str(j[0]), str(j[1])]), style: { color: str(style.color) || '#555', width: Number(style.width) || 1.2, dash: str(style.dash) } });
+      lib.cables.push(cableKindFromOp(op));
       return `Added cable kind ${label}`;
     }
     case 'create_template': {

@@ -44,3 +44,19 @@ test('previewLibrary refuses what the store would refuse', () => {
   assert.throws(() => previewLibrary(lib(), [{ op: 'create_template', name: 'P', pictures: { front: {} } }]), /attachment|url|dataBase64/);
   assert.match(describeLibraryOp({ op: 'create_template', name: 'Projector X' }), /Projector X/);
 });
+
+test('create_connector takes an IEC symbol and create_cable_kind its cores and screen; the defaults are a socket and an unscreened cable of unknown core count', () => {
+  const next = previewLibrary(lib(), [
+    { op: 'create_connector', id: 'bnc', label: 'BNC', symbol: 'plug' },
+    { op: 'create_connector', id: 'f-type', label: 'F-type' },
+    { op: 'create_cable_kind', id: 'coax', label: 'Coax', joins: [['bnc', 'bnc']], cores: 1, screened: true },
+    { op: 'create_cable_kind', id: 'plain', label: 'Plain', joins: [['f-type', 'f-type']] },
+  ]);
+  assert.equal(next.connectors.find((c) => c.id === 'bnc').symbol, 'plug');
+  assert.equal(next.connectors.find((c) => c.id === 'f-type').symbol, 'socket');
+  const coax = next.cables.find((c) => c.id === 'coax');
+  assert.deepEqual([coax.cores, coax.screened], [1, true]);
+  const plain = next.cables.find((c) => c.id === 'plain');
+  assert.deepEqual([plain.cores, plain.screened], [null, false]);
+  assert.throws(() => previewLibrary(lib(), [{ op: 'create_connector', id: 'z', label: 'Z', symbol: 'triangle' }]), /symbol/);
+});

@@ -6,21 +6,27 @@
  */
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { cableSchedule, connectorFace, portsOf } from './schematic.js';
-import { templateFor, cableFor, connectorFor, DEFAULT_LIBRARY } from './library.js';
+import { templateFor, cableFor, connectorFor, connectorSymbolOf, DEFAULT_LIBRARY } from './library.js';
 
 export const NODE_W = 160;
 export const PORT_PITCH = 14;
 export const FRAME_PAD = 24;
 const HEAD_H = 22;
-const STUB = 10;
+const STUB = 12;
 const FONT = 'Verdana, Geneva, sans-serif';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** English fallbacks; docgen's STRINGS override these once Task 9 adds the keys. */
 const WORDS = {
-  en: { cable: 'Cable', kind: 'Kind', type: 'Type', colour: 'Colour', from: 'From', port: 'Port', to: 'To', length: 'Length', notes: 'Notes', connector: 'Connector', inside: 'Inside', externalPorts: 'External ports', m: 'm', block: 'module' },
-  pl: { cable: 'Kabel', kind: 'Rodzaj', type: 'Typ', colour: 'Kolor', from: 'Z', port: 'Port', to: 'Do', length: 'Długość', notes: 'Uwagi', connector: 'Złącze', inside: 'Wewnątrz', externalPorts: 'Porty zewnętrzne', m: 'm', block: 'moduł' },
+  en: {
+    cable: 'Cable', kind: 'Kind', type: 'Type', colour: 'Colour', from: 'From', port: 'Port', to: 'To', length: 'Length', notes: 'Notes', connector: 'Connector', inside: 'Inside', externalPorts: 'External ports', m: 'm', block: 'module',
+    symSocket: 'Socket (female)', symPlug: 'Plug (male)', symMate: 'Plug and socket', symTerminal: 'Terminal', symPe: 'Protective earth', symCores: 'n conductors', symScreen: 'Screened', symbols: 'Graphical symbols per PN-EN 60617 (IEC 60617)',
+  },
+  pl: {
+    cable: 'Kabel', kind: 'Rodzaj', type: 'Typ', colour: 'Kolor', from: 'Z', port: 'Port', to: 'Do', length: 'Długość', notes: 'Uwagi', connector: 'Złącze', inside: 'Wewnątrz', externalPorts: 'Porty zewnętrzne', m: 'm', block: 'moduł',
+    symSocket: 'Gniazdo (żeńskie)', symPlug: 'Wtyk (męski)', symMate: 'Wtyk i gniazdo', symTerminal: 'Zacisk', symPe: 'Uziemienie ochronne', symCores: 'n żył', symScreen: 'Ekranowany', symbols: 'Symbole graficzne wg PN-EN 60617 (IEC 60617)',
+  },
 };
 const words = (lang) => WORDS[lang] || WORDS.en;
 
@@ -160,6 +166,87 @@ function portAbs(state, abs, meta, end) {
   return { x: n.x + p.x, y: n.y + p.y, side: p.side };
 }
 
+/* ---- IEC 60617 symbols ---- */
+
+const DIR = { left: { x: -1, y: 0 }, right: { x: 1, y: 0 }, top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 } };
+const r1 = (n) => Math.round(n * 10) / 10;
+
+/**
+ * The contact symbol at the end of a port stub, after IEC 60617: `e` is the stub's end, `side` which
+ * way it points (out of the node). Female contact = open semicircle, its back towards the device;
+ * male = solid bar along the line; terminal = small circle; pe = the earth symbol. A connected
+ * socket gets the plug's bar inside its arc, a connected plug the arc around its bar — the standard's
+ * "plug and socket" — so a free port and a used one read differently at a glance.
+ */
+export function contactSymbol(symbol, e, side, color, { mated = false } = {}) {
+  const u = DIR[side] || DIR.right; // outward
+  const v = { x: -u.y, y: u.x }; // across
+  const at = (du, dv) => `${r1(e.x + u.x * du + v.x * dv)},${r1(e.y + u.y * du + v.y * dv)}`;
+  // a semicircle centred `du` out along the stub; it opens outward (its back to the device) unless `inward`
+  const arc = (du, r, inward = false) => `<path d="M${at(du, r)} A${r} ${r} 0 0 ${inward ? 0 : 1} ${at(du, -r)}" fill="none" stroke="${color}" stroke-width="1.2"/>`;
+  const bar = (du) => `<line x1="${at(du - 3, 0).replace(',', '" y1="')}" x2="${at(du + 3, 0).replace(',', '" y2="')}" stroke="${color}" stroke-width="2.8"/>`;
+  const cls = `sch-sym sch-sym-${symbol}${mated ? ' sch-sym-mate' : ''}`;
+  // a plug's mate is the cable's socket: it comes from the cable side, so its back faces the cable and its bowl takes the bar's tip
+  if (symbol === 'plug') return `<g class="${cls}">${bar(0)}${mated ? arc(1.5, 3.4, true) : ''}</g>`;
+  if (symbol === 'terminal') return `<g class="${cls}"><circle cx="${at(0, 0).replace(',', '" cy="')}" r="2" fill="none" stroke="${color}" stroke-width="1"/></g>`;
+  if (symbol === 'pe') {
+    const bars = [[0, 4.5], [2, 3], [4, 1.5]].map(([du, h]) => `<line x1="${at(du, h).replace(',', '" y1="')}" x2="${at(du, -h).replace(',', '" y2="')}" stroke="${color}" stroke-width="1.1"/>`).join('');
+    return `<g class="${cls}">${bars}</g>`;
+  }
+  return `<g class="${cls}">${arc(0, 3)}${mated ? bar(1.5) : ''}</g>`;
+}
+
+/** The longest straight run of a cable's polyline, skipping the two stubs, and a point a fraction along it. */
+function cableRun(pts) {
+  let best = null;
+  for (let i = 1; i < pts.length - 2; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (!best || len > best.len) best = { a, b, len, vertical: Math.abs(b.x - a.x) < Math.abs(b.y - a.y) };
+  }
+  if (!best) return null;
+  best.at = (f) => ({ x: best.a.x + (best.b.x - best.a.x) * f, y: best.a.y + (best.b.y - best.a.y) * f });
+  return best;
+}
+
+/** The marks a cable kind puts on its line: the oblique stroke with the conductor count, the screen oval. */
+function cableMarks(pts, kind, color) {
+  const run = cableRun(pts);
+  if (!run || run.len < 24) return '';
+  const out = [];
+  if (kind?.cores) {
+    const m = run.at(0.35);
+    out.push(`<g class="sch-cores"><line x1="${r1(m.x - 4)}" y1="${r1(m.y + 4)}" x2="${r1(m.x + 4)}" y2="${r1(m.y - 4)}" stroke="${color}" stroke-width="1"/><text x="${r1(m.x + (run.vertical ? 5 : 3))}" y="${r1(m.y - (run.vertical ? 2 : 5))}" font-size="6" fill="${color}">${kind.cores}</text></g>`);
+  }
+  if (kind?.screened) {
+    const m = run.at(kind.cores ? 0.65 : 0.5);
+    out.push(`<ellipse class="sch-screen" cx="${r1(m.x)}" cy="${r1(m.y)}" rx="${run.vertical ? 3 : 6}" ry="${run.vertical ? 6 : 3}" fill="none" stroke="${color}" stroke-width="0.8"/>`);
+  }
+  return out.join('');
+}
+
+/** The legend under the drawing: only the symbols it uses, and the standard they follow. */
+function legendSvg(used, y, W) {
+  const items = [];
+  const line = (x) => `<line x1="${x}" y1="${y + 10}" x2="${x + 14}" y2="${y + 10}" stroke="#000" stroke-width="1.2"/>`;
+  if (used.socket) items.push({ id: 'socket', w: 92, draw: (x) => `${line(x)}${contactSymbol('socket', { x: x + 14, y: y + 10 }, 'right', '#000')}`, text: W.symSocket });
+  if (used.plug) items.push({ id: 'plug', w: 80, draw: (x) => `${line(x)}${contactSymbol('plug', { x: x + 14, y: y + 10 }, 'right', '#000')}`, text: W.symPlug });
+  if (used.mate) items.push({ id: 'mate', w: 92, draw: (x) => `${line(x)}${contactSymbol('socket', { x: x + 14, y: y + 10 }, 'right', '#000', { mated: true })}<line x1="${x + 18}" y1="${y + 10}" x2="${x + 26}" y2="${y + 10}" stroke="#000" stroke-width="1.2"/>`, text: W.symMate });
+  if (used.terminal) items.push({ id: 'terminal', w: 64, draw: (x) => `${line(x)}${contactSymbol('terminal', { x: x + 16, y: y + 10 }, 'right', '#000')}`, text: W.symTerminal });
+  if (used.pe) items.push({ id: 'pe', w: 100, draw: (x) => `${line(x)}${contactSymbol('pe', { x: x + 14, y: y + 10 }, 'right', '#000')}`, text: W.symPe });
+  if (used.cores) items.push({ id: 'cores', w: 84, draw: (x) => `<line x1="${x}" y1="${y + 10}" x2="${x + 20}" y2="${y + 10}" stroke="#000" stroke-width="1.2"/><line x1="${x + 6}" y1="${y + 14}" x2="${x + 14}" y2="${y + 6}" stroke="#000" stroke-width="1"/><text x="${x + 13}" y="${y + 5}" font-size="6">n</text>`, text: W.symCores });
+  if (used.screen) items.push({ id: 'screen', w: 72, draw: (x) => `<line x1="${x}" y1="${y + 10}" x2="${x + 20}" y2="${y + 10}" stroke="#000" stroke-width="1.2"/><ellipse cx="${x + 10}" cy="${y + 10}" rx="6" ry="3" fill="none" stroke="#000" stroke-width="0.8"/>`, text: W.symScreen });
+  let x = 12;
+  const parts = [];
+  for (const it of items) {
+    parts.push(`<g class="sch-legend-${it.id}">${it.draw(x)}<text x="${x + 30}" y="${y + 13}" font-size="7">${esc(it.text)}</text></g>`);
+    x += 34 + it.w;
+  }
+  parts.push(`<text class="sch-legend-norm" x="${x}" y="${y + 13}" font-size="7" fill="#444">${esc(W.symbols)}</text>`);
+  return { svg: `<g class="sch-legend">${parts.join('')}</g>`, width: x + W.symbols.length * 7 * 0.6 + 12, height: 24 };
+}
+
 /* ---- SVG ---- */
 
 export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
@@ -167,6 +254,9 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
   const l = await layoutSchematic(state, ctx);
   const nodes = nodesOf(state);
   const parts = [];
+  const used = { socket: false, plug: false, mate: false, terminal: false, pe: false, cores: false, screen: false };
+  const endKey = (e) => `${endNode(e)}:${e.port}`;
+  const connected = new Set(state.cables.flatMap((c) => [endKey(c.from), endKey(c.to)]));
   for (const loc of state.locations) {
     const f = l.frames[loc.id];
     if (!f) continue;
@@ -183,12 +273,21 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
     const ports = ['left', 'right', 'top', 'bottom'].flatMap((side) =>
       by[side].map((p) => {
         const pt = portPoint(by, size, p.id);
-        const col = connectorFor(ctx.library, p.connector)?.color || '#000';
+        const conn = connectorFor(ctx.library, p.connector);
+        const col = conn?.color || '#000';
+        const symbol = connectorSymbolOf(conn || { id: p.connector });
         const x2 = pt.x + (side === 'left' ? -STUB : side === 'right' ? STUB : 0);
         const y2 = pt.y + (side === 'top' ? -STUB : side === 'bottom' ? STUB : 0);
         const tx = side === 'left' ? pt.x + 4 : side === 'right' ? pt.x - 4 : pt.x;
         const anchor = side === 'left' ? 'start' : side === 'right' ? 'end' : 'middle';
-        return `<g class="sch-port" data-port="${esc(p.id)}"><title>${esc(p.label)}</title><circle class="sch-port-hit" cx="${box.x + x2}" cy="${box.y + y2}" r="7" fill="transparent"/><line x1="${box.x + pt.x}" y1="${box.y + pt.y}" x2="${box.x + x2}" y2="${box.y + y2}" stroke="${col}" stroke-width="1.5"/><text x="${box.x + tx}" y="${box.y + pt.y + 3}" font-size="${PORT_FONT}" text-anchor="${anchor}">${esc(shortPortLabel(p.label))}</text></g>`;
+        const mated = (symbol === 'socket' || symbol === 'plug') && connected.has(`${n.id}:${p.id}`);
+        used[symbol] = true;
+        if (mated) used.mate = true;
+        // the stub stops short of a socket's back so the arc reads as the contact, not a blob on the line
+        const back = symbol === 'socket' ? 3 : symbol === 'terminal' ? 2 : 0;
+        const xe = x2 - (side === 'left' ? -back : side === 'right' ? back : 0);
+        const ye = y2 - (side === 'top' ? -back : side === 'bottom' ? back : 0);
+        return `<g class="sch-port" data-port="${esc(p.id)}"><title>${esc(p.label)}</title><circle class="sch-port-hit" cx="${box.x + x2}" cy="${box.y + y2}" r="7" fill="transparent"/><line x1="${box.x + pt.x}" y1="${box.y + pt.y}" x2="${box.x + xe}" y2="${box.y + ye}" stroke="${col}" stroke-width="1.5"/>${contactSymbol(symbol, { x: box.x + x2, y: box.y + y2 }, side, col, { mated })}<text x="${box.x + tx}" y="${box.y + pt.y + 3}" font-size="${PORT_FONT}" text-anchor="${anchor}">${esc(shortPortLabel(p.label))}</text></g>`;
       })
     );
     parts.push(`<g class="sch-${n.block ? 'block' : 'device'}" data-id="${esc(n.id)}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}" fill="#fff" stroke="#000" stroke-width="${n.block ? 1.6 : 1}"/><text x="${box.x + box.w / 2}" y="${box.y + 13}" font-size="9" font-weight="bold" text-anchor="middle">${esc(label)}</text>${sub ? `<text x="${box.x + box.w / 2}" y="${box.y + HEAD_H - 2}" font-size="6.5" text-anchor="middle" fill="#444">${esc(sub)}</text>` : ''}${ports.join('')}</g>`);
@@ -199,7 +298,10 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
     const kind = cableFor(ctx.library, c.kind);
     const st = kind?.style || {};
     const mid = pts[Math.floor(pts.length / 2)];
-    parts.push(`<g class="sch-cable sch-cable-${esc(c.kind)}" data-id="${esc(c.id)}"><polyline points="${pts.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${st.color || '#000'}" stroke-width="${st.width || 1.2}"${st.dash ? ` stroke-dasharray="${st.dash}"` : ''}/>${c.label ? `<text x="${mid.x + 3}" y="${mid.y - 3}" font-size="7" fill="#000">${esc(c.label)}</text>` : ''}</g>`);
+    const marks = cableMarks(pts, kind, st.color || '#000');
+    if (marks && kind?.cores) used.cores = true;
+    if (marks && kind?.screened) used.screen = true;
+    parts.push(`<g class="sch-cable sch-cable-${esc(c.kind)}" data-id="${esc(c.id)}"><polyline points="${pts.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="${st.color || '#000'}" stroke-width="${st.width || 1.2}"${st.dash ? ` stroke-dasharray="${st.dash}"` : ''}/>${marks}${c.label ? `<text x="${mid.x + 3}" y="${mid.y - 3}" font-size="7" fill="#000">${esc(c.label)}</text>` : ''}</g>`);
   }
   // a module's connector face: its external ports as a column on the left edge
   if (state.kind === 'module' && state.externalPorts.length) {
@@ -209,8 +311,15 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
       parts.push(`<g class="sch-external" data-id="${esc(p.id)}"><rect x="4" y="${y - 9}" width="90" height="14" fill="#f3f3f3" stroke="#000" stroke-width="0.6"/><text x="8" y="${y + 1}" font-size="7">${esc(p.label)}${p.connector ? ` (${esc(connectorFor(ctx.library, p.connector)?.label || p.connector)})` : ''}</text></g>`);
     });
   }
-  const width = Math.max(l.width, 300);
-  const height = Math.max(l.height, 120, state.kind === 'module' ? 40 + state.externalPorts.length * 18 : 0);
+  let width = Math.max(l.width, 300);
+  let height = Math.max(l.height, 120, state.kind === 'module' ? 40 + state.externalPorts.length * 18 : 0);
+  // the legend: what the symbols on this drawing mean, and the standard they follow
+  if (nodes.length) {
+    const legend = legendSvg(used, height - 4, W);
+    parts.push(legend.svg);
+    width = Math.max(width, Math.ceil(legend.width));
+    height += legend.height;
+  }
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" font-family="${FONT}" class="schematic" role="img"${title ? ` aria-label="${esc(title)}"` : ''}>${title ? `<title>${esc(title)}</title>` : ''}<rect class="sch-paper" width="${width}" height="${height}" fill="#fff"/>${parts.join('')}</svg>`;
 }
 

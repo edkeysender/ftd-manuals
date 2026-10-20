@@ -945,8 +945,12 @@ button.link { background: none; border: none; padding: 0; color: var(--accent); 
 [data-theme='dark'] .sch-content svg .sch-frame > rect { stroke: var(--ink); }
 [data-theme='dark'] .sch-content svg .sch-frame-rack > rect { fill: var(--panel-2); }
 [data-theme='dark'] .sch-content svg .sch-external > rect { fill: var(--panel); stroke: var(--ink); }
-[data-theme='dark'] .sch-content svg .sch-port line[stroke='#000'], [data-theme='dark'] .sch-content svg .sch-port line[stroke='#000000'], [data-theme='dark'] .sch-content svg .sch-port line[stroke='black'], [data-theme='dark'] .sch-content svg .sch-port line[stroke='#111'], [data-theme='dark'] .sch-content svg .sch-port line[stroke='#222'] { stroke: var(--ink); }
-[data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='#000'], [data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='#000000'], [data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='black'], [data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='#111'], [data-theme='dark'] .sch-content svg .sch-cable polyline[stroke='#222'] { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-port [stroke='#000'], [data-theme='dark'] .sch-content svg .sch-port [stroke='#000000'], [data-theme='dark'] .sch-content svg .sch-port [stroke='black'], [data-theme='dark'] .sch-content svg .sch-port [stroke='#111'], [data-theme='dark'] .sch-content svg .sch-port [stroke='#222'] { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-cable [stroke='#000'], [data-theme='dark'] .sch-content svg .sch-cable [stroke='#000000'], [data-theme='dark'] .sch-content svg .sch-cable [stroke='black'], [data-theme='dark'] .sch-content svg .sch-cable [stroke='#111'], [data-theme='dark'] .sch-content svg .sch-cable [stroke='#222'] { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-cable text[fill='#111'], [data-theme='dark'] .sch-content svg .sch-cable text[fill='#000'] { fill: var(--ink); }
+/* the IEC 60617 legend under the drawing is drawn in black: ink in the dark theme */
+[data-theme='dark'] .sch-content svg .sch-legend [stroke='#000'] { stroke: var(--ink); }
+.sch-content.has-sel svg .sch-legend { opacity: 0.5; }
 [data-theme='dark'] .sch-content svg .sch-device.sel > rect, [data-theme='dark'] .sch-content svg .sch-block.sel > rect { fill: #3a1026; }
 [data-theme='dark'] .sch-content svg .sch-device.sel-end > rect, [data-theme='dark'] .sch-content svg .sch-block.sel-end > rect { fill: #3a2a08; }
 [data-theme='dark'] .rack-item.sel { background: #3a1026; color: var(--ink); }
