@@ -720,11 +720,13 @@ export const MANUAL_CSS = `
 .manual-doc .toc .num { display: inline-block; min-width: 46px; color: #64748b; font-variant-numeric: tabular-nums; }
 .manual-doc table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12.5px; }
 .manual-doc th, .manual-doc td { border: 1px solid #c8d1db; padding: 7px 10px; text-align: left; vertical-align: top; overflow-wrap: break-word; }
-/* A checklist table (markChecklists): the number stays whole, and each task gets tick boxes. */
-.manual-doc table.checklist td.num { width: 1%; white-space: nowrap; text-align: center; font-weight: 700; }
-.manual-doc table.checklist td.check { width: 1%; white-space: nowrap; vertical-align: top; }
-.manual-doc table.checklist .box { display: inline-block; width: 3.2mm; height: 3.2mm; border: 1px solid #1c2733; border-radius: 1px; vertical-align: -0.5mm; margin: 0 4px 0 0; }
-.manual-doc table.checklist .box + .box-label { margin-right: 12px; }
+/* A checklist table (markChecklists): the number stays whole, and each task gets tick boxes.
+   The class names are the manual's own (tick-…): the app's stylesheet has a generic .check / .box
+   for its forms, and a shared name turned the cell into a flex box in the web view. */
+.manual-doc table.checklist td.task-num { width: 1%; white-space: nowrap; text-align: center; font-weight: 700; }
+.manual-doc table.checklist td.tick-cell { width: 1%; white-space: nowrap; vertical-align: top; }
+.manual-doc table.checklist .tick-box { display: inline-block; width: 3.2mm; height: 3.2mm; border: 1px solid #1c2733; border-radius: 1px; vertical-align: -0.5mm; margin: 0 4px 0 0; }
+.manual-doc table.checklist .tick-box + .tick-label { margin-right: 12px; }
 .manual-doc table.checklist tbody tr:nth-child(even) td { background: #f7f9fb; }
 .manual-doc table.checklist td > :first-child { margin-top: 0; }
 .manual-doc table.checklist td > :last-child { margin-bottom: 0; }
@@ -899,8 +901,8 @@ function markChecklists(html) {
       const [, yes, no] = YES_NO.exec(cellText(tds[tds.length - 1][2]));
       const out = tds.map((m, i) => {
         if (i === tds.length - 1)
-          return `<td class="check"><span class="box"></span><span class="box-label">${esc(yes)}</span><span class="box"></span><span class="box-label">${esc(no)}</span></td>`;
-        if (i === 0 && numbered) return `<td class="num">${cellText(m[2])}</td>`;
+          return `<td class="tick-cell"><span class="tick-box"></span><span class="tick-label">${esc(yes)}</span><span class="tick-box"></span><span class="tick-label">${esc(no)}</span></td>`;
+        if (i === 0 && numbered) return `<td class="task-num">${cellText(m[2])}</td>`;
         return m[0];
       });
       return `<tr${trAttrs}>${out.join('')}</tr>`;

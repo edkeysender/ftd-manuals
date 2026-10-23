@@ -1329,8 +1329,8 @@ try {
     `a reference resolves to its chapter here, and one to a module this manual lacks is reported: ${JSON.stringify(gapCompiled.missingRefs)}`
   );
   ok(
-    gapChapter.includes('<table class="checklist">') && gapChapter.includes('<td class="num">10</td>') &&
-      (gapChapter.match(/<td class="check"><span class="box"><\/span><span class="box-label">Yes<\/span>/g) || []).length === 2 &&
+    gapChapter.includes('<table class="checklist">') && gapChapter.includes('<td class="task-num">10</td>') &&
+      (gapChapter.match(/<td class="tick-cell"><span class="tick-box"><\/span><span class="tick-label">Yes<\/span>/g) || []).length === 2 &&
       gapChapter.includes('Mind the rails.'),
     'a table whose tasks end in Yes / No prints as a checklist: tick boxes, whole task numbers, note rows kept'
   );
