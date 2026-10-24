@@ -786,3 +786,175 @@ body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-sel
 .presence-chip.m-edit .presence-dot { background: #e07a10; }
 .presence-chip.m-review .presence-dot { background: #2563eb; }
 .presence-chip.m-view .presence-dot { background: #16a34a; }
+
+/* ---- schematics ---- */
+.schematic-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.schematic-drawing { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; overflow: auto; }
+.schematic-drawing img { max-width: 100%; display: block; margin: 0 auto; }
+.chip-err { background: var(--red-soft); color: var(--red); }
+.chip-warn { background: var(--amber-soft); color: var(--amber-ink); }
+.check-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.check-list li { padding: 8px 12px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); }
+.check-list li.check-err { border-color: var(--red); }
+.schematic-chat { margin-top: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 12px 14px; }
+.schematic-chat h3 { margin: 0 0 8px; font-size: 14px; }
+.chat-log { max-height: 320px; overflow: auto; display: grid; gap: 8px; margin-bottom: 10px; }
+.chat-msg { padding: 8px 10px; border-radius: 8px; white-space: pre-wrap; max-width: 80%; }
+.chat-msg.user { background: var(--accent-soft-2); justify-self: end; }
+.chat-msg.assistant { background: var(--soft); }
+.pending-ops { border: 1px dashed var(--amber-ink); border-radius: 8px; padding: 8px 12px; background: var(--amber-soft); }
+.pending-ops ol { margin: 6px 0 8px; padding-left: 20px; }
+.pending-title { font-weight: 600; }
+.chat-input { display: flex; gap: 8px; align-items: flex-end; }
+.chat-input textarea { flex: 1; resize: vertical; }
+.modal-wide { width: 860px; }
+.ports-edit input, .ports-edit select { width: 100%; }
+.rules-editor { margin-top: 12px; }
+
+/* ---- schematic viewer: pan, zoom, select ---- */
+.sch-viewer { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.sch-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.sch-search { min-width: 240px; border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; }
+/* a fixed-height stage: the drawing, the rack strip and the detail panel each scroll on their own instead of
+   growing the page when a selected device's card runs long */
+.sch-stage { display: flex; height: 70vh; min-height: 0; }
+.sch-viewport { position: relative; flex: 1; overflow: hidden; background: #fff; cursor: grab; touch-action: none; user-select: none; min-height: 0; min-width: 0; }
+.sch-viewport:active { cursor: grabbing; }
+.sch-content { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.sch-content svg { display: block; }
+.sch-content svg .sch-device, .sch-content svg .sch-block, .sch-content svg .sch-cable { cursor: pointer; }
+.sch-editable .sch-content svg .sch-device, .sch-editable .sch-content svg .sch-block { cursor: move; }
+.sch-editable .sch-content svg .sch-port { cursor: crosshair; }
+.sch-content svg .sch-device:hover > rect, .sch-content svg .sch-block:hover > rect { stroke: #1f5fbf; stroke-width: 2.5; }
+.sch-content svg .sch-cable:hover polyline { stroke-width: 4 !important; }
+.sch-content svg .sch-device.sel > rect, .sch-content svg .sch-block.sel > rect { stroke: #e0007a; stroke-width: 5; fill: #fff0f7; }
+.sch-content svg .sch-cable.sel polyline { stroke: #e0007a !important; stroke-width: 5 !important; stroke-dasharray: none !important; }
+.sch-content svg .sch-device.sel-end > rect, .sch-content svg .sch-block.sel-end > rect { stroke: #ff9500; stroke-width: 4; fill: #fff7e6; }
+.sch-content svg .sch-cable.sel-end polyline { stroke: #ff9500 !important; stroke-width: 4 !important; stroke-dasharray: none !important; }
+.sch-zoom-badge { position: absolute; right: 10px; bottom: 8px; background: rgb(0 0 0 / 0.55); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 6px; pointer-events: none; }
+.sch-side { width: 340px; max-width: 45%; flex: none; min-height: 0; border-left: 1px solid var(--line); overflow: auto; overscroll-behavior: contain; padding: 10px 12px; display: grid; gap: 12px; align-content: start; }
+.sch-results { display: grid; gap: 4px; }
+.sch-result { text-align: left; border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 6px 8px; }
+.sch-result:hover { border-color: var(--accent); }
+.sch-kind-device { background: var(--accent-soft-2); } .sch-kind-cable { background: var(--amber-soft); } .sch-kind-block { background: var(--green-soft); }
+.sch-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 15px; }
+.sch-table th, .sch-table td { padding: 6px 8px; font-size: 13px; }
+.sch-table th { width: 34%; text-align: left; }
+.sch-table tr.sch-free td { color: var(--muted); }
+.sch-links { margin: 0; padding-left: 18px; font-size: 13px; }
+button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+.chat-files { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.chat-file { display: inline-flex; align-items: center; gap: 4px; }
+.loc-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
+.loc-chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+.loc-chip.loc-rack { font-weight: 600; }
+.loc-chip.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.sch-overlay { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; overflow: visible; }
+.sch-overlay line { stroke: #e0007a; stroke-width: 2.5; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+.sch-content svg .sch-port { cursor: crosshair; }
+.sch-content svg .sch-port:hover .sch-port-hit { fill: rgb(31 95 191 / 0.25); }
+.sch-content svg .sch-port.sch-port-ok .sch-port-hit { fill: rgb(42 157 75 / 0.45); stroke: #2a9d4b; stroke-width: 1.5; }
+.sch-table td.sch-act { white-space: nowrap; }
+.modal select[size] { width: 100%; height: 150px; }
+.panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
+.panel-slot img, .panel-fig img { width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+.panel-fig { margin: 0; }
+.panel-empty { height: 60px; border: 1px dashed var(--line); border-radius: 6px; display: grid; place-items: center; color: var(--muted); font-size: 12.5px; }
+.panel-thumbs { display: flex; gap: 4px; margin-top: 4px; }
+.panel-thumbs img { height: 22px; background: #fff; border: 1px solid var(--line); border-radius: 3px; }
+/* ---- rack elevation strip ---- */
+.rack-map { width: 214px; flex: none; border-right: 1px solid var(--line); overflow: auto; padding: 8px; background: var(--panel); }
+.rack-map-title { font-weight: 600; font-size: 12.5px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rack-map-body { position: relative; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
+.rack-row { position: absolute; left: 0; right: 0; border-bottom: 1px dotted var(--line); box-sizing: border-box; }
+.rack-row .rack-u { position: absolute; left: 3px; top: 0; font-size: 9px; color: var(--muted); line-height: 16px; }
+.rack-row.target { cursor: copy; }
+.rack-row.target:hover { background: var(--accent-soft-2); }
+.rack-item { position: absolute; left: 22px; right: 3px; border: 1px solid var(--line-strong); border-radius: 3px; background: var(--panel); font-size: 10px; line-height: 1.1; padding: 0 4px; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.rack-item:hover { border-color: var(--accent); }
+.rack-item.sel { border-color: #e0007a; background: #fff0f7; color: #000; }
+.rack-item.overlap { border-color: var(--red); background: var(--red-soft); }
+.rack-item.loose { position: static; display: block; width: 100%; margin-top: 4px; padding: 3px 4px; }
+.rack-unplaced { margin-top: 8px; }
+.sch-upos input { width: 70px; margin-left: 6px; }
+.panel-fig { cursor: zoom-in; }
+.lightbox figure { margin: 0; width: 92vw; height: 90vh; background: var(--panel); border-radius: 10px; padding: 12px; display: grid; grid-template-rows: auto 1fr auto; gap: 8px; box-sizing: border-box; }
+.lightbox-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.lightbox-stage { overflow: auto; background: #fff; border-radius: 6px; cursor: grab; user-select: none; touch-action: none; display: flex; align-items: flex-start; justify-content: flex-start; }
+.lightbox-stage:active { cursor: grabbing; }
+.lightbox-stage img { display: block; margin: auto; }
+.rack-faces { display: flex; gap: 4px; margin-bottom: 6px; }
+.rack-faces button { flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; font-size: 11px; padding: 3px 0; }
+.rack-faces button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.rack-map-sub { margin: -4px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sch-upos label.inline input[type=number] { width: 64px; }
+.rack-item.with-pic { padding: 0; background: #111; border-color: #222; overflow: hidden; }
+.rack-item.with-pic img { display: block; width: 100%; height: 100%; object-fit: fill; }
+.rack-item.with-pic.sel { outline: 2px solid #e0007a; outline-offset: -2px; }
+.rack-item.with-pic.overlap { outline: 2px solid var(--red); outline-offset: -2px; }
+.rack-unplaced select { width: 100%; font-size: 12px; }
+.main.main-full { max-width: none; padding: 16px 18px; }
+.main-full .page.page-wide { max-width: none; }
+.main-full .sch-stage { height: 78vh; }
+.btn.active { background: var(--accent-soft-2); border-color: var(--accent); }
+.sch-inline { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; padding: 2px 4px; border-radius: 4px; font: inherit; color: inherit; }
+.sch-inline:hover, .sch-inline:focus { border-color: var(--line); background: var(--panel-2); }
+/* ---- floating chat window ---- */
+.chat-window { position: fixed; z-index: 30; display: flex; flex-direction: column; min-width: 300px; min-height: 160px; max-width: 95vw; max-height: 90vh; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 16px 48px rgb(0 0 0 / 0.35); resize: both; overflow: hidden; }
+.chat-window.collapsed { resize: none; min-height: 0; }
+.chat-window-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--panel-2); border-bottom: 1px solid var(--line); cursor: grab; user-select: none; font-weight: 600; font-size: 13px; }
+.chat-window-bar:active { cursor: grabbing; }
+.chat-window-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-window-body .schematic-chat.embedded { margin: 0; border: none; border-radius: 0; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chat-window-body .schematic-chat.embedded .chat-log { flex: 1; max-height: none; min-height: 0; }
+.chat-bubble { position: fixed; z-index: 31; width: 56px; height: 56px; border-radius: 50%; border: none; background: var(--accent); color: var(--accent-ink); font-size: 24px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.35); cursor: grab; touch-action: none; user-select: none; transition: left 0.15s, right 0.15s, top 0.15s; display: grid; place-items: center; }
+.chat-bubble.dragging { cursor: grabbing; opacity: 0.9; }
+.chat-bubble.open { font-size: 28px; }
+.chat-window.docked-left, .chat-window.docked-right { resize: both; }
+.chat-window.docked-right { direction: ltr; }
+/* a selection fades the rest of the drawing: unrelated cables almost vanish, unrelated devices soften */
+.sch-content.has-sel svg .sch-cable:not(.sel):not(.sel-end) { opacity: 0.1; }
+.sch-content.has-sel svg .sch-device:not(.sel):not(.sel-end), .sch-content.has-sel svg .sch-block:not(.sel):not(.sel-end) { opacity: 0.45; }
+.sch-content.has-sel svg .sch-frame { opacity: 0.6; }
+.sch-content svg .sch-cable, .sch-content svg .sch-device, .sch-content svg .sch-block { transition: opacity 0.15s; }
+.sch-toolbar { position: relative; }
+.sch-walker { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.sch-walker select { max-width: 260px; border: 1px solid var(--line); border-radius: 7px; padding: 5px 8px; font-size: 13px; }
+.sch-viewer.fullscreen, .sch-viewer:fullscreen { background: var(--panel); display: flex; flex-direction: column; width: 100vw; height: 100vh; border-radius: 0; }
+.sch-viewer:fullscreen .sch-stage, .sch-viewer.fullscreen .sch-stage { flex: 1; height: auto; min-height: 0; }
+.sch-viewer:fullscreen .sch-viewport, .sch-viewer.fullscreen .sch-viewport { min-height: 0; height: 100%; }
+
+
+/* Settings → AI agent: API key rows */
+.api-keys { margin: 8px 0 14px; display: grid; gap: 8px; }
+.api-key-row { display: grid; grid-template-columns: 180px 130px 1fr auto auto; gap: 8px; align-items: center; }
+.api-key-row label { display: flex; flex-direction: column; }
+.api-key-row label span { font-weight: 600; }
+.api-key-row input { font-family: ui-monospace, monospace; }
+.api-key-state { font-size: 13px; color: var(--muted); }
+.api-key-state.set { color: var(--ok, #2e7d32); }
+@media (max-width: 800px) { .api-key-row { grid-template-columns: 1fr 1fr; } }
+
+/* Schematic in dark mode: the drawing surface follows the theme and the server-rendered SVG's paper
+   colours are overridden here — CSS beats SVG presentation attributes. A cable drawn in black (the
+   default colour and the "black" cable colour) is redrawn in the ink colour so the dark canvas never
+   swallows it; coloured cables keep their colour. */
+[data-theme='dark'] .schematic-drawing, [data-theme='dark'] .sch-viewport { background: var(--panel-2); }
+[data-theme='dark'] .sch-content svg text { fill: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-device > rect, [data-theme='dark'] .sch-content svg .sch-block > rect { fill: var(--panel); stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-frame > rect { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-frame-rack > rect { fill: var(--panel-2); }
+[data-theme='dark'] .sch-content svg .sch-external > rect { fill: var(--panel); stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-port [stroke='#000'], [data-theme='dark'] .sch-content svg .sch-port [stroke='#000000'], [data-theme='dark'] .sch-content svg .sch-port [stroke='black'], [data-theme='dark'] .sch-content svg .sch-port [stroke='#111'], [data-theme='dark'] .sch-content svg .sch-port [stroke='#222'] { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-cable [stroke='#000'], [data-theme='dark'] .sch-content svg .sch-cable [stroke='#000000'], [data-theme='dark'] .sch-content svg .sch-cable [stroke='black'], [data-theme='dark'] .sch-content svg .sch-cable [stroke='#111'], [data-theme='dark'] .sch-content svg .sch-cable [stroke='#222'] { stroke: var(--ink); }
+[data-theme='dark'] .sch-content svg .sch-cable text[fill='#111'], [data-theme='dark'] .sch-content svg .sch-cable text[fill='#000'] { fill: var(--ink); }
+/* the IEC 60617 legend under the drawing is drawn in black: ink in the dark theme */
+[data-theme='dark'] .sch-content svg .sch-legend [stroke='#000'] { stroke: var(--ink); }
+.sch-content.has-sel svg .sch-legend { opacity: 0.5; }
+[data-theme='dark'] .sch-content svg .sch-device.sel > rect, [data-theme='dark'] .sch-content svg .sch-block.sel > rect { fill: #3a1026; }
+[data-theme='dark'] .sch-content svg .sch-device.sel-end > rect, [data-theme='dark'] .sch-content svg .sch-block.sel-end > rect { fill: #3a2a08; }
+[data-theme='dark'] .rack-item.sel { background: #3a1026; color: var(--ink); }
+[data-theme='dark'] .sch-zoom-badge { background: rgb(255 255 255 / 0.18); }
+[data-theme='dark'] .sch-content svg .sch-paper { fill: var(--panel-2); }
+[data-theme='dark'] .sch-content svg .sch-frame-area > rect { fill: rgb(255 255 255 / 0.03); }
+[data-theme='dark'] .sch-content svg text[fill='#444'] { fill: var(--muted); }

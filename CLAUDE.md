@@ -13,7 +13,9 @@ The functional spec lives in this file's history and in the Modules spec provide
 - `data/repo/` — runtime git repository holding the documents (gitignored; created by the server).
   One module = one folder. Drafts on `draft/<slug>-a<maj>.<min>` branches; release = merge to `main`.
   Never edit `data/` by hand — go through the API so every change is a commit.
-- `.env` — `OPENAI_API_KEY` (never commit, never print).
+- `.env` — `ANTHROPIC_API_KEY` (assistant, `server/ai.js` `providerOf`) and `OPENAI_API_KEY` (illustrations, dictation);
+  keys pasted in Settings → AI agent live in `data/secrets.json` (`server/secrets.js`, outside the doc repo) and win
+  over the environment. Never commit, never print, never return a key from the API (masked tail only).
 
 ## Domain rules (from the Modules spec)
 
@@ -234,6 +236,43 @@ The functional spec lives in this file's history and in the Modules spec provide
   and "Edit drawing" edits that file in place (`editOf`) instead of redrawing. Every conversion path (AI-pane
   drop target, chat `generate_images` with `style: "line-art"`, Assets tab button, MCP `convert_to_line_art`)
   goes through `convertToLineArt()`.
+- **Schematics** (`server/schematic.js` pure applier/validator, `server/schematics-store.js` lifecycle,
+  `server/schematic-render.js` elk + SVG, `server/schematic-ai.js` chat, `server/schematic-routes.js`):
+  a schematic is a netlist — devices from the **device library** (`library/devices.json`, ports typed by
+  `library/connectors.json`; Settings → Device library, MCP `list_device_templates` …), cables between
+  ports, locations. It is changed only by **operations** (`applyOps`: `add_device`, `connect`,
+  `set_external_port`, `place_block`, …) applied as one commit or refused as a whole; the chat answers with
+  operations that are dry-run and shown as pending until accepted. A **module schematic**
+  (`modules/<slug>/schematic.json`) wires the module's parts and declares its **external ports**; an
+  **installation** (`installations/<slug>/installation.json` on main + `schematic.json`, `/installations`,
+  owner ref `inst:<slug>`) places modules as **blocks** (pinned to a released module schematic, flagged
+  outdated when a newer one is released) and free library devices in locations. Lifecycle like a doc:
+  `draft/<slug>-schematic-a1.0` / `draft/inst/<slug>-schematic-a1.0`, review, release with a note, hotfix,
+  discard, next version — refused while validation has errors. Only released schematics print: the
+  *Connections* block (figure, External ports, Cable schedule) in a technician manual's section 3, and
+  for an assembled manual with `manual.installation` the *Installation wiring* chapter plus the cover's
+  device / serial / operator from the installation. Infrastructure (switches, PDUs) are library devices;
+  `promoteDeviceToModule` turns one into a module when it deserves a manual. No React Flow canvas yet
+  (Phase 2) — the web shows the server-rendered SVG. Inside a rack frame the drawing keeps the rack's order
+  (highest U on top, devices without a U below; elk semi-interactive crossing minimisation on `elk.position`);
+  dragging a device in an editable drawing writes a `move` op whose x/y are measured from its location frame
+  (page for a loose node), so the offset holds in the whole drawing and in a one-rack view, and the frame
+  grows around it; **Reset layout** on the toolbar is `tidy`. The chat never emits `move`. A rack location carries
+  `depthMm` (usable cabinet depth; Edit rack, `add_location`/`update_location`) and a template `sizeMm: {w, h, d}`
+  (Device library form, `create_template`/`update_template`, MCP `size_mm`); `validateSchematic` warns
+  `device-too-deep` when a racked chassis is deeper than its rack. The drawing uses the graphical symbols of
+  **PN-EN 60617 / IEC 60617**: every connector kind carries a `symbol` (`CONNECTOR_SYMBOLS` in `library.js`:
+  `socket` female contact = open semicircle, `plug` male = solid bar, `terminal` = small circle, `pe` = earth;
+  `connectorSymbolOf` fills it for a stored library without one — device-side receptacles are sockets unless known
+  male), a connected socket/plug is drawn as the mated pair, a cable kind's `cores` puts the oblique stroke with the
+  conductor count on the line and `screened` the screen oval (`contactSymbol`/`cableMarks` in `schematic-render.js`),
+  and a legend under the drawing lists the symbols used and names the standard (EN/PL `WORDS`). The general-object
+  rectangle with port stubs is the standard's device symbol; nothing else is pictorial.
+
+- Schematic chat / MCP `apply_schematic_ops` accept **library ops** in the same list (`server/library-ops.js`:
+  `create_template`, `update_template`, `create_connector`, `create_cable_kind`, `set_picture`); they are previewed on a
+  copy of the library, written first, and a picture is `{attachment}` (bytes swapped in by the browser on accept),
+  `{url}` (fetched server-side) or `{dataBase64}`. The device library card lives on the Parts page.
 
 ## Working here
 

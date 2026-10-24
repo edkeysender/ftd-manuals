@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { useToast, useAuth } from '../App.jsx';
 import { HardwareForm, hwDetail } from '../components/HardwarePicker.jsx';
+import LibraryCard from '../components/LibraryCard.jsx';
 import { t, plural } from '../i18n.jsx';
 
 /**
@@ -176,6 +177,12 @@ export default function PartsList() {
           </tbody>
         </table>
       )}
+
+      {/* The device library — connector and device templates the schematics draw with — is the other
+          half of the parts catalog, so it lives here with the parts, not under Settings. */}
+      <div style={{ marginTop: 28 }}>
+        <LibraryCard />
+      </div>
     </div>
   );
 }

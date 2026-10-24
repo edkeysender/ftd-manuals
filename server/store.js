@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { GitRepo } from './git.js';
+import { slugify } from './store-utils.js';
 import {
   blankContent,
   generatedSections,
@@ -47,11 +48,7 @@ export async function initStore() {
   warmCache();
 }
 
-export const slugify = (name) =>
-  String(name)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+export { slugify };
 
 const now = () => new Date().toISOString();
 
@@ -64,12 +61,12 @@ const parseJson = (text) => {
   }
 };
 
-async function readJson(ref, file) {
+export async function readJson(ref, file) {
   return parseJson(await repo.show(ref, file));
 }
 
 /** Read many JSON files in one git process. Returns Map<"ref:file", object|null>. */
-async function readJsonMany(requests) {
+export async function readJsonMany(requests) {
   const blobs = await repo.showMany(requests);
   const out = new Map();
   for (const [key, buf] of blobs) out.set(key, buf ? parseJson(buf.toString('utf8')) : null);
@@ -164,7 +161,7 @@ function invalidateCache() {
 }
 
 /** Run a mutation inside the repo lock, drop caches afterwards and re-warm them in the background. */
-async function mutate(fn) {
+export async function mutate(fn) {
   try {
     return await repo.lock(fn);
   } finally {
@@ -1167,7 +1164,7 @@ export async function getDoc(slug, key, { lang = DEFAULT_LANG } = {}) {
     lang,
     languages: languageStatus(doc, contentHash(enContent)),
     content,
-    generated: generatedSections(entry.module, doc, lang, { relatedHardware: hardware }),
+    generated: generatedSections(entry.module, doc, lang, { relatedHardware: hardware, schematic: await schematicFor({ module: entry.module, manual: doc.manual, lang }) }),
     relatedHardware: hardware,
     checklist,
     // the main page as the author wrote it, or null while it is the default — and a translation
@@ -2624,6 +2621,18 @@ export async function linkReleaseToDoc(slug, docKeyOrVersion, swName, swVersion)
 
 const AI_GUIDELINES_FILE = 'settings/ai-guidelines.md';
 
+/* ------------------------------------------------------------------ */
+/* Schematics hook — schematics-store.js registers how a module's       */
+/* released wiring is rendered; the store never imports that module.   */
+/* ------------------------------------------------------------------ */
+let schematicProvider = null;
+/** { forManual({module, manual, lang}), installationChapter(manualRecord, lang) } — set by schematics-store.js */
+export function setSchematicProvider(p) {
+  schematicProvider = p;
+}
+const schematicFor = (args) => (schematicProvider ? schematicProvider.forManual(args) : Promise.resolve(null));
+const installationChapter = (manual, lang) => (schematicProvider ? schematicProvider.installationChapter(manual, lang) : Promise.resolve(null));
+
 export async function getAiGuidelines() {
   return (await repo.show('main', AI_GUIDELINES_FILE)) || '';
 }
@@ -2717,7 +2726,7 @@ function assemblyTypeOf(id) {
   return t;
 }
 
-export async function createManual({ name, code, group, modules, manual: type, device, serialNumber, operator }) {
+export async function createManual({ name, code, group, modules, manual: type, device, serialNumber, operator, installation }) {
   const slug = slugify(name);
   if (!slug) throw new Error('Manual name is required');
   if (await getManual(slug)) throw new Error(`A manual with slug "${slug}" already exists`);
@@ -2733,6 +2742,8 @@ export async function createManual({ name, code, group, modules, manual: type, d
     device: String(device || '').trim() || null,
     serialNumber: String(serialNumber || '').trim() || null,
     operator: String(operator || '').trim() || null,
+    // the installation whose wiring this manual prints and whose device / serial / operator its cover names
+    installation: String(installation || '').trim() || null,
     createdAt: ts,
     updatedAt: ts,
   };
@@ -2754,6 +2765,7 @@ export async function updateManual(slug, patch) {
   if (patch.manual !== undefined) manual.manual = assemblyTypeOf(patch.manual).id;
   if (patch.modules !== undefined) manual.modules = patch.modules;
   for (const k of ['device', 'serialNumber', 'operator']) if (patch[k] !== undefined) manual[k] = String(patch[k] || '').trim() || null;
+  if (patch.installation !== undefined) manual.installation = String(patch.installation || '').trim() || null;
   manual.updatedAt = now();
   await mutate(async () => {
     await repo.checkout('main');
@@ -2771,7 +2783,10 @@ export async function updateManual(slug, patch) {
 export async function deleteModule(slug) {
   const entry = await moduleOf(slug);
   if (!entry) throw new Error(`Module "${slug}" not found`);
-  const branches = [...new Set(entry.docs.map((d) => d.branch).filter(Boolean))];
+  // its doc drafts, and its schematic draft (draft/<slug>-schematic-a1.0) — a branch left behind carries
+  // a copy of the module folder and would bring the module back on the next listing
+  const schematicBranches = (await repo.branches()).filter((b) => b.startsWith(`draft/${slug}-schematic-`));
+  const branches = [...new Set([...entry.docs.map((d) => d.branch).filter(Boolean), ...schematicBranches])];
   const onMain = !!(await readJson('main', moduleFile(slug)));
   const inManuals = (await listManuals()).filter((m) => (m.modules || []).includes(slug));
   await mutate(async () => {
@@ -2922,6 +2937,9 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   if (!manual) return null;
   const type = manualTypeOf(manual.manual).id;
   manual.manual = type;
+  // A manual that belongs to an installation names that installation's device, serial and operator.
+  const instInfo = await installationChapter(manual, lang);
+  if (instInfo?.record) Object.assign(manual, { device: instInfo.record.device, serialNumber: instInfo.record.serialNumber, operator: instInfo.record.operator });
   const swType = { customer: 'software-customer', technician: 'software-technician' }[type] || null;
   const { modules, softwareOwners } = await collectAll();
   const chapters = [];
@@ -2942,6 +2960,7 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       generated: generatedSections(entry.module, doc, lang, {
         assembled: true,
         relatedHardware: await relatedHardware(entry.module),
+        schematic: await schematicFor({ module: entry.module, manual: doc.manual, lang }),
       }),
       content,
       checklist,
@@ -2988,6 +3007,7 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
       );
     }
   }
+  if (instInfo?.chapter) chapters.push(instInfo.chapter);
   // A picture whose file is no longer in the owner's assets leaves a hole in the printed manual and
   // nothing else says so — a software renamed before the console moved picture URLs with it left
   // exactly that behind. Report them with the chapter they sit in.
@@ -3006,7 +3026,12 @@ export async function compileManual(slug, { lang = DEFAULT_LANG } = {}) {
   }
   // A cross-reference to a module this manual does not carry prints as plain words; the console says so.
   const missingRefs = missingCrossRefs(chapters);
-  return { manual, chapters, lang, missingAssets, missingRefs, state: manualState(manual, chapters, missingAssets) };
+  const state = manualState(manual, chapters, missingAssets);
+  if (instInfo?.blocker) state.blockers = [...(state.blockers || []), instInfo.blocker.reason];
+  return {
+    manual, chapters, lang, missingAssets, missingRefs, state,
+    installation: instInfo?.record ? { slug: instInfo.record.slug, name: instInfo.record.name, version: instInfo.state?.version || null, revision: instInfo.state?.revision || null, released: !!instInfo.chapter } : null,
+  };
 }
 
 /**
@@ -3038,7 +3063,7 @@ export async function compileDocPreview(ref, key, { lang = DEFAULT_LANG } = {}) 
     module,
     doc,
     mainPage,
-    generated: generatedSections(module, doc, lang, { relatedHardware: await relatedHardware(module) }),
+    generated: generatedSections(module, doc, lang, { relatedHardware: await relatedHardware(module), schematic: await schematicFor({ module, manual: doc.manual, lang }) }),
     content,
     isDraft: doc.status !== 'released' || !!doc.hotfix,
     langFallback,

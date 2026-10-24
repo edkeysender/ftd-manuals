@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import * as store from './store.js';
 import * as ai from './ai.js';
+import * as secrets from './secrets.js';
 import * as illustrate from './illustrate.js';
 import {
   blankContent,
@@ -30,6 +31,8 @@ import { templateChecklist, checklistBodyHtml, fatProtocolBodyHtml, checklistExp
 import * as auth from './auth.js';
 import * as presence from './presence.js';
 import * as oauth from './oauth.js';
+import { registerSchematicRoutes } from './schematic-routes.js';
+import './schematics-store.js'; // registers the manual build's schematic provider
 
 const PORT = process.env.PORT || 5179;
 const app = express();
@@ -780,6 +783,9 @@ app.post('/api/ai/chat', wrap(async (req, res) => {
   res.json(result);
 }));
 
+/* ---------- schematics, installations, device library ---------- */
+registerSchematicRoutes(app, { wrap, auth });
+
 /* ---------- manuals ---------- */
 app.get('/api/manuals', wrap(async (req, res) => {
   const manuals = await store.listManuals();
@@ -996,10 +1002,24 @@ app.get('/api/manuals/:slug/fat.pdf', wrap(async (req, res) => {
 app.get('/api/settings/ai', wrap(async (req, res) => {
   res.json({
     guidelines: await store.getAiGuidelines(),
-    model: process.env.OPENAI_MODEL || 'gpt-5',
-    reasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'low',
+    provider: ai.providerOf(),
+    model: ai.aiModel(),
+    reasoningEffort: ai.providerOf() === 'anthropic' ? process.env.ANTHROPIC_EFFORT || 'medium' : process.env.OPENAI_REASONING_EFFORT || 'low',
     available: ai.aiAvailable(),
+    imagesAvailable: ai.openaiAvailable(),
+    keys: secrets.maskedKeys(),
   });
+}));
+
+// API keys entered in the browser: stored in <data>/secrets.json (outside the document repo, never
+// committed), admin only, and never read back — the GET above shows only whether one is set and its tail.
+app.put('/api/settings/ai-keys', auth.requireAdmin, wrap(async (req, res) => {
+  const body = req.body || {};
+  const patch = {};
+  if ('anthropic' in body) patch.ANTHROPIC_API_KEY = body.anthropic;
+  if ('openai' in body) patch.OPENAI_API_KEY = body.openai;
+  const keys = await secrets.setSecrets(patch);
+  res.json({ keys, provider: ai.providerOf(), model: ai.aiModel(), available: ai.aiAvailable(), imagesAvailable: ai.openaiAvailable() });
 }));
 
 app.get('/api/settings/illustration-style', wrap(async (req, res) => {
@@ -1122,5 +1142,6 @@ await inbox.ensureInbox();
 await auth.initAuth();
 app.listen(PORT, () => {
   console.log(`FTD Documentation Console API on http://localhost:${PORT}`);
-  if (!ai.aiAvailable()) console.log('Note: OPENAI_API_KEY not set — AI assistant disabled.');
+  if (!ai.aiAvailable()) console.log('Note: no ANTHROPIC_API_KEY or OPENAI_API_KEY — AI assistant disabled.');
+  else console.log(`AI: ${ai.providerOf()} · ${ai.aiModel()}${ai.openaiAvailable() ? '' : ' · image generation and dictation off (OPENAI_API_KEY not set)'}`);
 });

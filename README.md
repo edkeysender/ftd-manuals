@@ -14,6 +14,18 @@ a branch, a release is a merge to `main`. Nobody edits files by hand.
 
 ## What it does
 
+**Schematics and installations.** A module also carries its wiring as data: devices from a shared device
+library with typed ports, cables between them, and the connectors that leave the module. An **installation**
+is one simulator delivery (racks, instructor station, cockpit) that places released modules and free devices
+such as switches or power strips and cables them together. Both are built by telling the chat what is
+connected to what, or over MCP, validated as they change (one cable per port, compatible connectors) and
+released with their own revision record. A released module schematic prints in its technician manual as
+a *Connections* block with a port list and cable schedule; a released installation prints as an
+*Installation wiring* chapter of the assembled manual, whose cover takes the device, serial number and
+operator from it. The interactive drag-and-connect canvas is the next phase; today the web shows the
+server-rendered drawing.
+
+
 - **Modules, software and hardware** — a module list with the hardware catalog it is built from and the
   software it runs; a Software page with release feeds and which manuals cover which release.
 - **Manuals per audience** — up to four doc streams per module (`customer`, `technician`,
@@ -70,7 +82,8 @@ FTD_ADMIN_EMAIL=you@ftd.aero
 FTD_ADMIN_PASSWORD=choose-a-strong-one
 
 # optional
-OPENAI_API_KEY=sk-…                 # AI features
+ANTHROPIC_API_KEY=sk-ant-…          # AI assistant (Claude) — or paste it in Settings → AI agent
+OPENAI_API_KEY=sk-…                 # image generation + dictation (and the assistant when no Anthropic key)
 PORT=5179                           # default 5179
 FTD_PUBLIC_URL=https://…            # base of links handed to users (upload links, MCP)
 FTD_SECURE_COOKIE=1                 # mark the session cookie Secure (when served over HTTPS)
@@ -95,7 +108,10 @@ All settings:
 | `FTD_URL_CREDENTIALS` | — | `host=basic:user:pass;host=bearer:TOKEN` |
 | `FTD_CHROME` | auto | browser used for PDF |
 | `MCP_TOKEN` | — | master bearer token for `/mcp` |
-| `OPENAI_API_KEY` | — | enables AI |
+| `ANTHROPIC_API_KEY` | — | the assistant runs on Claude (text + vision); keys can also be saved in Settings → AI agent (`data/secrets.json`, admin only) |
+| `AI_PROVIDER` | auto | `anthropic` / `openai` when both keys exist |
+| `ANTHROPIC_MODEL` / `ANTHROPIC_EFFORT` | `claude-opus-5-5` / `medium` | |
+| `OPENAI_API_KEY` | — | illustrations and dictation; the assistant too when it is the only key |
 | `OPENAI_MODEL` | `gpt-5` | chat / editing model |
 | `OPENAI_REASONING_EFFORT` | `low` | |
 | `OPENAI_IMAGE_MODEL` / `OPENAI_IMAGE_QUALITY` | `gpt-image-2` / `medium` | illustrations |

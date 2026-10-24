@@ -261,8 +261,10 @@ export class GitRepo {
     }
   }
 
-  async merge(branch, message) {
-    await this.raw(['merge', '--no-ff', '-m', message, branch]);
+  /** `ours: true` records the branch as a parent but keeps main's tree — for a caller that writes the
+   *  final content right after, so a file both sides touched can never conflict. */
+  async merge(branch, message, { ours = false } = {}) {
+    await this.raw(['merge', '--no-ff', ...(ours ? ['-s', 'ours'] : []), '-m', message, branch]);
   }
 
   async deleteBranch(branch) {
