@@ -264,6 +264,8 @@ test('a protective device is drawn as its IEC 60617 symbol: poles between the te
   assert.match(f10, /sch-release-thermal/);
   assert.match(f10, /sch-release-magnetic/);
   assert.match(f10, /sch-contact-x/, 'the circuit-breaker cross at the fixed contact');
+  const cross = f10.match(/<g class="sch-contact-x"><line x1="[-\d.]+" y1="([-\d.]+)"/);
+  assert.ok(cross && Number(cross[1]) < 42, 'the cross is at the free end of the fixed contact (upper), not at the pivot');
   // the information stack: tag on its own line, the function text, the rating, maker, part number, type, location
   assert.match(f10, /sch-tag"[^>]*>-F10\.VDS</);
   assert.match(f10, />\(VISUAL DISPLAY SYSTEM\) B10</);
@@ -305,4 +307,35 @@ test('a protective device takes its supply at the top and feeds out at the botto
   assert.ok(into.x > f10.x && into.x < f10.x + f10.w);
   assert.equal(into.x, outOf.x, 'in and out of one pole share its x');
   assert.ok(f10.h >= 70, 'tall enough for the symbol and the information stack');
+});
+
+test('an indicator (lamp) is drawn as its lamps, one per pole, on a common return: supply at the top, the return at the bottom under the middle lamp', async () => {
+  const lib = powerLib();
+  lib.devices.push({ id: 'uva', name: 'Voltage indicator UVA', category: 'display', manufacturer: 'Eaton', model: '167285', heightU: 0, sizeMm: null, symbol: 'lamp', poles: 3, rating: '', ports: [{ id: 'in', label: 'L1 L2 L3', connector: 'term', direction: 'in', side: 'left' }, { id: 'n', label: 'N', connector: 'term', direction: 'bidir', side: 'left' }], hardwareId: null, notes: '', panels: {} });
+  const c = { ...ctx(), library: lib };
+  const s = applyOps(powerFixture(c), [
+    { op: 'add_device', id: 'h1', template: 'uva', label: '-H1.MAIN', location: 'ebi' },
+    { op: 'connect', id: 'w3', from: { device: 'f1', port: 'out' }, to: { device: 'h1', port: 'in' }, label: 'W3' },
+    { op: 'connect', id: 'w4', from: { device: 'h1', port: 'n' }, to: { device: 'x1', port: 't2' }, label: 'W4' },
+  ], c).state;
+  const svg = await renderSvg(s, c);
+  const h1 = svg.match(/<g class="sch-device sch-prot sch-prot-lamp" data-id="h1"[\s\S]*?(?=<g class="sch-(?:device|block|cable|legend|external)|<\/svg>)/)?.[0] || '';
+  assert.ok(h1, 'drawn upright');
+  assert.equal((h1.match(/class="sch-lamp"/g) || []).length, 3, 'three lamps');
+  assert.match(h1, /sch-common/, 'the common return bar');
+  assert.match(h1, /sch-junction/, 'the junction dot where the return leaves the bar');
+  assert.doesNotMatch(h1, /sch-coupling|sch-release|sch-contact-x/);
+  // one terminal group over three poles: its words spread over the poles, L1 L2 L3
+  assert.match(h1, /data-port="in"[\s\S]*?>L1<[\s\S]*?>L2<[\s\S]*?>L3</);
+  assert.doesNotMatch(h1, />L1 L2 L3</);
+  assert.match(h1, /data-port="n"[\s\S]*?>N</);
+  assert.match(svg, /sch-legend-lamp[\s\S]*?>Indicator lamp</);
+  assert.match(await renderSvg(s, c, { lang: 'pl' }), /Lampka sygnalizacyjna/);
+  const l = await layoutSchematic(s, c);
+  const box = l.nodes.h1;
+  const into = l.edges.w3.at(-1);
+  const ret = l.edges.w4[0];
+  assert.equal(into.y, box.y, 'supply at the top edge');
+  assert.equal(ret.y, box.y + box.h, 'return at the bottom edge');
+  assert.ok(ret.x > into.x, 'the return leaves under the middle lamp, right of the first');
 });

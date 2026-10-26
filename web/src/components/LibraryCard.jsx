@@ -6,8 +6,8 @@ import { panelOrder, panelName } from './SchematicViewer.jsx';
 
 const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-strip', 'headset', 'display', 'panel', 'other'];
 // how the drawing shows the device: the general rectangle, or an IEC 60617 protective-device symbol (server/library.js SYMBOLS)
-const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display', 'mcb', 'switch-disconnector', 'fuse'];
-const PROTECTIVE = ['mcb', 'switch-disconnector', 'fuse'];
+const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display', 'mcb', 'switch-disconnector', 'fuse', 'lamp'];
+const PROTECTIVE = ['mcb', 'switch-disconnector', 'fuse', 'lamp'];
 const DIRECTIONS = ['in', 'out', 'bidir'];
 const SIDES = ['left', 'right', 'top', 'bottom'];
 
@@ -62,7 +62,7 @@ export default function LibraryCard() {
 }
 
 /** What the symbol choices are called; the pictorial ones keep their ids. */
-const SYMBOL_NAMES = { box: 'General device (rectangle)', mcb: 'Circuit breaker (IEC 60617)', 'switch-disconnector': 'Switch disconnector (IEC 60617)', fuse: 'Fuse (IEC 60617)' };
+const SYMBOL_NAMES = { box: 'General device (rectangle)', mcb: 'Circuit breaker (IEC 60617)', 'switch-disconnector': 'Switch disconnector (IEC 60617)', fuse: 'Fuse (IEC 60617)', lamp: 'Indicator lamp (IEC 60617)' };
 
 function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
   const toast = useToast();

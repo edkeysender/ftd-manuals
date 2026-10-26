@@ -268,10 +268,11 @@ The functional spec lives in this file's history and in the Modules spec provide
   conductor count on the line and `screened` the screen oval (`contactSymbol`/`cableMarks` in `schematic-render.js`),
   and a legend under the drawing lists the symbols used and names the standard (EN/PL `WORDS`). The general-object
   rectangle with port stubs is the standard's device symbol — except a **protective device**: a template whose
-  `symbol` is `mcb`, `switch-disconnector` or `fuse` (`PROTECTIVE_SYMBOLS` in `library.js`, with `poles` 1–4 and a
+  `symbol` is `mcb`, `switch-disconnector`, `fuse` or `lamp` (`PROTECTIVE_SYMBOLS` in `library.js`, with `poles` 1–4 and a
   `rating` such as "B10") is drawn upright as that IEC 60617 symbol (`poleSymbol` / `protectiveSvg` in
   `schematic-render.js`): supply ports at the top, load ports at the bottom whatever side the template declares,
-  the breaker's cross and releases, the disconnector's isolating bar, a dashed coupling across several poles, and an
+  the breaker's cross and releases, the disconnector's isolating bar, a dashed coupling across several poles, a lamp
+  per pole on a common return for an indicator, and an
   information stack beside it (tag = the label up to its first space, the rest of the label as function text, rating,
   maker, part number, type, location). Nothing else is pictorial.
 

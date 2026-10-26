@@ -8,14 +8,15 @@
 import { slugify } from './store-utils.js';
 
 export const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-strip', 'headset', 'display', 'panel', 'other'];
-export const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display', 'mcb', 'switch-disconnector', 'fuse'];
+export const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display', 'mcb', 'switch-disconnector', 'fuse', 'lamp'];
 /**
- * Symbols drawn as a protective device after PN-EN 60617 / IEC 60617 — one vertical pole per `poles`
- * (contact between the terminals, mechanically coupled when several), not the general-object rectangle:
- * `mcb` circuit-breaker (07-13-05) with its thermal and electromagnetic releases, `switch-disconnector`
- * (07-13-08), `fuse` (07-21-01). Such a template carries a `rating` ("B10", "40 A") printed beside it.
+ * Symbols drawn upright after PN-EN 60617 / IEC 60617 — one vertical pole per `poles`, supply at the top,
+ * load at the bottom — instead of the general-object rectangle: the protective devices `mcb`
+ * circuit-breaker (07-13-05) with its thermal and electromagnetic releases, `switch-disconnector` (07-13-08)
+ * and `fuse` (07-21-01), coupled across poles, and the `lamp` indicator (08-10-01), one lamp per pole on a
+ * common return. Such a template carries a `rating` ("B10", "40 A") printed beside it.
  */
-export const PROTECTIVE_SYMBOLS = ['mcb', 'switch-disconnector', 'fuse'];
+export const PROTECTIVE_SYMBOLS = ['mcb', 'switch-disconnector', 'fuse', 'lamp'];
 export const isProtectiveSymbol = (symbol) => PROTECTIVE_SYMBOLS.includes(symbol);
 export const PORT_DIRECTIONS = ['in', 'out', 'bidir'];
 export const PORT_SIDES = ['left', 'right', 'top', 'bottom'];

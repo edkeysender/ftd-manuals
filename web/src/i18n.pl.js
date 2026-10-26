@@ -1139,7 +1139,7 @@ export const PL = {
   "External port {label} = {dev}.{port}": "Port zewnętrzny {label} = {dev}.{port}",
   "Hardware catalog item": "Pozycja katalogu sprzętu",
   "Height (U)": "Wysokość (U)",
-  "Drawing symbol": "Symbol na rysunku", "Poles": "Bieguny", "Rating": "Prąd znamionowy", "e.g. B10, 40 A": "np. B10, 40 A", "General device (rectangle)": "Urządzenie ogólne (prostokąt)", "Circuit breaker (IEC 60617)": "Wyłącznik nadprądowy (IEC 60617)", "Switch disconnector (IEC 60617)": "Rozłącznik izolacyjny (IEC 60617)", "Fuse (IEC 60617)": "Bezpiecznik (IEC 60617)",
+  "Drawing symbol": "Symbol na rysunku", "Poles": "Bieguny", "Rating": "Prąd znamionowy", "e.g. B10, 40 A": "np. B10, 40 A", "General device (rectangle)": "Urządzenie ogólne (prostokąt)", "Circuit breaker (IEC 60617)": "Wyłącznik nadprądowy (IEC 60617)", "Switch disconnector (IEC 60617)": "Rozłącznik izolacyjny (IEC 60617)", "Fuse (IEC 60617)": "Bezpiecznik (IEC 60617)", "Indicator lamp (IEC 60617)": "Lampka sygnalizacyjna (IEC 60617)",
   "Hotfix started": "Rozpoczęto poprawkę",
   "Id": "Id",
   "It starts with three locations: Rack 1, Instructor station, Cockpit. Add more in the chat.": "Zaczyna się od trzech lokalizacji: Rack 1, Stanowisko instruktora, Kokpit. Kolejne dodasz w czacie.",

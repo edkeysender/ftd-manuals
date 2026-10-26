@@ -15,6 +15,7 @@ const HEAD_H = 22;
 const POLE_PITCH = 16; // between the poles of a protective device
 const PROT_MIN_H = 84; // a pole with its symbol and the information stack beside it
 const INFO_PITCH = 9;
+const LAMP_BAR = 14; // the lamps' common return bar sits this far above the bottom edge
 const STUB = 12;
 const FONT = 'Verdana, Geneva, sans-serif';
 
@@ -24,11 +25,11 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 const WORDS = {
   en: {
     cable: 'Cable', kind: 'Kind', type: 'Type', colour: 'Colour', from: 'From', port: 'Port', to: 'To', length: 'Length', notes: 'Notes', connector: 'Connector', inside: 'Inside', externalPorts: 'External ports', m: 'm', block: 'module',
-    symSocket: 'Socket (female)', symPlug: 'Plug (male)', symMate: 'Plug and socket', symTerminal: 'Terminal', symPe: 'Protective earth', symCores: 'n conductors', symScreen: 'Screened', symMcb: 'Circuit breaker', symSwitchDisc: 'Switch disconnector', symFuse: 'Fuse', symbols: 'Graphical symbols per PN-EN 60617 (IEC 60617)',
+    symSocket: 'Socket (female)', symPlug: 'Plug (male)', symMate: 'Plug and socket', symTerminal: 'Terminal', symPe: 'Protective earth', symCores: 'n conductors', symScreen: 'Screened', symMcb: 'Circuit breaker', symSwitchDisc: 'Switch disconnector', symFuse: 'Fuse', symLamp: 'Indicator lamp', symbols: 'Graphical symbols per PN-EN 60617 (IEC 60617)',
   },
   pl: {
     cable: 'Kabel', kind: 'Rodzaj', type: 'Typ', colour: 'Kolor', from: 'Z', port: 'Port', to: 'Do', length: 'Długość', notes: 'Uwagi', connector: 'Złącze', inside: 'Wewnątrz', externalPorts: 'Porty zewnętrzne', m: 'm', block: 'moduł',
-    symSocket: 'Gniazdo (żeńskie)', symPlug: 'Wtyk (męski)', symMate: 'Wtyk i gniazdo', symTerminal: 'Zacisk', symPe: 'Uziemienie ochronne', symCores: 'n żył', symScreen: 'Ekranowany', symMcb: 'Wyłącznik nadprądowy', symSwitchDisc: 'Rozłącznik izolacyjny', symFuse: 'Bezpiecznik', symbols: 'Symbole graficzne wg PN-EN 60617 (IEC 60617)',
+    symSocket: 'Gniazdo (żeńskie)', symPlug: 'Wtyk (męski)', symMate: 'Wtyk i gniazdo', symTerminal: 'Zacisk', symPe: 'Uziemienie ochronne', symCores: 'n żył', symScreen: 'Ekranowany', symMcb: 'Wyłącznik nadprądowy', symSwitchDisc: 'Rozłącznik izolacyjny', symFuse: 'Bezpiecznik', symLamp: 'Lampka sygnalizacyjna', symbols: 'Symbole graficzne wg PN-EN 60617 (IEC 60617)',
   },
 };
 const words = (lang) => WORDS[lang] || WORDS.en;
@@ -99,8 +100,10 @@ function protectiveSize(by) {
 }
 
 /** The x of the i-th port on one edge of a protective device: one per pole, extra wires beside the last pole. */
-function polePortX(prot, i) {
+function polePortX(prot, i, side = 'top') {
   const poles = Math.max(prot.poles, 1);
+  // a lamp's return leaves the common bar under the middle lamp
+  if (side === 'bottom' && prot.symbol === 'lamp') return prot.x0 + Math.floor((poles - 1) / 2) * POLE_PITCH + i * 6;
   return i < poles ? prot.x0 + i * POLE_PITCH : prot.x0 + (poles - 1) * POLE_PITCH + (i - poles + 1) * 6;
 }
 
@@ -110,7 +113,7 @@ function portPoint(by, size, portId) {
     const t = by.top.findIndex((p) => p.id === portId);
     if (t >= 0) return { x: polePortX(by.prot, t), y: 0, side: 'top' };
     const b = by.bottom.findIndex((p) => p.id === portId);
-    if (b >= 0) return { x: polePortX(by.prot, b), y: size.h, side: 'bottom' };
+    if (b >= 0) return { x: polePortX(by.prot, b, 'bottom'), y: size.h, side: 'bottom' };
   }
   for (const side of ['left', 'right', 'top', 'bottom']) {
     const i = by[side].findIndex((p) => p.id === portId);
@@ -289,9 +292,16 @@ export function poleSymbol(symbol, x, h, color = '#000') {
   if (symbol === 'fuse') {
     return `<g class="sch-pole">${L(x, 0, x, h)}<rect class="sch-fuse" x="${x - 4}" y="${c - 12}" width="8" height="24" fill="#fff" stroke="${color}" stroke-width="1.2"/></g>`;
   }
+  if (symbol === 'lamp') {
+    // the signal lamp: a circle with the cross through it; the pole ends on the common bar at LAMP_BAR above the bottom edge
+    const r = 6;
+    const k = r * Math.SQRT1_2;
+    return `<g class="sch-pole">${L(x, 0, x, c - r)}${L(x, c + r, x, h - LAMP_BAR)}<g class="sch-lamp"><circle cx="${x}" cy="${c}" r="${r}" fill="#fff" stroke="${color}" stroke-width="1.2"/>${L(x - k, c - k, x + k, c + k)}${L(x - k, c + k, x + k, c - k)}</g></g>`;
+  }
   const parts = [L(x, 0, x, c - 12), L(x, c + 10, x, h), L(x, c + 10, x - 8, c - 16, 'sch-blade')];
   if (symbol === 'mcb') {
-    parts.push(`<g class="sch-contact-x">${L(x - 3, c + 7, x + 3, c + 13)}${L(x - 3, c + 13, x + 3, c + 7)}</g>`);
+    // 07-13-05: the cross marks the end of the fixed contact — the upper line, where the blade meets it when closed
+    parts.push(`<g class="sch-contact-x">${L(x - 3, c - 15, x + 3, c - 9)}${L(x - 3, c - 9, x + 3, c - 15)}</g>`);
     parts.push(`<path class="sch-release-thermal" d="M${x - 11},${c - 13} h-6 v9 h6" fill="none" stroke="${color}" stroke-width="1.1"/>`);
     parts.push(`<g class="sch-release-magnetic">${L(x - 11, c + 1, x - 22, c + 8)}<polygon points="${x - 23},${c + 8.6} ${x - 17.5},${c + 8.2} ${x - 19.5},${c + 3.8}" fill="${color}"/></g>`);
   } else if (symbol === 'switch-disconnector') {
@@ -308,6 +318,7 @@ function legendSvg(used, y, W) {
   if (used.mcb) items.push({ id: 'mcb', w: 86, draw: pole('mcb'), text: W.symMcb });
   if (used['switch-disconnector']) items.push({ id: 'switch-disconnector', w: 104, draw: pole('switch-disconnector'), text: W.symSwitchDisc });
   if (used.fuse) items.push({ id: 'fuse', w: 56, draw: pole('fuse'), text: W.symFuse });
+  if (used.lamp) items.push({ id: 'lamp', w: 80, draw: pole('lamp'), text: W.symLamp });
   const line = (x) => `<line x1="${x}" y1="${y + 10}" x2="${x + 14}" y2="${y + 10}" stroke="#000" stroke-width="1.2"/>`;
   if (used.socket) items.push({ id: 'socket', w: 92, draw: (x) => `${line(x)}${contactSymbol('socket', { x: x + 14, y: y + 10 }, 'right', '#000')}`, text: W.symSocket });
   if (used.plug) items.push({ id: 'plug', w: 80, draw: (x) => `${line(x)}${contactSymbol('plug', { x: x + 14, y: y + 10 }, 'right', '#000')}`, text: W.symPlug });
@@ -333,7 +344,7 @@ export async function renderSvg(state, ctx, { lang = 'en', title = '' } = {}) {
   const l = await layoutSchematic(state, ctx);
   const nodes = nodesOf(state);
   const parts = [];
-  const used = { socket: false, plug: false, mate: false, terminal: false, pe: false, cores: false, screen: false, mcb: false, 'switch-disconnector': false, fuse: false };
+  const used = { socket: false, plug: false, mate: false, terminal: false, pe: false, cores: false, screen: false, mcb: false, 'switch-disconnector': false, fuse: false, lamp: false };
   const endKey = (e) => `${endNode(e)}:${e.port}`;
   const connected = new Set(state.cables.flatMap((c) => [endKey(c.from), endKey(c.to)]));
   for (const loc of state.locations) {
@@ -416,7 +427,15 @@ function protectiveSvg(n, box, by, ctx, connected, used) {
   const sym = Array.from({ length: poles }, (_, k) => `<g transform="translate(${poleX(k)},${box.y})">${poleSymbol(prot.symbol, 0, box.h)}</g>`);
   // several poles are worked together: the mechanical coupling, a dashed line through the blades
   const c = box.y + box.h / 2;
-  const coupling = poles > 1 && prot.symbol !== 'fuse' ? `<line class="sch-coupling" x1="${poleX(0) - 5}" y1="${c - 4}" x2="${poleX(poles - 1) - 5}" y2="${c - 4}" stroke="#000" stroke-width="1" stroke-dasharray="3 2"/>` : '';
+  let coupling = '';
+  if (prot.symbol === 'lamp') {
+    // the lamps share a return: the common bar, and the return lead leaving it under the middle lamp with a junction dot
+    const yb = box.y + box.h - LAMP_BAR;
+    const xr = box.x + polePortX(prot, 0, 'bottom');
+    coupling = `<line class="sch-common" x1="${poleX(0)}" y1="${yb}" x2="${poleX(poles - 1)}" y2="${yb}" stroke="#000" stroke-width="1.2"/><line x1="${xr}" y1="${yb}" x2="${xr}" y2="${box.y + box.h}" stroke="#000" stroke-width="1.2"/>${poles > 1 ? `<circle class="sch-junction" cx="${xr}" cy="${yb}" r="2.2" fill="#000"/>` : ''}`;
+  } else if (poles > 1 && prot.symbol !== 'fuse') {
+    coupling = `<line class="sch-coupling" x1="${poleX(0) - 5}" y1="${c - 4}" x2="${poleX(poles - 1) - 5}" y2="${c - 4}" stroke="#000" stroke-width="1" stroke-dasharray="3 2"/>`;
+  }
   const ports = ['top', 'bottom'].flatMap((side) =>
     by[side].map((p, i) => {
       const pt = portPoint(by, size, p.id);
@@ -430,7 +449,13 @@ function protectiveSvg(n, box, by, ctx, connected, used) {
       const back = symbol === 'socket' ? 3 : symbol === 'terminal' ? 2 : 0;
       const ye = y2 - (side === 'top' ? -back : back);
       // the terminal number sits beside the first wire of a pole; a second wire on the same terminal keeps its name in the tooltip
-      const text = i < poles ? `<text x="${box.x + pt.x + 4}" y="${box.y + (side === 'top' ? 9 : box.h - 3)}" font-size="${PORT_FONT}" text-anchor="start">${esc(shortPortLabel(p.label))}</text>` : '';
+      const ty = box.y + (side === 'top' ? 9 : box.h - 3);
+      const words = String(p.label || '').trim().split(/\s+/);
+      // one terminal group over several poles ("L1 L2 L3"): its words spread over the poles, one each
+      const spread = side === 'top' && by.top.length === 1 && poles > 1 && words.length === poles;
+      const text = spread
+        ? words.map((w, k) => `<text x="${poleX(k) + 3}" y="${ty}" font-size="${PORT_FONT}" text-anchor="start">${esc(w)}</text>`).join('')
+        : i < poles ? `<text x="${box.x + pt.x + 4}" y="${ty}" font-size="${PORT_FONT}" text-anchor="start">${esc(shortPortLabel(p.label))}</text>` : '';
       return `<g class="sch-port" data-port="${esc(p.id)}"><title>${esc(p.label)}</title><circle class="sch-port-hit" cx="${box.x + pt.x}" cy="${box.y + y2}" r="7" fill="transparent"/><line x1="${box.x + pt.x}" y1="${box.y + pt.y}" x2="${box.x + pt.x}" y2="${box.y + ye}" stroke="${col}" stroke-width="1.5"/>${contactSymbol(symbol, { x: box.x + pt.x, y: box.y + y2 }, side, col, { mated })}${text}</g>`;
     })
   );
