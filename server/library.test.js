@@ -103,3 +103,8 @@ test('normalizeTemplate keeps a protective device: its IEC 60617 symbol, pole co
   assert.throws(() => normalizeTemplate({ name: 'Bad', category: 'other', symbol: 'mcb', poles: 5 }), /poles/i);
   assert.throws(() => normalizeTemplate({ name: 'Bad', category: 'other', symbol: 'relay' }), /symbol/i);
 });
+
+test('the library files parts the way a parts manager groups them: protective devices, relays, terminals, supplies, indicators, distribution', () => {
+  for (const c of ['protective', 'relay', 'terminal', 'power-supply', 'indicator', 'distribution', 'cable']) assert.equal(normalizeTemplate({ name: 'X', category: c }).category, c, c);
+  assert.equal(normalizeTemplate({ name: 'MCB', category: 'protective' }).symbol, 'box', 'no symbol is guessed from the group — the template says which it draws as');
+});

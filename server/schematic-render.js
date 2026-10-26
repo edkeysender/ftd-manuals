@@ -264,7 +264,7 @@ function cableRun(pts) {
 }
 
 /** The marks a cable kind puts on its line: the oblique stroke with the conductor count, the screen oval. */
-function cableMarks(pts, kind, color) {
+export function cableMarks(pts, kind, color) {
   const run = cableRun(pts);
   if (!run || run.len < 24) return '';
   const out = [];

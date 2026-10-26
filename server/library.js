@@ -7,7 +7,8 @@
  */
 import { slugify } from './store-utils.js';
 
-export const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-strip', 'headset', 'display', 'panel', 'other'];
+// the product groups a parts manager files by: network, computing, audio, power, control-cabinet parts
+export const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-strip', 'headset', 'display', 'panel', 'protective', 'relay', 'terminal', 'power-supply', 'indicator', 'distribution', 'cable', 'other'];
 export const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display', 'mcb', 'switch-disconnector', 'fuse', 'lamp'];
 /**
  * Symbols drawn upright after PN-EN 60617 / IEC 60617 — one vertical pole per `poles`, supply at the top,

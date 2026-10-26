@@ -797,6 +797,12 @@ export const TOOLS = [
     annotations: { title: 'List device templates', ...RO },
   },
   {
+    name: 'list_symbols',
+    description: 'The symbol catalog the drawing is made of, after PN-EN 60617 (IEC 60617): id, reference in the standard, name (en/pl), kind (device / contact / cable / graphic), parameters a template sets (poles, rating), and which templates, connectors or cable kinds draw with it. A device template picks its drawing symbol by id (symbol on create/update_device_template).',
+    inputSchema: { type: 'object', properties: { lang: { type: 'string', enum: ['en', 'pl'] }, include_svg: { type: 'boolean', description: 'also return each symbol drawn as svg' } } },
+    annotations: { title: 'List symbols', ...RO },
+  },
+  {
     name: 'create_device_template',
     description: 'Add a device to the library. Ports: [{id?, label, connector, direction: in|out|bidir (default bidir), side: left|right|top|bottom}]. Connector ids come from list_device_templates {include_rules: true}. hardware_id links it to a hardware catalog item.',
     inputSchema: {
@@ -977,6 +983,11 @@ async function callTool(name, args) {
       return await sch.listInstallations();
     case 'create_installation':
       return await sch.createInstallation({ name: args.name, device: args.device, serialNumber: args.serial_number, operator: args.operator, locations: args.locations });
+    case 'list_symbols': {
+      const { symbolCatalog } = await import('./symbols.js');
+      const items = symbolCatalog(await sch.getLibrary(), args.lang === 'pl' ? 'pl' : 'en');
+      return args.include_svg ? items : items.map(({ svg, ...rest }) => rest);
+    }
     case 'list_device_templates': {
       const lib = await sch.getLibrary();
       const q = (args.query || '').toLowerCase().trim();
