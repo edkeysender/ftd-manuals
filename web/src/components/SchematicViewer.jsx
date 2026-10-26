@@ -62,6 +62,9 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', onL
   const step = (d) => { if (!walkList.length) return; const i = walkIndex < 0 ? (d > 0 ? 0 : walkList.length - 1) : (walkIndex + d + walkList.length) % walkList.length; go({ kind: walkList[i].kind, id: walkList[i].id }); };
 
   useEffect(() => { api.library().then(setLib).catch(() => {}); }, []);
+  // the symbol catalog: the device card shows the symbol a device is drawn with, live
+  const [symbols, setSymbols] = useState([]);
+  useEffect(() => { api.symbols(locale()).then((r) => setSymbols(r.symbols || [])).catch(() => {}); }, []);
   useEffect(() => {
     let alive = true;
     fetch(schematicSvgUrl(owner, { lang: locale(), v, location })).then((r) => r.text()).then((text) => {
@@ -322,7 +325,7 @@ export default function SchematicViewer({ owner, data, v = 0, location = '', onL
                 ))}
               </div>
             )}
-            {selected && <Details selected={selected} state={state} schedule={schedule} lib={lib} owner={owner} onGo={go} onClose={() => setSelected(null)} editable={editable} onConnect={(from) => setConnecting({ from })} onDisconnect={disconnect} onZoomPanel={setLightbox}
+            {selected && <Details selected={selected} state={state} schedule={schedule} lib={lib} symbols={symbols} owner={owner} onGo={go} onClose={() => setSelected(null)} editable={editable} onConnect={(from) => setConnecting({ from })} onDisconnect={disconnect} onZoomPanel={setLightbox}
               onEditCable={(c, patch) => applyOps([{ op: 'update_cable', id: c.id, ...patch }], t('Cable {name} updated', { name: c.label || c.id }))}
               onMoveU={(id, u, f = 'front', h = state.devices.find((d) => d.id === id)?.rack?.h || null) => applyOps([{ op: 'update_device', id, rack: u ? { u, face: f, ...(h ? { h } : {}) } : null }], u ? t('{name} moved to U{u} ({face})', { name: state.devices.find((d) => d.id === id)?.label || id, u, face: f === 'rear' ? t('rear') : t('front') }) : t('U position cleared'))} />}
           </aside>
@@ -523,7 +526,7 @@ function ConnectDialog({ lib, state, from, to, onClose, onConfirm }) {
 }
 
 /** What the selected thing is and what hangs on it. */
-function Details({ selected, state, schedule, lib, owner, onGo, onClose, editable = false, onConnect, onDisconnect, onMoveU, onZoomPanel, onEditCable }) {
+function Details({ selected, state, schedule, lib, symbols = [], owner, onGo, onClose, editable = false, onConnect, onDisconnect, onMoveU, onZoomPanel, onEditCable }) {
   const locName = (id) => state.locations.find((l) => l.id === id)?.label || id || '';
   const nameOf = (end) => (end.block ? state.blocks.find((b) => b.id === end.block)?.module || end.block : state.devices.find((d) => d.id === end.device)?.label || end.device);
   const row = (c) => schedule.find((s) => s.id === c.id) || {};
@@ -580,6 +583,7 @@ function Details({ selected, state, schedule, lib, owner, onGo, onClose, editabl
         {d.location ? ` · ${locName(d.location)}` : ''}{d.rack?.u ? ` · ${d.rack.u} U` : ''}
         {tpl?.sizeMm && <span title={t('Width × height × depth')}> · {['w', 'h', 'd'].map((k) => (tpl.sizeMm[k] ? tpl.sizeMm[k] : '?')).join(' × ')} mm</span>}
       </div>
+      {!isBlock && <DeviceProps d={d} tpl={tpl} state={state} owner={owner} symbols={symbols} />}
       {d.notes && <p className="small">{d.notes}</p>}
       {tpl?.notes && <p className="small muted">{tpl.notes}</p>}
       {editable && !isBlock && state.locations.find((l) => l.id === d.location)?.kind === 'rack' && (
@@ -636,5 +640,36 @@ function Details({ selected, state, schedule, lib, owner, onGo, onClose, editabl
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * What a schematic sheet says about a placed device, the way a parts-aware CAD shows it on double-click:
+ * visible ID (the tag), full ID (= installation + location - tag), terminal designations, technical
+ * characteristics, function text, mounting location, the article behind it, and the symbol it is drawn with.
+ */
+function DeviceProps({ d, tpl, state, owner, symbols }) {
+  const label = String(d.label || '');
+  const m = label.match(/^(\S+)\s+([\s\S]*)$/);
+  const tag = m ? m[1] : label;
+  const fn = m ? m[2] : '';
+  const loc = state.locations.find((l) => l.id === d.location);
+  const inst = String(owner || '').replace(/^inst:/, '').replace(/^sw:/, '');
+  const fullId = `=${inst}${loc ? `+${loc.id}` : ''}${tag.startsWith('-') ? tag : `-${tag}`}`;
+  const sym = tpl ? symbols.find((s) => s.id === (tpl.symbol || 'box')) || symbols.find((s) => s.aliases?.includes(tpl.symbol)) : null;
+  const rows = [
+    [t('Visible ID'), tag],
+    [t('Full ID'), <code>{fullId}</code>],
+    [t('Terminal designation'), tpl?.ports?.length ? tpl.ports.map((p) => p.label).join(' ¶ ') : ''],
+    [t('Technical characteristics'), tpl?.rating || ''],
+    [t('Function text'), fn],
+    [t('Mounting location'), `${loc ? loc.label : ''}${d.rack?.u ? ` · ${d.rack.u} U ${d.rack.face === 'rear' ? t('rear') : t('front')}` : ''}`],
+    [t('Article'), tpl ? [tpl.manufacturer, tpl.model, tpl.name].filter(Boolean).join(' · ') : d.template],
+    [t('Symbol'), sym ? <span className="sym-row"><span className="sym-live" dangerouslySetInnerHTML={{ __html: sym.svg }} />{sym.ref} · {sym.label}{tpl?.poles > 1 ? ` · ${tpl.poles} ${t('poles').toLowerCase()}` : ''}</span> : ''],
+  ];
+  return (
+    <table className="table sch-table sch-props"><tbody>
+      {rows.map(([k, v]) => <tr key={k}><th>{k}</th><td>{v === '' || v === null || v === undefined ? <span className="muted">—</span> : v}</td></tr>)}
+    </tbody></table>
   );
 }
