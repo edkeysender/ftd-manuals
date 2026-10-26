@@ -267,7 +267,13 @@ The functional spec lives in this file's history and in the Modules spec provide
   male), a connected socket/plug is drawn as the mated pair, a cable kind's `cores` puts the oblique stroke with the
   conductor count on the line and `screened` the screen oval (`contactSymbol`/`cableMarks` in `schematic-render.js`),
   and a legend under the drawing lists the symbols used and names the standard (EN/PL `WORDS`). The general-object
-  rectangle with port stubs is the standard's device symbol; nothing else is pictorial.
+  rectangle with port stubs is the standard's device symbol — except a **protective device**: a template whose
+  `symbol` is `mcb`, `switch-disconnector` or `fuse` (`PROTECTIVE_SYMBOLS` in `library.js`, with `poles` 1–4 and a
+  `rating` such as "B10") is drawn upright as that IEC 60617 symbol (`poleSymbol` / `protectiveSvg` in
+  `schematic-render.js`): supply ports at the top, load ports at the bottom whatever side the template declares,
+  the breaker's cross and releases, the disconnector's isolating bar, a dashed coupling across several poles, and an
+  information stack beside it (tag = the label up to its first space, the rest of the label as function text, rating,
+  maker, part number, type, location). Nothing else is pictorial.
 
 - Schematic chat / MCP `apply_schematic_ops` accept **library ops** in the same list (`server/library-ops.js`:
   `create_template`, `update_template`, `create_connector`, `create_cable_kind`, `set_picture`); they are previewed on a
