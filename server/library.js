@@ -8,7 +8,15 @@
 import { slugify } from './store-utils.js';
 
 export const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-strip', 'headset', 'display', 'panel', 'other'];
-export const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display'];
+export const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display', 'mcb', 'switch-disconnector', 'fuse'];
+/**
+ * Symbols drawn as a protective device after PN-EN 60617 / IEC 60617 — one vertical pole per `poles`
+ * (contact between the terminals, mechanically coupled when several), not the general-object rectangle:
+ * `mcb` circuit-breaker (07-13-05) with its thermal and electromagnetic releases, `switch-disconnector`
+ * (07-13-08), `fuse` (07-21-01). Such a template carries a `rating` ("B10", "40 A") printed beside it.
+ */
+export const PROTECTIVE_SYMBOLS = ['mcb', 'switch-disconnector', 'fuse'];
+export const isProtectiveSymbol = (symbol) => PROTECTIVE_SYMBOLS.includes(symbol);
 export const PORT_DIRECTIONS = ['in', 'out', 'bidir'];
 export const PORT_SIDES = ['left', 'right', 'top', 'bottom'];
 export const PANEL_SIDES = ['front', 'rear'];
@@ -162,6 +170,13 @@ export function normalizeTemplate(spec, takenIds = new Set(), connectors = DEFAU
     if (ext) panels[side] = String(ext);
   }
   if (!Number.isFinite(heightU) || heightU < 0) throw new Error('heightU must be a number of rack units (0 for a device outside a rack)');
+  // a protective device: how many poles the symbol draws (1–4), and its rating as printed on it
+  let poles = null;
+  if (isProtectiveSymbol(symbol)) {
+    poles = spec.poles === undefined || spec.poles === null || spec.poles === '' ? 1 : Number(spec.poles);
+    if (!Number.isInteger(poles) || poles < 1 || poles > 4) throw new Error(`poles is the number of poles the symbol draws, 1 to 4, not "${spec.poles}"`);
+  }
+  const rating = isProtectiveSymbol(symbol) ? str(spec.rating) : '';
   // the physical size in mm — width, height, depth — any of them, for fitting a chassis into a rack
   let sizeMm = null;
   if (spec.sizeMm && typeof spec.sizeMm === 'object') {
@@ -184,6 +199,8 @@ export function normalizeTemplate(spec, takenIds = new Set(), connectors = DEFAU
     heightU,
     sizeMm,
     symbol,
+    poles,
+    rating,
     ports,
     hardwareId: str(spec.hardwareId) || null,
     notes: str(spec.notes),

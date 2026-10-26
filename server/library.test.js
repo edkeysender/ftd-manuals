@@ -87,3 +87,19 @@ test('normalizeLibrary gives every connector its IEC 60617 contact symbol and ev
   assert.ok(DEFAULT_LIBRARY.connectors.some((c) => c.id === 'pe'), 'a protective earth terminal is shipped');
   assert.ok(DEFAULT_LIBRARY.cables.some((c) => c.id === 'bonding' && c.joins.some(([a, b]) => a === 'pe' && b === 'pe')), 'and a bonding conductor kind joins two of them');
 });
+
+test('normalizeTemplate keeps a protective device: its IEC 60617 symbol, pole count and rating', () => {
+  const t = normalizeTemplate({ name: 'MCB HN-B10/1', category: 'other', symbol: 'mcb', poles: '1', rating: 'B10', ports: [{ id: 'in', label: '1', connector: 'pe', direction: 'in' }, { id: 'out', label: '2', connector: 'pe', direction: 'out' }] });
+  assert.equal(t.symbol, 'mcb');
+  assert.equal(t.poles, 1);
+  assert.equal(t.rating, 'B10');
+  const q = normalizeTemplate({ name: 'IS-40/4', category: 'other', symbol: 'switch-disconnector', poles: 4, rating: '40 A' });
+  assert.equal(q.poles, 4);
+  assert.equal(normalizeTemplate({ name: 'Fuse', category: 'other', symbol: 'fuse' }).poles, 1, 'one pole unless said otherwise');
+  // a box has no poles and no rating
+  const b = normalizeTemplate({ name: 'Plain', category: 'pc' });
+  assert.equal(b.poles, null);
+  assert.equal(b.rating, '');
+  assert.throws(() => normalizeTemplate({ name: 'Bad', category: 'other', symbol: 'mcb', poles: 5 }), /poles/i);
+  assert.throws(() => normalizeTemplate({ name: 'Bad', category: 'other', symbol: 'relay' }), /symbol/i);
+});
