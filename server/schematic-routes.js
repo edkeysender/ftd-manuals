@@ -5,6 +5,7 @@
  */
 import * as sch from './schematics-store.js';
 import { renderSvg, schematicCsv, cableLabelsHtml } from './schematic-render.js';
+import { symbolsRoute } from './symbols.js';
 import { schematicChat, attachmentsToText } from './schematic-ai.js';
 import { expandDocuments } from './extract.js';
 import { SchematicError, filterSchematic, cableSchedule } from './schematic.js';
@@ -34,6 +35,8 @@ export function registerSchematicRoutes(app, { wrap, auth }) {
 
   /* ---- library ---- */
   app.get('/api/library', wrap(async (req, res) => res.json(await sch.getLibrary())));
+  // the symbol catalog (PN-EN 60617 / IEC 60617): every symbol the drawing makes, drawn live, and who uses it
+  app.get('/api/library/symbols', wrap(async (req, res) => res.json(await symbolsRoute(req, () => sch.getLibrary()))));
   app.put('/api/library/connectors', wrap(async (req, res) => res.json(await sch.saveConnectors(req.body || {}))));
   app.post('/api/library/devices', wrap(async (req, res) => res.json(await sch.createDeviceTemplate(req.body || {}))));
   app.put('/api/library/devices/:id', wrap(async (req, res) => res.json(await sch.updateDeviceTemplate(req.params.id, req.body || {}))));

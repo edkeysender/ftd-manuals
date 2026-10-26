@@ -3,8 +3,10 @@ import { api, devicePanelUrl, readFileAsBase64 } from '../api.js';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 import { panelOrder, panelName } from './SchematicViewer.jsx';
+import LibraryBrowser, { CATEGORIES, CATEGORY_LABELS, PROTECTIVE } from './LibraryBrowser.jsx';
 
-const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-strip', 'headset', 'display', 'panel', 'other'];
+// how the drawing shows the device: the general rectangle, or an IEC 60617 protective-device symbol (server/library.js SYMBOLS)
+const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display', 'mcb', 'switch-disconnector', 'fuse', 'lamp'];
 const DIRECTIONS = ['in', 'out', 'bidir'];
 const SIDES = ['left', 'right', 'top', 'bottom'];
 
@@ -29,25 +31,8 @@ export default function LibraryCard() {
   return (
     <section className="settings-card">
       <h2>{t('Device library')}</h2>
-      <p className="muted">{t('Devices a schematic places — what each one is and which ports it has. Connector and cable kinds decide which ports a cable may join.')}</p>
-      <table className="table">
-        <thead><tr><th>{t('Device')}</th><th>{t('Category')}</th><th>{t('Ports')}</th><th>{t('Catalog item')}</th><th></th></tr></thead>
-        <tbody>
-          {lib.devices.map((d) => (
-            <tr key={d.id}>
-              <td><strong>{d.name}</strong><div className="small muted">{[d.manufacturer, d.model].filter(Boolean).join(' ')} · {d.id}</div></td>
-              <td>{d.category}</td>
-              <td title={d.ports.map((p) => `${p.label} (${p.connector}, ${p.direction})`).join('\n')}>{plural(d.ports.length, 'port')}</td>
-              <td>{d.hardwareId ? hardware.find((h) => h.id === d.hardwareId)?.name || d.hardwareId : '—'}{(d.panels?.front || d.panels?.rear) && <div className="panel-thumbs">{['front', 'rear'].filter((s) => d.panels[s]).map((s) => <img key={s} src={devicePanelUrl(d.id, s, d.panels[s])} alt={s} title={s === 'front' ? t('Front') : t('Rear')} />)}</div>}</td>
-              <td className="btn-row">
-                <button className="btn btn-sm" onClick={() => setEditing(d)}>{t('Edit')}</button>
-                <button className="btn btn-sm" onClick={() => promote(d)} title={t('Create a module of its own from this device')}>{t('Promote to module')}</button>
-                <button className="btn btn-sm btn-danger" onClick={() => remove(d)}>{t('Remove')}</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <p className="muted">{t('Devices a schematic places — what each one is, which ports it has and which PN-EN 60617 symbol draws it. Connector and cable kinds decide which ports a cable may join.')}</p>
+      <LibraryBrowser lib={lib} hardware={hardware} onEdit={setEditing} onPromote={promote} onRemove={remove} onChanged={load} />
       <div className="btn-row">
         <button className="btn btn-primary" onClick={() => setEditing({})}>{t('+ Add device')}</button>
         <button className="btn" onClick={() => setRulesOpen((o) => !o)}>{rulesOpen ? t('Hide connector rules') : t('Connector rules…')}</button>
@@ -58,10 +43,13 @@ export default function LibraryCard() {
   );
 }
 
+/** What the symbol choices are called; the pictorial ones keep their ids. */
+const SYMBOL_NAMES = { box: 'General device (rectangle)', mcb: 'Circuit breaker (IEC 60617)', 'switch-disconnector': 'Switch disconnector (IEC 60617)', fuse: 'Fuse (IEC 60617)', lamp: 'Indicator lamp (IEC 60617)' };
+
 function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
   const toast = useToast();
   const isNew = !template.id;
-  const [form, setForm] = useState({ name: template.name || '', category: template.category || 'other', manufacturer: template.manufacturer || '', model: template.model || '', heightU: template.heightU ?? 1, sizeMm: { w: template.sizeMm?.w ?? '', h: template.sizeMm?.h ?? '', d: template.sizeMm?.d ?? '' }, hardwareId: template.hardwareId || '', notes: template.notes || '', ports: template.ports?.length ? template.ports.map((p) => ({ ...p })) : [{ id: '', label: '', connector: lib.connectors[0].id, direction: 'bidir', side: 'right' }] });
+  const [form, setForm] = useState({ name: template.name || '', category: template.category || 'other', manufacturer: template.manufacturer || '', model: template.model || '', heightU: template.heightU ?? 1, symbol: template.symbol || 'box', poles: template.poles ?? 1, rating: template.rating || '', sizeMm: { w: template.sizeMm?.w ?? '', h: template.sizeMm?.h ?? '', d: template.sizeMm?.d ?? '' }, hardwareId: template.hardwareId || '', notes: template.notes || '', ports: template.ports?.length ? template.ports.map((p) => ({ ...p })) : [{ id: '', label: '', connector: lib.connectors[0].id, direction: 'bidir', side: 'right' }] });
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const setPort = (i, k, v) => setForm((f) => ({ ...f, ports: f.ports.map((p, k2) => (k2 === i ? { ...p, [k]: v } : p)) }));
@@ -70,7 +58,7 @@ function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
   async function save() {
     setBusy(true);
     try {
-      const body = { ...form, heightU: Number(form.heightU), sizeMm: form.sizeMm, hardwareId: form.hardwareId || null, ports: form.ports.filter((p) => p.label.trim() || p.id.trim()) };
+      const body = { ...form, heightU: Number(form.heightU), poles: PROTECTIVE.includes(form.symbol) ? Number(form.poles) : undefined, rating: PROTECTIVE.includes(form.symbol) ? form.rating : undefined, sizeMm: form.sizeMm, hardwareId: form.hardwareId || null, ports: form.ports.filter((p) => p.label.trim() || p.id.trim()) };
       if (isNew) await api.createDeviceTemplate(body); else await api.updateDeviceTemplate(template.id, body);
       onSaved();
     } catch (e) { toast(e.message, 'err'); setBusy(false); }
@@ -82,12 +70,20 @@ function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
         <div className="modal-body">
           <div className="pair">
             <label style={{ flex: 2 }}>{t('Name')}<input autoFocus value={form.name} onChange={set('name')} /></label>
-            <label>{t('Category')}<select value={form.category} onChange={set('category')}>{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
+            <label>{t('Category')}<select value={form.category} onChange={set('category')}>{CATEGORIES.map((c) => <option key={c} value={c}>{t(CATEGORY_LABELS[c])}</option>)}</select></label>
           </div>
           <div className="pair">
             <label>{t('Manufacturer')}<input value={form.manufacturer} onChange={set('manufacturer')} /></label>
             <label>{t('Model')}<input value={form.model} onChange={set('model')} /></label>
             <label style={{ flex: 0.5 }}>{t('Height (U)')}<input type="number" min="0" step="1" value={form.heightU} onChange={set('heightU')} /></label>
+          </div>
+          {/* the symbol on the drawing: a protective device stands upright as its IEC 60617 symbol, with poles and a rating */}
+          <div className="pair">
+            <label>{t('Drawing symbol')}
+              <select value={form.symbol} onChange={set('symbol')}>{SYMBOLS.map((c) => <option key={c} value={c}>{SYMBOL_NAMES[c] ? t(SYMBOL_NAMES[c]) : c}</option>)}</select>
+            </label>
+            {PROTECTIVE.includes(form.symbol) && <label style={{ flex: 0.5 }}>{t('Poles')}<input type="number" min="1" max="4" step="1" value={form.poles} onChange={set('poles')} /></label>}
+            {PROTECTIVE.includes(form.symbol) && <label>{t('Rating')}<input value={form.rating} onChange={set('rating')} placeholder={t('e.g. B10, 40 A')} /></label>}
           </div>
           {/* the physical size: what has to fit into a rack of a given depth */}
           <div className="pair size-mm">

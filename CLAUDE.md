@@ -267,7 +267,23 @@ The functional spec lives in this file's history and in the Modules spec provide
   male), a connected socket/plug is drawn as the mated pair, a cable kind's `cores` puts the oblique stroke with the
   conductor count on the line and `screened` the screen oval (`contactSymbol`/`cableMarks` in `schematic-render.js`),
   and a legend under the drawing lists the symbols used and names the standard (EN/PL `WORDS`). The general-object
-  rectangle with port stubs is the standard's device symbol; nothing else is pictorial.
+  rectangle with port stubs is the standard's device symbol — except a **protective device**: a template whose
+  `symbol` is `mcb`, `switch-disconnector`, `fuse` or `lamp` (`PROTECTIVE_SYMBOLS` in `library.js`, with `poles` 1–4 and a
+  `rating` such as "B10") is drawn upright as that IEC 60617 symbol (`poleSymbol` / `protectiveSvg` in
+  `schematic-render.js`): supply ports at the top, load ports at the bottom whatever side the template declares,
+  the breaker's cross and releases, the disconnector's isolating bar, a dashed coupling across several poles, a lamp
+  per pole on a common return for an indicator, and an
+  information stack beside it (tag = the label up to its first space, the rest of the label as function text, rating,
+  maker, part number, type, location). Nothing else is pictorial.
+  The **symbol catalog** (`server/symbols.js` `SYMBOL_CATALOG`: id, reference in the standard, en/pl name, kind,
+  parameters; `symbolSvg` draws each one with the renderer's own functions, never a stored picture; `symbolCatalog`
+  adds who uses it) is served at `GET /api/library/symbols?lang=` and MCP `list_symbols`. The Parts page shows the
+  device library as a **parts browser** (`LibraryBrowser.jsx`: tree of product group › manufacturer › part, then the
+  symbol catalog, connectors and cable kinds; the selected record's property table beside it, the schematic symbol
+  swappable from the catalog). Template `category` is the product group (`CATEGORIES`, labelled by `CATEGORY_LABELS`
+  in `LibraryBrowser.jsx`). A placed device's card in the drawing carries the sheet properties (visible ID, full ID
+  `=<installation>+<location>-<tag>`, terminal designations, technical characteristics, function text, mounting
+  location, article, symbol — `DeviceProps` in `SchematicViewer.jsx`).
 
 - Schematic chat / MCP `apply_schematic_ops` accept **library ops** in the same list (`server/library-ops.js`:
   `create_template`, `update_template`, `create_connector`, `create_cable_kind`, `set_picture`); they are previewed on a

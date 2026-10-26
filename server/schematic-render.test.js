@@ -220,3 +220,122 @@ test('a multi-core cable carries the oblique stroke with its conductor count, a 
   // a legend lists only what the drawing uses: no PE terminal here
   assert.doesNotMatch(svg, /sch-legend-pe/);
 });
+
+/** A library with terminals and the protective devices of a power enclosure. */
+function powerLib() {
+  return {
+    ...DEFAULT_LIBRARY,
+    connectors: [...DEFAULT_LIBRARY.connectors, { id: 'term', label: 'Terminal', color: '#000', symbol: 'terminal' }],
+    cables: [...DEFAULT_LIBRARY.cables, { id: 'wire', label: 'Wire', joins: [['term', 'term']], style: { color: '#000', width: 1.2, dash: '' }, cores: 1, screened: false }],
+    devices: [
+      ...DEFAULT_LIBRARY.devices,
+      { id: 'mcb-b10', name: 'MCB HN-B10/1', category: 'other', manufacturer: 'Eaton', model: '194819', heightU: 0, sizeMm: null, symbol: 'mcb', poles: 1, rating: 'B10', ports: [{ id: 'in', label: '1', connector: 'term', direction: 'in', side: 'left' }, { id: 'out-1', label: '2', connector: 'term', direction: 'out', side: 'right' }, { id: 'out-2', label: '2 (second wire)', connector: 'term', direction: 'out', side: 'right' }], hardwareId: null, notes: '', panels: {} },
+      { id: 'is-40-4', name: 'Switch disconnector IS-40/4', category: 'other', manufacturer: 'Eaton', model: 'IS-40/4', heightU: 0, sizeMm: null, symbol: 'switch-disconnector', poles: 4, rating: '40 A', ports: [{ id: 'in', label: 'In', connector: 'term', direction: 'in', side: 'left' }, { id: 'out', label: 'Out', connector: 'term', direction: 'out', side: 'right' }], hardwareId: null, notes: '', panels: {} },
+      { id: 'fuse-2a', name: 'Fuse holder', category: 'other', manufacturer: '', model: '', heightU: 0, sizeMm: null, symbol: 'fuse', poles: 1, rating: '2 A', ports: [{ id: 'in', label: '1', connector: 'term', direction: 'in', side: 'left' }, { id: 'out', label: '2', connector: 'term', direction: 'out', side: 'right' }], hardwareId: null, notes: '', panels: {} },
+      { id: 'terms', name: 'Terminals', category: 'other', manufacturer: '', model: '', heightU: 0, sizeMm: null, symbol: 'box', poles: null, rating: '', ports: [{ id: 't1', label: '1', connector: 'term', direction: 'bidir', side: 'left' }, { id: 't2', label: '2', connector: 'term', direction: 'bidir', side: 'left' }], hardwareId: null, notes: '', panels: {} },
+    ],
+  };
+}
+
+function powerFixture(c) {
+  return applyOps(
+    emptySchematic({ kind: 'installation', owner: 'sim' }),
+    [
+      { op: 'add_location', id: 'ebi', label: 'Energy box 1', kind: 'rack' },
+      { op: 'add_device', id: 'q2', template: 'is-40-4', label: '-Q2.MAIN', location: 'ebi' },
+      { op: 'add_device', id: 'f10', template: 'mcb-b10', label: '-F10.VDS (VISUAL DISPLAY SYSTEM) B10', location: 'ebi' },
+      { op: 'add_device', id: 'f1', template: 'fuse-2a', label: '-F1', location: 'ebi' },
+      { op: 'add_device', id: 'x1', template: 'terms', label: '-X1', location: 'ebi' },
+      { op: 'connect', id: 'w1', from: { device: 'q2', port: 'out' }, to: { device: 'f10', port: 'in' }, label: 'W1' },
+      { op: 'connect', id: 'w2', from: { device: 'f10', port: 'out-1' }, to: { device: 'x1', port: 't1' }, label: 'W2' },
+    ],
+    c
+  ).state;
+}
+
+test('a protective device is drawn as its IEC 60617 symbol: poles between the terminals, releases on a breaker, the tag and rating beside it', async () => {
+  const c = { ...ctx(), library: powerLib() };
+  const s = powerFixture(c);
+  const svg = await renderSvg(s, c);
+  const dev = (id) => svg.match(new RegExp(`<g class="sch-device sch-prot sch-prot-[a-z-]+" data-id="${id}"[\\s\\S]*?(?=<g class="sch-(?:device|block|cable|legend|external)|</svg>)`))?.[0] || '';
+  const f10 = dev('f10');
+  assert.match(f10, /sch-prot-mcb/, 'a breaker');
+  assert.equal((f10.match(/class="sch-pole"/g) || []).length, 1, 'one pole');
+  assert.match(f10, /sch-release-thermal/);
+  assert.match(f10, /sch-release-magnetic/);
+  assert.match(f10, /sch-contact-x/, 'the circuit-breaker cross at the fixed contact');
+  const cross = f10.match(/<g class="sch-contact-x"><line x1="[-\d.]+" y1="([-\d.]+)"/);
+  assert.ok(cross && Number(cross[1]) < 42, 'the cross is at the free end of the fixed contact (upper), not at the pivot');
+  // the information stack: tag on its own line, the function text, the rating, maker, part number, type, location
+  assert.match(f10, /sch-tag"[^>]*>-F10\.VDS</);
+  assert.match(f10, />\(VISUAL DISPLAY SYSTEM\) B10</);
+  assert.match(f10, />B10</);
+  assert.match(f10, />Eaton</);
+  assert.match(f10, />194819</);
+  assert.match(f10, />MCB HN-B10\/1</);
+  assert.match(f10, />Energy box 1</);
+  // terminal numbers at the ends of the pole
+  assert.match(f10, /data-port="in"[\s\S]*?>1</);
+  assert.match(f10, /data-port="out-1"[\s\S]*?>2</);
+  // four coupled poles on the main switch, the isolating bar, no releases
+  const q2 = dev('q2');
+  assert.match(q2, /sch-prot-switch-disconnector/);
+  assert.equal((q2.match(/class="sch-pole"/g) || []).length, 4);
+  assert.match(q2, /sch-coupling/);
+  assert.match(q2, /sch-isolator-bar/);
+  assert.doesNotMatch(q2, /sch-release/);
+  assert.doesNotMatch(f10, /sch-coupling/, 'one pole has nothing to couple');
+  // the fuse is the rectangle with the conductor through it; a terminal block stays the general rectangle
+  assert.match(dev('f1'), /sch-prot-fuse/);
+  assert.match(svg, /<g class="sch-device" data-id="x1"/);
+  // the legend names what is on the drawing, in the reader's language
+  assert.match(svg, /sch-legend-mcb[\s\S]*?>Circuit breaker</);
+  assert.match(svg, /sch-legend-switch-disconnector[\s\S]*?>Switch disconnector</);
+  assert.match(svg, /sch-legend-fuse[\s\S]*?>Fuse</);
+  assert.match(await renderSvg(s, c, { lang: 'pl' }), /Wyłącznik nadprądowy/);
+});
+
+test('a protective device takes its supply at the top and feeds out at the bottom, whatever side the template declares', async () => {
+  const c = { ...ctx(), library: powerLib() };
+  const s = powerFixture(c);
+  const l = await layoutSchematic(s, c);
+  const f10 = l.nodes.f10;
+  const into = l.edges.w1.at(-1); // W1 ends on f10.in
+  const outOf = l.edges.w2[0]; // W2 starts on f10.out-1
+  assert.equal(into.y, f10.y, 'in at the top edge');
+  assert.equal(outOf.y, f10.y + f10.h, 'out at the bottom edge');
+  assert.ok(into.x > f10.x && into.x < f10.x + f10.w);
+  assert.equal(into.x, outOf.x, 'in and out of one pole share its x');
+  assert.ok(f10.h >= 70, 'tall enough for the symbol and the information stack');
+});
+
+test('an indicator (lamp) is drawn as its lamps, one per pole, on a common return: supply at the top, the return at the bottom under the middle lamp', async () => {
+  const lib = powerLib();
+  lib.devices.push({ id: 'uva', name: 'Voltage indicator UVA', category: 'display', manufacturer: 'Eaton', model: '167285', heightU: 0, sizeMm: null, symbol: 'lamp', poles: 3, rating: '', ports: [{ id: 'in', label: 'L1 L2 L3', connector: 'term', direction: 'in', side: 'left' }, { id: 'n', label: 'N', connector: 'term', direction: 'bidir', side: 'left' }], hardwareId: null, notes: '', panels: {} });
+  const c = { ...ctx(), library: lib };
+  const s = applyOps(powerFixture(c), [
+    { op: 'add_device', id: 'h1', template: 'uva', label: '-H1.MAIN', location: 'ebi' },
+    { op: 'connect', id: 'w3', from: { device: 'f1', port: 'out' }, to: { device: 'h1', port: 'in' }, label: 'W3' },
+    { op: 'connect', id: 'w4', from: { device: 'h1', port: 'n' }, to: { device: 'x1', port: 't2' }, label: 'W4' },
+  ], c).state;
+  const svg = await renderSvg(s, c);
+  const h1 = svg.match(/<g class="sch-device sch-prot sch-prot-lamp" data-id="h1"[\s\S]*?(?=<g class="sch-(?:device|block|cable|legend|external)|<\/svg>)/)?.[0] || '';
+  assert.ok(h1, 'drawn upright');
+  assert.equal((h1.match(/class="sch-lamp"/g) || []).length, 3, 'three lamps');
+  assert.match(h1, /sch-common/, 'the common return bar');
+  assert.match(h1, /sch-junction/, 'the junction dot where the return leaves the bar');
+  assert.doesNotMatch(h1, /sch-coupling|sch-release|sch-contact-x/);
+  // one terminal group over three poles: its words spread over the poles, L1 L2 L3
+  assert.match(h1, /data-port="in"[\s\S]*?>L1<[\s\S]*?>L2<[\s\S]*?>L3</);
+  assert.doesNotMatch(h1, /<text[^>]*>L1 L2 L3</, "the tooltip keeps the whole name, the drawing spreads it");
+  assert.match(h1, /data-port="n"[\s\S]*?>N</);
+  assert.match(svg, /sch-legend-lamp[\s\S]*?>Indicator lamp</);
+  assert.match(await renderSvg(s, c, { lang: 'pl' }), /Lampka sygnalizacyjna/);
+  const l = await layoutSchematic(s, c);
+  const box = l.nodes.h1;
+  const into = l.edges.w3.at(-1);
+  const ret = l.edges.w4[0];
+  assert.equal(into.y, box.y, 'supply at the top edge');
+  assert.equal(ret.y, box.y + box.h, 'return at the bottom edge');
+  assert.ok(ret.x > into.x, 'the return leaves under the middle lamp, right of the first');
+});

@@ -797,12 +797,18 @@ export const TOOLS = [
     annotations: { title: 'List device templates', ...RO },
   },
   {
+    name: 'list_symbols',
+    description: 'The symbol catalog the drawing is made of, after PN-EN 60617 (IEC 60617): id, reference in the standard, name (en/pl), kind (device / contact / cable / graphic), parameters a template sets (poles, rating), and which templates, connectors or cable kinds draw with it. A device template picks its drawing symbol by id (symbol on create/update_device_template).',
+    inputSchema: { type: 'object', properties: { lang: { type: 'string', enum: ['en', 'pl'] }, include_svg: { type: 'boolean', description: 'also return each symbol drawn as svg' } } },
+    annotations: { title: 'List symbols', ...RO },
+  },
+  {
     name: 'create_device_template',
     description: 'Add a device to the library. Ports: [{id?, label, connector, direction: in|out|bidir (default bidir), side: left|right|top|bottom}]. Connector ids come from list_device_templates {include_rules: true}. hardware_id links it to a hardware catalog item.',
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, size_mm: { type: 'object', description: 'physical size {w, h, d} in mm', properties: { w: { type: 'number' }, h: { type: 'number' }, d: { type: 'number' } } }, symbol: { type: 'string' }, hardware_id: { type: 'string' }, notes: { type: 'string' },
+        name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, size_mm: { type: 'object', description: 'physical size {w, h, d} in mm', properties: { w: { type: 'number' }, h: { type: 'number' }, d: { type: 'number' } } }, symbol: { type: 'string', description: 'box (general rectangle) or an IEC 60617 device drawn upright: mcb, switch-disconnector, fuse, lamp (indicator, one lamp per pole)' }, poles: { type: 'number', description: 'protective device: poles drawn, 1–4' }, rating: { type: 'string', description: 'protective device: rating printed beside the symbol, e.g. B10, 40 A' }, hardware_id: { type: 'string' }, notes: { type: 'string' },
         ports: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, connector: { type: 'string' }, direction: { type: 'string', enum: ['in', 'out', 'bidir'] }, side: { type: 'string', enum: ['left', 'right', 'top', 'bottom'] } }, required: ['label', 'connector'] } },
       },
       required: ['name', 'ports'],
@@ -812,7 +818,7 @@ export const TOOLS = [
   {
     name: 'update_device_template',
     description: 'Change a library device: any field of create_device_template; `ports` replaces the whole port list.',
-    inputSchema: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, size_mm: { type: 'object', description: 'physical size {w, h, d} in mm', properties: { w: { type: 'number' }, h: { type: 'number' }, d: { type: 'number' } } }, symbol: { type: 'string' }, hardware_id: { type: 'string' }, notes: { type: 'string' }, ports: { type: 'array', items: { type: 'object' } } }, required: ['id'] },
+    inputSchema: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, manufacturer: { type: 'string' }, model: { type: 'string' }, height_u: { type: 'number' }, size_mm: { type: 'object', description: 'physical size {w, h, d} in mm', properties: { w: { type: 'number' }, h: { type: 'number' }, d: { type: 'number' } } }, symbol: { type: 'string', description: 'box (general rectangle) or an IEC 60617 device drawn upright: mcb, switch-disconnector, fuse, lamp (indicator, one lamp per pole)' }, poles: { type: 'number', description: 'protective device: poles drawn, 1–4' }, rating: { type: 'string', description: 'protective device: rating printed beside the symbol, e.g. B10, 40 A' }, hardware_id: { type: 'string' }, notes: { type: 'string' }, ports: { type: 'array', items: { type: 'object' } } }, required: ['id'] },
     annotations: { title: 'Update device template', ...RW },
   },
   {
@@ -835,7 +841,7 @@ export const TOOLS = [
   },
   {
     name: 'apply_schematic_ops',
-    description: `Change an open schematic with a list of operations — all applied as one commit, or none when any fails (the error names the op). Ops: ${OP_NAMES.join(', ')}. Shapes: {op:"add_device", id?, template, hardwareId?, label?, location?, rack?:{u}} · {op:"connect", id?, kind?, from:{device,port}|{block,port}, to:…, label?, length?} (kind inferred when one cable kind joins the connectors) · {op:"set_external_port", id?, label, device, port} (module) · {op:"add_location", id?, label, kind:"rack"|"area", unitsU?, depthMm?} · {op:"place_block", id?, module, location?, rack?} (module with a released schematic) · {op:"refresh_block", id} · {op:"remove_device"|"remove_block", id, cascade?} · {op:"disconnect"|"unset_external_port"|"remove_location", id} · {op:"update_device"|"update_cable"|"update_location", id, …fields} · {op:"move", id, x, y} · {op:"tidy", ids?}. dry_run validates and returns the would-be state without writing. Library ops may ride in the same list and run first: {op:"create_template", id?, name, manufacturer?, model?, category, heightU?, sizeMm?:{w,h,d}, ports:[{id,label,connector,direction}], pictures?:{front:{url}, rear:{url}}} · {op:"update_template", id, addPorts?, ports?, …, pictures?} · {op:"create_connector", id, label, color?, symbol?: socket|plug|terminal|pe (IEC 60617 contact drawn on the device; socket by default)} · {op:"create_cable_kind", id, label, joins:[[a,b]], style?, cores?, screened?} · {op:"set_picture", template, side, picture:{url}} — a picture over MCP is a url the console fetches (or upload one with the panel route); the template defined here can be placed with add_device in the same call.`,
+    description: `Change an open schematic with a list of operations — all applied as one commit, or none when any fails (the error names the op). Ops: ${OP_NAMES.join(', ')}. Shapes: {op:"add_device", id?, template, hardwareId?, label?, location?, rack?:{u}} · {op:"connect", id?, kind?, from:{device,port}|{block,port}, to:…, label?, length?} (kind inferred when one cable kind joins the connectors) · {op:"set_external_port", id?, label, device, port} (module) · {op:"add_location", id?, label, kind:"rack"|"area", unitsU?, depthMm?} · {op:"place_block", id?, module, location?, rack?} (module with a released schematic) · {op:"refresh_block", id} · {op:"remove_device"|"remove_block", id, cascade?} · {op:"disconnect"|"unset_external_port"|"remove_location", id} · {op:"update_device"|"update_cable"|"update_location", id, …fields} · {op:"move", id, x, y} · {op:"tidy", ids?}. dry_run validates and returns the would-be state without writing. Library ops may ride in the same list and run first: {op:"create_template", id?, name, manufacturer?, model?, category, heightU?, sizeMm?:{w,h,d}, symbol?: box|mcb|switch-disconnector|fuse|lamp (drawn upright as its IEC 60617 symbol), poles?, rating?, ports:[{id,label,connector,direction}], pictures?:{front:{url}, rear:{url}}} · {op:"update_template", id, addPorts?, ports?, …, pictures?} · {op:"create_connector", id, label, color?, symbol?: socket|plug|terminal|pe (IEC 60617 contact drawn on the device; socket by default)} · {op:"create_cable_kind", id, label, joins:[[a,b]], style?, cores?, screened?} · {op:"set_picture", template, side, picture:{url}} — a picture over MCP is a url the console fetches (or upload one with the panel route); the template defined here can be placed with add_device in the same call.`,
     inputSchema: { type: 'object', properties: { slug: SCH_SLUG, ops: { type: 'array', items: { type: 'object' } }, summary: { type: 'string', description: 'One line for the revision history' }, dry_run: { type: 'boolean' } }, required: ['slug', 'ops'] },
     annotations: { title: 'Apply schematic operations', ...RW },
   },
@@ -977,6 +983,11 @@ async function callTool(name, args) {
       return await sch.listInstallations();
     case 'create_installation':
       return await sch.createInstallation({ name: args.name, device: args.device, serialNumber: args.serial_number, operator: args.operator, locations: args.locations });
+    case 'list_symbols': {
+      const { symbolCatalog } = await import('./symbols.js');
+      const items = symbolCatalog(await sch.getLibrary(), args.lang === 'pl' ? 'pl' : 'en');
+      return args.include_svg ? items : items.map(({ svg, ...rest }) => rest);
+    }
     case 'list_device_templates': {
       const lib = await sch.getLibrary();
       const q = (args.query || '').toLowerCase().trim();
