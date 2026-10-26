@@ -204,6 +204,7 @@ export const api = {
   checklist: (slug, version) => request(`${ownerPath(slug)}/docs/${version}/checklist`),
   // ----- schematics, installations, device library -----
   library: () => request('/api/library'),
+  symbols: (lang = 'en') => request(`/api/library/symbols?lang=${encodeURIComponent(lang)}`),
   saveConnectors: (body) => request('/api/library/connectors', { method: 'PUT', body }),
   createDeviceTemplate: (body) => request('/api/library/devices', { method: 'POST', body }),
   updateDeviceTemplate: (id, body) => request(`/api/library/devices/${encodeURIComponent(id)}`, { method: 'PUT', body }),

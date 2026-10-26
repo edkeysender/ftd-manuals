@@ -3,11 +3,10 @@ import { api, devicePanelUrl, readFileAsBase64 } from '../api.js';
 import { useToast } from '../App.jsx';
 import { t, plural } from '../i18n.jsx';
 import { panelOrder, panelName } from './SchematicViewer.jsx';
+import LibraryBrowser, { CATEGORIES, CATEGORY_LABELS, PROTECTIVE } from './LibraryBrowser.jsx';
 
-const CATEGORIES = ['switch', 'router', 'pc', 'audio-interface', 'power-strip', 'headset', 'display', 'panel', 'other'];
 // how the drawing shows the device: the general rectangle, or an IEC 60617 protective-device symbol (server/library.js SYMBOLS)
 const SYMBOLS = ['box', 'switch', 'pc', 'power-strip', 'headset', 'display', 'mcb', 'switch-disconnector', 'fuse', 'lamp'];
-const PROTECTIVE = ['mcb', 'switch-disconnector', 'fuse', 'lamp'];
 const DIRECTIONS = ['in', 'out', 'bidir'];
 const SIDES = ['left', 'right', 'top', 'bottom'];
 
@@ -32,25 +31,8 @@ export default function LibraryCard() {
   return (
     <section className="settings-card">
       <h2>{t('Device library')}</h2>
-      <p className="muted">{t('Devices a schematic places — what each one is and which ports it has. Connector and cable kinds decide which ports a cable may join.')}</p>
-      <table className="table">
-        <thead><tr><th>{t('Device')}</th><th>{t('Category')}</th><th>{t('Ports')}</th><th>{t('Catalog item')}</th><th></th></tr></thead>
-        <tbody>
-          {lib.devices.map((d) => (
-            <tr key={d.id}>
-              <td><strong>{d.name}</strong><div className="small muted">{[d.manufacturer, d.model].filter(Boolean).join(' ')} · {d.id}</div></td>
-              <td>{d.category}</td>
-              <td title={d.ports.map((p) => `${p.label} (${p.connector}, ${p.direction})`).join('\n')}>{plural(d.ports.length, 'port')}</td>
-              <td>{d.hardwareId ? hardware.find((h) => h.id === d.hardwareId)?.name || d.hardwareId : '—'}{(d.panels?.front || d.panels?.rear) && <div className="panel-thumbs">{['front', 'rear'].filter((s) => d.panels[s]).map((s) => <img key={s} src={devicePanelUrl(d.id, s, d.panels[s])} alt={s} title={s === 'front' ? t('Front') : t('Rear')} />)}</div>}</td>
-              <td className="btn-row">
-                <button className="btn btn-sm" onClick={() => setEditing(d)}>{t('Edit')}</button>
-                <button className="btn btn-sm" onClick={() => promote(d)} title={t('Create a module of its own from this device')}>{t('Promote to module')}</button>
-                <button className="btn btn-sm btn-danger" onClick={() => remove(d)}>{t('Remove')}</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <p className="muted">{t('Devices a schematic places — what each one is, which ports it has and which PN-EN 60617 symbol draws it. Connector and cable kinds decide which ports a cable may join.')}</p>
+      <LibraryBrowser lib={lib} hardware={hardware} onEdit={setEditing} onPromote={promote} onRemove={remove} onChanged={load} />
       <div className="btn-row">
         <button className="btn btn-primary" onClick={() => setEditing({})}>{t('+ Add device')}</button>
         <button className="btn" onClick={() => setRulesOpen((o) => !o)}>{rulesOpen ? t('Hide connector rules') : t('Connector rules…')}</button>
@@ -88,7 +70,7 @@ function TemplateEditor({ lib, hardware, template, onClose, onSaved }) {
         <div className="modal-body">
           <div className="pair">
             <label style={{ flex: 2 }}>{t('Name')}<input autoFocus value={form.name} onChange={set('name')} /></label>
-            <label>{t('Category')}<select value={form.category} onChange={set('category')}>{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
+            <label>{t('Category')}<select value={form.category} onChange={set('category')}>{CATEGORIES.map((c) => <option key={c} value={c}>{t(CATEGORY_LABELS[c])}</option>)}</select></label>
           </div>
           <div className="pair">
             <label>{t('Manufacturer')}<input value={form.manufacturer} onChange={set('manufacturer')} /></label>
