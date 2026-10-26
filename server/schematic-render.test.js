@@ -327,7 +327,7 @@ test('an indicator (lamp) is drawn as its lamps, one per pole, on a common retur
   assert.doesNotMatch(h1, /sch-coupling|sch-release|sch-contact-x/);
   // one terminal group over three poles: its words spread over the poles, L1 L2 L3
   assert.match(h1, /data-port="in"[\s\S]*?>L1<[\s\S]*?>L2<[\s\S]*?>L3</);
-  assert.doesNotMatch(h1, />L1 L2 L3</);
+  assert.doesNotMatch(h1, /<text[^>]*>L1 L2 L3</, "the tooltip keeps the whole name, the drawing spreads it");
   assert.match(h1, /data-port="n"[\s\S]*?>N</);
   assert.match(svg, /sch-legend-lamp[\s\S]*?>Indicator lamp</);
   assert.match(await renderSvg(s, c, { lang: 'pl' }), /Lampka sygnalizacyjna/);
